@@ -30,7 +30,7 @@ $(MAINBOARDS):
 	cd $(dir $@) && make
 
 firsttime:
-	curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2020-04-22
+	## curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain nightly-2020-04-22
 	rustup override set nightly-2020-04-23
 	rustup component add rust-src llvm-tools-preview
 	rustup target add riscv64imac-unknown-none-elf
@@ -38,7 +38,7 @@ firsttime:
 	rustup target add armv7r-none-eabi
 	cargo install --version 0.5.29 cargo-xbuild
 	cargo install --version 0.2.0 cargo-binutils
-	sudo apt-get install device-tree-compiler pkg-config libssl-dev
+	## sudo apt-get install device-tree-compiler pkg-config libssl-dev
 
 update:
 	rustup update
