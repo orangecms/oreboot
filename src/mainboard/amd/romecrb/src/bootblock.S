@@ -37,6 +37,8 @@ entryfromreset:
 	// So, assumption going in:
 	// we have a valid sp.
 	// The starting address of this code block is in %rdi
+	// TODO: set stack.
+	//movl $entryfromreset, %esp
 	call 3f
 .globl gdtptr
 gdtptr:

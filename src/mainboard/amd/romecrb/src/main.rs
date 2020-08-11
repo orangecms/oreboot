@@ -40,9 +40,6 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     let mut count: u8 = 0;
     for _i in 0..1000000 {
         let mut p: [u8; 1] = [0; 1];
-        for _j in 0..100000 {
-            post.pread(&mut p, 0x3f8).unwrap();
-        }
         count = count + 1;
         p[0] = count;
         post.pwrite(&p, 0x80).unwrap();
