@@ -6,6 +6,7 @@
 //movl $0x10000, %esp
 //push $0x76ff0088
 //push $0x76ff0098
+movl $0x76ff0010, %esp
 push $0x76ff0000
 
 ret

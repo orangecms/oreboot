@@ -13,26 +13,45 @@
  * GNU General Public License for more details.
  */
 
-pub struct MainBoard {
+use clock::ClockNode;
+use core::ptr;
+use model::*;
+
+const FCH_UART_LEGACY_DECODE: u32 = 0xfedc0020;
+const FCH_LEGACY_3F8_SH: u16 = 1 << 3;
+
+fn poke16(a: u32, v: u16) -> () {
+    let y = a as *mut u16;
+    unsafe {
+        ptr::write_volatile(y, v);
+    }
 }
 
+// WIP: mainboard driver. I mean the concept is a WIP.
+pub struct MainBoard {}
+
 impl MainBoard {
-    pub fn new(base: usize, baudrate: u32) -> MainBoard {
-        MainBoard { }
+    pub fn new() -> MainBoard {
+        MainBoard {}
     }
 }
 
 impl Driver for MainBoard {
     fn init(&mut self) -> Result<()> {
+        // Knowledge from coreboot to get minimal serial working.
+        // GPIO defaults are fine.
+        // clock default is fine.
+        // The only thing we need is to set up the legacy decode.
+        poke16(FCH_UART_LEGACY_DECODE, FCH_LEGACY_3F8_SH);
         Ok(())
     }
 
-    fn pread(&self, data: &mut [u8], _offset: usize) -> Result<usize> {
-            return Ok(0);
+    fn pread(&self, _data: &mut [u8], _offset: usize) -> Result<usize> {
+        return Ok(0);
     }
 
-    fn pwrite(&mut self, data: &[u8], _offset: usize) -> Result<usize> {
-        Ok(data.len())
+    fn pwrite(&mut self, _data: &[u8], _offset: usize) -> Result<usize> {
+        Ok(_data.len())
     }
 
     fn shutdown(&mut self) {}
@@ -40,7 +59,5 @@ impl Driver for MainBoard {
 
 impl ClockNode for MainBoard {
     // This uses hfclk as the input rate.
-    fn set_clock_rate(&mut self, rate: u32) {
-    }
+    fn set_clock_rate(&mut self, _rate: u32) {}
 }
-

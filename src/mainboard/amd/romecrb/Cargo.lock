@@ -164,6 +164,7 @@ name = "romecrb"
 version = "0.1.0"
 dependencies = [
  "arch",
+ "clock",
  "console",
  "heapless 0.4.4",
  "model",

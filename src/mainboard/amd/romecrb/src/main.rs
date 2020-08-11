@@ -13,6 +13,9 @@ use payloads::payload;
 use print;
 use uart::i8250::I8250;
 
+mod mainboard;
+use mainboard::MainBoard;
+
 // Until we are done hacking on this, use our private copy.
 // Plan to copy it back later.
 global_asm!(include_str!("bootblock.S"));
@@ -27,6 +30,8 @@ fn poke(v: u32, a: u32) -> () {
 
 #[no_mangle]
 pub extern "C" fn _start(fdt_address: usize) -> ! {
+    let m = &mut MainBoard::new();
+    m.init().unwrap();
     let io = &mut IOPort;
     let post = &mut IOPort;
     let uart0 = &mut I8250::new(0x3f8, 0, io);
