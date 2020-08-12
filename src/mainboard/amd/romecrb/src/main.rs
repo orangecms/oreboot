@@ -22,9 +22,48 @@ use core::ptr;
 // Until we are done hacking on this, use our private copy.
 // Plan to copy it back later.
 global_asm!(include_str!("bootblock.S"));
-fn peek(a: u32) -> u32 {
+fn peek32(a: u32) -> u32 {
     let y = a as *const u32;
     unsafe { ptr::read_volatile(y) }
+}
+
+fn peek(a: u64) -> u64 {
+    let y = a as *const u64;
+    unsafe { ptr::read_volatile(y) }
+}
+
+// Returns a slice of u32 for each sequence of hex chars in a.
+fn hex(a: &[u8], vals: &mut Vec<u64, U8>) -> () {
+    let mut started: bool = false;
+    let mut val: u64 = 0u64;
+    for c in a.iter() {
+        let v = *c;
+        if v >= b'0' && v <= b'9' {
+            started = true;
+            val = val << 4;
+            val = val + (*c - b'0') as u64;
+        } else if v >= b'a' && v <= b'f' {
+            started = true;
+            val = (val << 4) | (*c - b'a' + 10) as u64;
+        } else if v >= b'A' && v <= b'F' {
+            started = true;
+            val = (val << 4) | (*c - b'A' + 10) as u64;
+        } else if started {
+            vals.push(val).unwrap();
+            val = 0;
+        }
+    }
+}
+
+fn mem(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
+    let mut vals: Vec<u64, U8> = Vec::new();
+    hex(&a, &mut vals);
+
+    // I wish I knew rust. This code is shit.
+    for a in vals.iter() {
+        let m = peek(*a);
+        write!(w, "{:x?}: {:x?}\r\n", *a, m).unwrap();
+    }
 }
 
 //global_asm!(include_str!("init.S"));
@@ -38,37 +77,45 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     let uart0 = &mut I8250::new(0x3f8, 0, io);
     uart0.init().unwrap();
 
+    for _i in 1 .. 32 {
     uart0.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
+    }
     let mut p: [u8; 1] = [0xf0; 1];
     post.pwrite(&p, 0x80).unwrap();
     let w = &mut print::WriteTo::new(uart0);
     p[0] = p[0] + 1;
-    loop {
+    let mut done: bool = false;
+    let newline: [u8; 2] = [10, 13];
+    while done == false {
         let io = &mut IOPort;
         let uart0 = &mut I8250::new(0x3f8, 0, io);
-        let mut line: Vec<u8, U8> = Vec::new();
+        let mut line: Vec<u8, U16> = Vec::new();
         loop {
-            let mut c: [u8; 1] = [12;1];
+            let mut c: [u8; 1] = [12; 1];
             uart0.pread(&mut c, 1).unwrap();
-            if c[0] == 12 || c[0] == 4 {
+            uart0.pwrite(&c, 1).unwrap();
+            line.push(c[0]).unwrap();
+            if c[0] == 13 || c[0] == 10 || c[0] == 4 {
+                uart0.pwrite(&newline, 2).unwrap();
                 break;
             }
-            line.push(c[0]).unwrap();
+            if line.len() > 15 {
+                break;
+            }
         }
-        write!(w, "Read this line: {:?}", line).unwrap();
-        break;
+        match line[0] {
+            0 | 4 => {
+                done = true;
+            }
+            b'm' => {
+                mem(w, line);
+            }
+            _ => {}
+        }
     }
+
     
-    for a in 0x7c0000..0x7f0000 {
-        let v = peek(a);
-        if v == 0x7f454c46 {
-            write!(w, "found sig at {}\r\n", v).unwrap();
-        }
-        if v == 0x464c457f {
-            write!(w, "found back sig at {}\r\n", v).unwrap();
-        }
-    }
-    let payload = &mut payload::StreamPayload { typ: payload::ftype::CBFS_TYPE_SELF, compression: payload::ctype::CBFS_COMPRESS_NONE, offset: 0, entry: 0x1000020 as usize, rom_len: 0 as usize, mem_len: 0 as usize, dtb: 0, rom: 0x76c00000 };
+    let payload = &mut payload::StreamPayload { typ: payload::ftype::CBFS_TYPE_SELF, compression: payload::ctype::CBFS_COMPRESS_NONE, offset: 0, entry: 0x1000020 as usize, rom_len: 0 as usize, mem_len: 0 as usize, dtb: 0, rom: 0xffc00000 };
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
     write!(w, "loading payload with fdt_address {}\r\n", fdt_address).unwrap();
