@@ -23,6 +23,7 @@ func main() {
 		a = append(a, "jmporeboot.bin@FFefbf")
 		// for oreboot
 		a = append(a, "target/x86_64-unknown-none/release/bootblob.bin@FF0000@EF00")
+		a = append(a, "target/x86_64-unknown-none/release/image.bin@C00000@3f0000")
 	}
 	for _, v := range a {
 		parms := strings.Split(v, "@")
@@ -64,6 +65,12 @@ func main() {
 		log.Printf("Patch %v at %#x for %#x bytes", f, off, plen)
 		copy(b[off:], patch[:plen])
 	}
+	// just patch the size here.
+	// 0025601C   00 00 00 00  FF FF FF FF  FF FF FF FF  61 00 00 00  00 00 00 00  00 00 00 00  00 00 00 00  00 00 00 04  00 00 00 00  62 00 03 00  00 00 30 00  ............a.......................b.....0.
+	// 00256048   00 00 D0 00  00 00 00 00  00 00 D0 76  00 00 00 00  64 00 10 01  90 49 00 00  00 90 25 00  00 00 00 00  FF FF FF FF  FF FF FF FF  65 00 10 01  ...........v....d....I....%.............e...
+	b[0x256046] = 0x40
+	b[0x25604a] = 0xc0
+	b[0x256052] = 0xc0
 	if err := ioutil.WriteFile(*out, b, 0644); err != nil {
 		log.Fatal(err)
 	}
