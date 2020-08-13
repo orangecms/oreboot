@@ -32,6 +32,11 @@ fn peek(a: u64) -> u64 {
     unsafe { ptr::read_volatile(y) }
 }
 
+fn peekb(a: u64) -> u8 {
+    let y = a as *const u8;
+    unsafe { ptr::read_volatile(y) }
+}
+
 // Returns a slice of u32 for each sequence of hex chars in a.
 fn hex(a: &[u8], vals: &mut Vec<u64, U8>) -> () {
     let mut started: bool = false;
@@ -66,24 +71,20 @@ fn mem(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
     }
 }
 
-//global_asm!(include_str!("init.S"));
-
-#[no_mangle]
-pub extern "C" fn _start(fdt_address: usize) -> ! {
-    let m = &mut MainBoard::new();
-    m.init().unwrap();
-    let io = &mut IOPort;
-    let post = &mut IOPort;
-    let uart0 = &mut I8250::new(0x3f8, 0, io);
-    uart0.init().unwrap();
-
-    for _i in 1 .. 32 {
-    uart0.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
+fn memb(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
+    let mut vals: Vec<u64, U8> = Vec::new();
+    hex(&a, &mut vals);
+    write!(w, "dump bytes: {:x?}\r\n", vals);
+    // I wish I knew rust. This code is shit.
+    for a in vals.iter() {
+        for i in 0 .. 16 {
+            let m = peekb(*a + i);
+            write!(w, "{:x?}: {:x?}\r\n", *a+i, m).unwrap();
+        }
     }
-    let mut p: [u8; 1] = [0xf0; 1];
-    post.pwrite(&p, 0x80).unwrap();
-    let w = &mut print::WriteTo::new(uart0);
-    p[0] = p[0] + 1;
+}
+
+fn debug(w: &mut print::WriteTo,) -> () {
     let mut done: bool = false;
     let newline: [u8; 2] = [10, 13];
     while done == false {
@@ -110,11 +111,33 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
             b'm' => {
                 mem(w, line);
             }
+            b'b' => {
+                memb(w, line);
+            }
             _ => {}
         }
     }
 
     
+}
+//global_asm!(include_str!("init.S"));
+
+#[no_mangle]
+pub extern "C" fn _start(fdt_address: usize) -> ! {
+    let m = &mut MainBoard::new();
+    m.init().unwrap();
+    let io = &mut IOPort;
+    let post = &mut IOPort;
+    let uart0 = &mut I8250::new(0x3f8, 0, io);
+    uart0.init().unwrap();
+
+    for _i in 1 .. 32 {
+    uart0.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
+    }
+    let mut p: [u8; 1] = [0xf0; 1];
+    post.pwrite(&p, 0x80).unwrap();
+    let w = &mut print::WriteTo::new(uart0);
+    p[0] = p[0] + 1;
     let payload = &mut payload::StreamPayload { typ: payload::ftype::CBFS_TYPE_SELF, compression: payload::ctype::CBFS_COMPRESS_NONE, offset: 0, entry: 0x1000020 as usize, rom_len: 0 as usize, mem_len: 0 as usize, dtb: 0, rom: 0xffc00000 };
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
@@ -124,6 +147,8 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     payload.load(w);
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
+    write!(w, "Back from loading payload, call debug\r\n");
+    debug(w);
     write!(w, "Running payload\r\n").unwrap();
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;

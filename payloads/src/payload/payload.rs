@@ -1,9 +1,7 @@
 use core::fmt::Write;
 use core::intrinsics::{copy, transmute};
 use model::{Driver, EOF};
-use postcard::from_bytes;
 use print;
-use serde::Deserialize;
 use wrappers::{Memory, SectionReader};
 pub type EntryPoint = unsafe extern "C" fn(r0: usize, dtb: usize);
 
@@ -171,14 +169,14 @@ pub struct Segment<'a> {
     pub data: &'a mut dyn Driver,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct CBFSSeg {
-    pub typ: u32,
-    pub comp: u32,
-    pub off: u32,
-    pub load: u64,
-    pub len: u32,
-    pub memlen: u32,
+#[derive(Debug)]
+struct CBFSSeg {
+    typ: u32,
+    comp: u32,
+    off: u32,
+    load: u64,
+    len: u32,
+    memlen: u32,
 }
 
 // Stream payloads copy segments one at a time to memory.
@@ -200,21 +198,39 @@ impl StreamPayload {
             hdr += 28;
             write!(w, "decode header now at {:x?}\n", hdr).unwrap();
             rom.pread(v, 0).unwrap();
-            let mut seg: CBFSSeg = from_bytes(v).unwrap();
-            // Better minds than mine can figure this shit out. Or when I learn more.
+            for i in 0..28 {
+                write!(w, "{} {:x}\r\n", i, v[i]).unwrap();
+            }
+            // Serialize in the cbfs struct.
+            // This code works on be and le.
+            // https://commandcenter.blogspot.com/2012/04/byte-order-fallacy.html
+            // I've probably used every way to do this that exists in the last 40 years.
+            // In the end, this looks ugly but is clearer in most ways than the others.
+            // This is the only place in here that might use reflection. Doing it this way
+            // gives me a 40484 byte binary, which is a bit better than below.
+            // Most interestingly, the code turns into 32- and 64- bit loads and stores:
+            // we first noticed gcc and llvm doing this optimization 5 years ago, and rust
+            // does it too.
+            // The only sad part is that rustfmt doesn't line things up nicely. Oh well.
+            // Oh, yeah, it also works correctly on 64-bit systems and the postcard stuff failed badly.
+            let mut seg = CBFSSeg {
+                // The type is little endian (currently)
+                typ: ((v[0 + 3] as u32) << 24) | ((v[0 + 2] as u32) << 16) | ((v[0 + 1] as u32) << 8) | ((v[0 + 0] as u32) << 0),
+                // Other fields are big-endian (currently)
+                comp: ((v[4 + 0] as u32) << 24) | ((v[4 + 1] as u32) << 16) | ((v[4 + 2] as u32) << 8) | ((v[4 + 3] as u32) << 0),
+                off: ((v[8 + 0] as u32) << 24) | ((v[8 + 1] as u32) << 16) | ((v[8 + 2] as u32) << 8) | ((v[8 + 3] as u32) << 0),
+                load: ((v[12 + 0] as u64) << 56) | ((v[12 + 1] as u64) << 48) | ((v[12 + 2] as u64) << 40) | ((v[12 + 3] as u64) << 32) | ((v[12 + 4] as u64) << 24) | ((v[12 + 5] as u64) << 16) | ((v[12 + 6] as u64) << 8) | ((v[12 + 7] as u64) << 0),
+                len: ((v[20 + 0] as u32) << 24) | ((v[20 + 1] as u32) << 16) | ((v[20 + 2] as u32) << 8) | ((v[20 + 3] as u32) << 0),
+                memlen: ((v[24 + 0] as u32) << 24) | ((v[24 + 1] as u32) << 16) | ((v[24 + 2] as u32) << 8) | ((v[24 + 3] as u32) << 0),
+            };
+
             let typ: stype = core::convert::From::from(seg.typ);
+            // Better minds than mine can figure this shit out. Or when I learn more.
+            // Size with this: 42068
+            // let typ: stype = core::convert::From::from(seg.typ);
             match typ {
-                stype::CBFS_SEGMENT_ENTRY
-                | stype::CBFS_SEGMENT_CODE
-                | stype::CBFS_SEGMENT_DATA
-                | stype::CBFS_SEGMENT_BSS
-                | stype::CBFS_SEGMENT_PARAMS => {
-                    write!(w, "seg {:x?}\n", seg).unwrap();
-                    seg.off = seg.off.to_be();
-                    seg.load = seg.load.to_be();
-                    seg.len = seg.len.to_be();
-                    seg.memlen = seg.memlen.to_be();
-                    write!(w, "afterward seg {:x?}\n", seg).unwrap();
+                stype::CBFS_SEGMENT_ENTRY | stype::CBFS_SEGMENT_CODE | stype::CBFS_SEGMENT_DATA | stype::CBFS_SEGMENT_BSS | stype::CBFS_SEGMENT_PARAMS => {
+                    write!(w, "cbfs seg {:x?}\n", seg).unwrap();
                 }
                 stype::PAYLOAD_SEGMENT_BAD => {
                     panic!("Panic'ing on PAYLOAD_SEGMENT_BAD: seg now {:x?} {:x?} typ {:x?}", self.rom, seg, typ);
@@ -239,11 +255,7 @@ impl StreamPayload {
                 stype::PAYLOAD_SEGMENT_DTB => self.dtb = load,
                 stype::CBFS_SEGMENT_DATA | stype::CBFS_SEGMENT_CODE => {
                     write!(w, "set up from at {:x}\n", self.rom + seg.off as usize).unwrap();
-                    let data = SectionReader::new(
-                        &Memory {},
-                        self.rom + seg.off as usize,
-                        seg.len as usize,
-                    );
+                    let data = SectionReader::new(&Memory {}, self.rom + seg.off as usize, seg.len as usize);
                     let mut i: usize = 0;
                     loop {
                         let size = match data.pread(&mut buf, i) {
@@ -251,7 +263,7 @@ impl StreamPayload {
                             EOF => break,
                             _ => panic!("driver error"),
                         };
-                        //write!(w, "Copy to {:x} for {:x}\n", load, size).unwrap();
+                        write!(w, "Copy to {:x} for {:x}\n", load, size).unwrap();
                         unsafe { copy(buf.as_ptr(), load as *mut u8, size) };
                         i += size;
                         load += size;
