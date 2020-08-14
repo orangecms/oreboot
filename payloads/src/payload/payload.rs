@@ -255,6 +255,9 @@ impl StreamPayload {
                 stype::PAYLOAD_SEGMENT_DTB => self.dtb = load,
                 stype::CBFS_SEGMENT_DATA | stype::CBFS_SEGMENT_CODE => {
                     write!(w, "set up from at {:x}\n", self.rom + seg.off as usize).unwrap();
+                    if seg.comp != 0 {
+                        panic!("We don't do uncompress!!!!");
+                    }
                     let data = SectionReader::new(&Memory {}, self.rom + seg.off as usize, seg.len as usize);
                     let mut i: usize = 0;
                     loop {
