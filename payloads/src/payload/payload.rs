@@ -213,7 +213,7 @@ impl StreamPayload {
             // does it too.
             // The only sad part is that rustfmt doesn't line things up nicely. Oh well.
             // Oh, yeah, it also works correctly on 64-bit systems and the postcard stuff failed badly.
-            let mut seg = CBFSSeg {
+            let seg = CBFSSeg {
                 // The type is little endian (currently)
                 typ: ((v[0 + 3] as u32) << 24) | ((v[0 + 2] as u32) << 16) | ((v[0 + 1] as u32) << 8) | ((v[0 + 0] as u32) << 0),
                 // Other fields are big-endian (currently)

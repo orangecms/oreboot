@@ -22,10 +22,10 @@ use core::ptr;
 // Until we are done hacking on this, use our private copy.
 // Plan to copy it back later.
 global_asm!(include_str!("bootblock.S"));
-fn peek32(a: u32) -> u32 {
-    let y = a as *const u32;
-    unsafe { ptr::read_volatile(y) }
-}
+//fn peek32(a: u32) -> u32 {
+//    let y = a as *const u32;
+//    unsafe { ptr::read_volatile(y) }
+//}
 
 fn peek(a: u64) -> u64 {
     let y = a as *const u64;
@@ -74,7 +74,7 @@ fn mem(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
 fn memb(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
     let mut vals: Vec<u64, U8> = Vec::new();
     hex(&a, &mut vals);
-    write!(w, "dump bytes: {:x?}\r\n", vals);
+    write!(w, "dump bytes: {:x?}\r\n", vals).unwrap();
     // I wish I knew rust. This code is shit.
     for a in vals.iter() {
         for i in 0 .. 16 {
@@ -147,7 +147,7 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     payload.load(w);
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
-    write!(w, "Back from loading payload, call debug\r\n");
+    write!(w, "Back from loading payload, call debug\r\n").unwrap();
     debug(w);
     write!(w, "Running payload\r\n").unwrap();
     post.pwrite(&p, 0x80).unwrap();
