@@ -61,15 +61,15 @@ gdt:
 	/* selgdt 0, unused */
 	.word	0x0000, 0x0000		/* dummy */
 	.byte	0x00, 0x00, 0x00, 0x00
-
+#define CODE32 0x18
 	/* selgdt 0x18, flat code segment */
 	.word	0xffff, 0x0000
 	.byte	0x00, 0x9b, 0xcf, 0x00 /* G=1 and 0x0f, So we get 4Gbytes
-					  for limit */
+#define DAT32 0x20					  for limit */
 	/* selgdt 0x20,flat data segment */
 	.word	0xffff, 0x0000
 	.byte	0x00, 0x93, 0xcf, 0x00
-
+#define LM 0x28
 	/* selgdt 0x28, long mode code segment. */
 	.quad	0x0020980000000000		/* Long mode CS */
 
@@ -285,9 +285,58 @@ _identity:
 	outb %al, $0x80
 1:	 jmp 1b
 
-	
+	// SELF files are 32-bits. This is coreboot legacy. But it's also legacy legacy: lots of kernels
+	// have 32-bit entry points. So to keep it simple we will support them.
+	// See: https://www.codeproject.com/Articles/45788/The-Real-Protected-Long-mode-assembly-tutorial-for
+	// comments in ;; are from teh original
+	.globl run32
+run32:
+	movb $0xb0, %al
+	outb %al, $0x80
+//1:	jmp 1b
+	pushw $0x18     //; The selector of the compatibility code segment
+	xorq %rcx,%rcx    
+	movl $Back32, %ecx  //; The address must be an 64-bit address,
+			//; so upper 32-bits of RCX are zero.
+	pushq %rcx
+	lret
+Back32:	
+				//; We are now in Compatibility mode again
+	movb $0xb1, %al
+	outb %al, $0x80
+1:	jmp 1b
+	movw	$0x20, %ax
+	movw	%ax, %ds
+	movw	%ax, %es
+	movw	%ax, %ss
+	//  this seems unlikely to be needed
+	// mov ax,data16_idx
+	movw	%ax, %fs
+	movw	%ax, %gs
+
+	mov $0x2000, %esp
+				// ; Disable Paging to get out of Long Mode
+	movq %cr0, %rax // ; Read CR0.
+	andl $0x7fffffff, %eax // ; Set PE=0.
+	movq %rax, %cr0 // ; Write CR0.
+
+				// ; Deactivate Long Mode
+	movl $0xc0000080, %ecx // ; EFER MSR number. 
+	rdmsr // ; Read EFER.
+	btc $8, %eax // ; Set LME=0.
+	wrmsr // ; Write EFER.
+
+	// The address to jump to was in %rdi
+	//; Back to the dirty, old, protected mode :(
+	// The dtb pointer is in %esi
+	movl %edi, %eax
+	movl $0x1BADB002, %edi
+	outb %al, $0x80
+1:	 jmp 1b
 #if 0
 	.section ".reset", "ax", %progbits
+	// TODO: get rid of this shit and stop using the linker to assemble rom images.
+	// It did not end well.
 //	.code16
 .globl _boot
 _boot:

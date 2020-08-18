@@ -40,9 +40,8 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if len(patch) > 0x400000 {
-			patch = patch[len(patch)-0x400000:]
-			log.Printf("Adjusted length to %#x", len(patch))
+		if len(patch) > 0x800000 {
+			log.Fatalf("Patch is more than 8m -- please fix")
 		}
 		if off > len(b) {
 			log.Fatalf("Off %d is > len of file %d", off, len(b))

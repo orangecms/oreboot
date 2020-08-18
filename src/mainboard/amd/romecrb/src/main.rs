@@ -26,6 +26,9 @@ global_asm!(include_str!("bootblock.S"));
 //    let y = a as *const u32;
 //    unsafe { ptr::read_volatile(y) }
 //}
+extern "C" {
+    fn run32(start_address: usize, dtb: usize);
+}
 
 fn peek(a: u64) -> u64 {
     let y = a as *const u64;
@@ -149,10 +152,10 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     p[0] = p[0] + 1;
     write!(w, "Back from loading payload, call debug\r\n").unwrap();
     debug(w);
-    write!(w, "Running payload\r\n").unwrap();
+    write!(w, "Running payload entry is {:x}\r\n", payload.entry).unwrap();
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
-    payload.run(w);
+    unsafe { run32(payload.entry, 0);}
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
 
