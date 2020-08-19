@@ -298,12 +298,13 @@ run32:
 	// fuck you rust assembler. 
 	// it just is not able to do what is needed.
 	// so we go with this shit.
-	pushw $0x18
-	pushw $0x76ff
-	pushw $0x40cb
-	//movl $Back32, %ecx  //; The address must be an 64-bit address,
+	//pushw $0x18
+	//pushw $0x76ff
+	//pushw $0x40cb
+	movl $Back32, %ecx  //; The address must be an 64-bit address,
 			//; so upper 32-bits of RCX are zero.
-	//push %rcx
+	push %rcx
+	movw $0x18, 4(%rsp)
 	movb 0(%rsp), %al
 	outb %al, $0x80
 	movb 1(%rsp), %al
@@ -333,6 +334,7 @@ run32:
 	movb $0xee, %al
 	outb %al, $0x80
 	lret
+.code32
 Back32:	
 				//; We are now in Compatibility mode again
 	movb $0xb1, %al
@@ -348,9 +350,9 @@ Back32:
 
 	mov $0x2000, %esp
 				// ; Disable Paging to get out of Long Mode
-	movq %cr0, %rax // ; Read CR0.
+	movl %cr0, %eax // ; Read CR0.
 	andl $0x7fffffff, %eax // ; Set PE=0.
-	movq %rax, %cr0 // ; Write CR0.
+	movl %eax, %cr0 // ; Write CR0.
 
 				// ; Deactivate Long Mode
 	movl $0xc0000080, %ecx // ; EFER MSR number. 
@@ -358,13 +360,16 @@ Back32:
 	btc $8, %eax // ; Set LME=0.
 	wrmsr // ; Write EFER.
 
-	// The address to jump to was in %rdi
+	// The address to jump to was in %rdx
 	//; Back to the dirty, old, protected mode :(
 	// The dtb pointer is in %esi
-	movl %edi, %eax
+	movl %esi, %eax
+	movl %edx, %esi
 	movl $0x1BADB002, %edi
+	movb $0xdb, %al
 	outb %al, $0x80
-1:	 jmp 1b
+1: jmp 1b
+	jmp *%eax
 #if 0
 	.section ".reset", "ax", %progbits
 	// TODO: get rid of this shit and stop using the linker to assemble rom images.
