@@ -27,7 +27,7 @@ global_asm!(include_str!("bootblock.S"));
 //    unsafe { ptr::read_volatile(y) }
 //}
 extern "C" {
-    fn run32(start_address: usize, dtb: usize);
+    fn run32(w: &mut print::WriteTo, start_address: usize, dtb: usize);
 }
 
 fn peek(a: u64) -> u64 {
@@ -85,6 +85,14 @@ fn memb(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
             write!(w, "{:x?}: {:x?}\r\n", *a+i, m).unwrap();
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn _asdebug(w: &mut print::WriteTo, a: u64) -> () {
+    write!(w, "here we are in asdebug\r\n").unwrap();
+    write!(w, "stack is {:x?}\r\n", a).unwrap();
+    debug(w);
+    write!(w, "back to hell\r\n").unwrap();
 }
 
 fn debug(w: &mut print::WriteTo,) -> () {
@@ -155,7 +163,7 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     write!(w, "Running payload entry is {:x}\r\n", payload.entry).unwrap();
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
-    unsafe { run32(payload.entry, 0);}
+    unsafe { run32(w, payload.entry, 0);}
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
 

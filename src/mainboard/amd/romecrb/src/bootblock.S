@@ -294,17 +294,49 @@ run32:
 	movb $0xb0, %al
 	outb %al, $0x80
 //1:	jmp 1b
-	pushw $0x18     //; The selector of the compatibility code segment
 	xorq %rcx,%rcx    
-	movl $Back32, %ecx  //; The address must be an 64-bit address,
+	// fuck you rust assembler. 
+	// it just is not able to do what is needed.
+	// so we go with this shit.
+	pushw $0x18
+	pushw $0x76ff
+	pushw $0x40cb
+	//movl $Back32, %ecx  //; The address must be an 64-bit address,
 			//; so upper 32-bits of RCX are zero.
-	pushq %rcx
+	//push %rcx
+	movb 0(%rsp), %al
+	outb %al, $0x80
+	movb 1(%rsp), %al
+	outb %al, $0x80
+	movb 2(%rsp), %al
+	outb %al, $0x80
+	movb 3(%rsp), %al
+	outb %al, $0x80
+	movb 4(%rsp), %al
+	outb %al, $0x80
+	movb 5(%rsp), %al
+	outb %al, $0x80
+	movb 6(%rsp), %al
+	outb %al, $0x80
+	movb 7(%rsp), %al
+	outb %al, $0x80
+	movb 8(%rsp), %al
+	outb %al, $0x80
+	movb 9(%rsp), %al
+	outb %al, $0x80
+	movb 10(%rsp), %al
+	outb %al, $0x80
+	movb 11(%rsp), %al
+	outb %al, $0x80
+	movq %rsp, %rsi
+	call _asdebug
+	movb $0xee, %al
+	outb %al, $0x80
 	lret
 Back32:	
 				//; We are now in Compatibility mode again
 	movb $0xb1, %al
 	outb %al, $0x80
-1:	jmp 1b
 	movw	$0x20, %ax
 	movw	%ax, %ds
 	movw	%ax, %es
