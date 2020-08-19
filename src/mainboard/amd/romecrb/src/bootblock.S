@@ -329,8 +329,8 @@ run32:
 	outb %al, $0x80
 	movb 11(%rsp), %al
 	outb %al, $0x80
-	movq %rsp, %rsi
-	call _asdebug
+//	movq %rsp, %rsi
+//	call _asdebug
 	movb $0xee, %al
 	outb %al, $0x80
 	lret
@@ -350,22 +350,40 @@ Back32:
 
 	mov $0x2000, %esp
 				// ; Disable Paging to get out of Long Mode
+	movb $0xb2, %al
+	outb %al, $0x80
 	movl %cr0, %eax // ; Read CR0.
 	andl $0x7fffffff, %eax // ; Set PE=0.
 	movl %eax, %cr0 // ; Write CR0.
+	movb $0xb3, %al
+	outb %al, $0x80
 
 				// ; Deactivate Long Mode
 	movl $0xc0000080, %ecx // ; EFER MSR number. 
 	rdmsr // ; Read EFER.
 	btc $8, %eax // ; Set LME=0.
 	wrmsr // ; Write EFER.
+	movb $0xb4, %al
+	outb %al, $0x80
 
 	// The address to jump to was in %rdx
 	//; Back to the dirty, old, protected mode :(
 	// The dtb pointer is in %esi
+	//call _asdebug
+	movb $0xb5, %al
+	outb %al, $0x80
 	movl %esi, %eax
 	movl %edx, %esi
 	movl $0x1BADB002, %edi
+	outb %al, $0x80
+	shr $8, %eax
+	outb %al, $0x80
+	shr $8, %eax
+	outb %al, $0x80
+	shr $8, %eax
+	outb %al, $0x80
+	movl %esi, %eax
+	jmp *%eax
 	movb $0xdb, %al
 	outb %al, $0x80
 1: jmp 1b
