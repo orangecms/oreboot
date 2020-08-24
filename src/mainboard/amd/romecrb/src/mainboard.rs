@@ -16,6 +16,7 @@
 use clock::ClockNode;
 use core::ptr;
 use model::*;
+use wrappers::Memory;
 
 const FCH_UART_LEGACY_DECODE: u32 = 0xfedc0020;
 const FCH_LEGACY_3F8_SH: u16 = 1 << 3;
@@ -38,11 +39,17 @@ impl MainBoard {
 
 impl Driver for MainBoard {
     fn init(&mut self) -> Result<()> {
+        let cbfs = [
+            0x4cu8, 0x42u8, 0x49u8, 0x4fu8, 0x18u8, 0x00u8, 0x00u8, 0x00u8, 0xcfu8, 0x17u8, 0x00u8, 0x00u8, 0x88u8, 0x02u8, 0x00u8, 00u8, 0xe5u8, 0x53u8, 0x00u8, 0x00u8, 0x16u8, 0x00u8, 0x00u8, 0x00u8, 0x01u8, 0x00u8, 0x00u8, 0x00u8, 0x80u8, 0x00u8,
+            0x00u8, 00u8,
+        ];
         // Knowledge from coreboot to get minimal serial working.
         // GPIO defaults are fine.
         // clock default is fine.
         // The only thing we need is to set up the legacy decode.
         poke16(FCH_UART_LEGACY_DECODE, FCH_LEGACY_3F8_SH);
+        let ram_cbfs = &mut Memory {};
+        ram_cbfs.pwrite(&cbfs, 0x10000).unwrap();
         Ok(())
     }
 

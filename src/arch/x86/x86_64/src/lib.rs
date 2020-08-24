@@ -5,6 +5,7 @@
 #![deny(warnings)]
 
 pub mod ioport;
+pub mod bzimage;
 
 pub fn halt() -> ! {
     loop {

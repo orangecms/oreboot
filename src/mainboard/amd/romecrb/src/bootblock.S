@@ -373,7 +373,6 @@ Back32:
 	movb $0xb5, %al
 	outb %al, $0x80
 	movl %esi, %eax
-	movl %edx, %esi
 	movl $0x1BADB002, %edi
 	outb %al, $0x80
 	shr $8, %eax
@@ -383,6 +382,7 @@ Back32:
 	shr $8, %eax
 	outb %al, $0x80
 	movl %esi, %eax
+	movl %edx, %esi
 	jmp *%eax
 	movb $0xdb, %al
 	outb %al, $0x80

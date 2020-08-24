@@ -4,11 +4,11 @@
 #![no_main]
 #![feature(global_asm)]
 
+use arch::bzimage::BzImage;
 use arch::ioport::IOPort;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use model::Driver;
-use payloads::payload;
 use print;
 use uart::i8250::I8250;
 mod mainboard;
@@ -26,9 +26,9 @@ global_asm!(include_str!("bootblock.S"));
 //    let y = a as *const u32;
 //    unsafe { ptr::read_volatile(y) }
 //}
-extern "C" {
-    fn run32(w: &mut print::WriteTo, start_address: usize, dtb: usize);
-}
+// extern "C" {
+//     fn run32(w: &mut print::WriteTo, start_address: usize, dtb: usize);
+// }
 
 fn peek(a: u64) -> u64 {
     let y = a as *const u64;
@@ -80,9 +80,9 @@ fn memb(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
     write!(w, "dump bytes: {:x?}\r\n", vals).unwrap();
     // I wish I knew rust. This code is shit.
     for a in vals.iter() {
-        for i in 0 .. 16 {
+        for i in 0..16 {
             let m = peekb(*a + i);
-            write!(w, "{:x?}: {:x?}\r\n", *a+i, m).unwrap();
+            write!(w, "{:x?}: {:x?}\r\n", *a + i, m).unwrap();
         }
     }
 }
@@ -95,7 +95,7 @@ pub extern "C" fn _asdebug(w: &mut print::WriteTo, a: u64) -> () {
     write!(w, "back to hell\r\n").unwrap();
 }
 
-fn debug(w: &mut print::WriteTo,) -> () {
+fn debug(w: &mut print::WriteTo) -> () {
     let mut done: bool = false;
     let newline: [u8; 2] = [10, 13];
     while done == false {
@@ -128,8 +128,6 @@ fn debug(w: &mut print::WriteTo,) -> () {
             _ => {}
         }
     }
-
-    
 }
 //global_asm!(include_str!("init.S"));
 
@@ -142,28 +140,35 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     let uart0 = &mut I8250::new(0x3f8, 0, io);
     uart0.init().unwrap();
 
-    for _i in 1 .. 32 {
-    uart0.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
+    for _i in 1..32 {
+        uart0.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
     }
     let mut p: [u8; 1] = [0xf0; 1];
     post.pwrite(&p, 0x80).unwrap();
     let w = &mut print::WriteTo::new(uart0);
     p[0] = p[0] + 1;
-    let payload = &mut payload::StreamPayload { typ: payload::ftype::CBFS_TYPE_SELF, compression: payload::ctype::CBFS_COMPRESS_NONE, offset: 0, entry: 0x1000020 as usize, rom_len: 0 as usize, mem_len: 0 as usize, dtb: 0, rom: 0xffc00000 };
-    post.pwrite(&p, 0x80).unwrap();
+    let payload = &mut BzImage {
+        low_mem_size: 0x200000,
+        high_mem_start: 0x100000000,
+        high_mem_size: 0,
+        // TODO: get this from the FDT.
+        rom_base: 0xff000000,
+        rom_size: 0x300000,
+        entry: 0x1000200,
+    };
     p[0] = p[0] + 1;
     write!(w, "loading payload with fdt_address {}\r\n", fdt_address).unwrap();
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
-    payload.load(w);
+    payload.load(w).unwrap();
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
     write!(w, "Back from loading payload, call debug\r\n").unwrap();
     debug(w);
-    write!(w, "Running payload entry is {:x}\r\n", payload.entry).unwrap();
+    write!(w, "Running payload entry is {:x}\r\n", 0x1000200).unwrap();
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
-    unsafe { run32(w, payload.entry, 0);}
+    payload.run(w);
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
 
