@@ -166,9 +166,15 @@ impl BzImage {
         }
         // check magic numbers
         if header.boot_flag != MAGIC_AA55 {
+            let i = header.boot_flag;
+            let p = unsafe {&header.boot_flag};
+            write!(w, "boot flag is {:x}, not {:x}, at {:x}, \n\r\n", i, MAGIC_AA55, p).unwrap();
             return Err("magic number missing: header.boot_flag != 0xaa55");
         }
         if header.header != HDRS {
+            let i = header.header;
+            let p = unsafe {&header.header};
+            write!(w, "header.header is {:x}, not {:x} @ {:x}\n\r\n", i, HDRS, p).unwrap();
             return Err("magic number missing: header.header != 0x53726448");
         }
         // only accept version >= 2.12
@@ -199,18 +205,25 @@ impl BzImage {
         // load kernel
         let mut kernel_offset = (bp.hdr.setup_sects as usize + 1) * 512;
 
+        write!(w, "Kernel offset is {:x}\r\n", kernel_offset).unwrap();
         // Copy from driver into segment.
         let mut buf = [0u8; 512];
         let mut load: usize = 0x1000000;
+        let mut amt: usize = 0;
+        write!(w, "Copy {:x} to {:x} for {:x}\n", kernel_offset + self.rom_base, load, 0x300000).unwrap();
         loop {
+            if amt > 0x300000 {
+                break;
+            }
             let size = match rom.pread(&mut buf, kernel_offset) {
                 Ok(x) => x,
                 _x => break,
             };
-            write!(w, "Copy to {:x} for {:x}\n", load, size).unwrap();
+            //write!(w, "Copy {:x} to {:x} for {:x}\n", buf.as_ptr() as u64, load, size).unwrap();
             unsafe { copy(buf.as_ptr(), load as *mut u8, size) };
             kernel_offset += size;
             load += size;
+            amt += size;
         }
 
         //kernel_file.seek(SeekFrom::Start(kernel_offset))?;

@@ -148,16 +148,17 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     let w = &mut print::WriteTo::new(uart0);
     p[0] = p[0] + 1;
     let payload = &mut BzImage {
-        low_mem_size: 0x200000,
+        low_mem_size: 0x80000000,,
         high_mem_start: 0x100000000,
         high_mem_size: 0,
         // TODO: get this from the FDT.
-        rom_base: 0xff000000,
+        rom_base: 0xffc00000,
         rom_size: 0x300000,
         entry: 0x1000200,
     };
     p[0] = p[0] + 1;
     write!(w, "loading payload with fdt_address {}\r\n", fdt_address).unwrap();
+    debug(w);
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
     payload.load(w).unwrap();
