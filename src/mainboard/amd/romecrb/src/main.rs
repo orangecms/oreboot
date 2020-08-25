@@ -148,12 +148,13 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     let w = &mut print::WriteTo::new(uart0);
     p[0] = p[0] + 1;
     let payload = &mut BzImage {
-        low_mem_size: 0x80000000,,
+        low_mem_size: 0x80000000,
         high_mem_start: 0x100000000,
         high_mem_size: 0,
         // TODO: get this from the FDT.
         rom_base: 0xffc00000,
         rom_size: 0x300000,
+        load: 0x01000000,
         entry: 0x1000200,
     };
     p[0] = p[0] + 1;
@@ -166,7 +167,7 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     p[0] = p[0] + 1;
     write!(w, "Back from loading payload, call debug\r\n").unwrap();
     debug(w);
-    write!(w, "Running payload entry is {:x}\r\n", 0x1000200).unwrap();
+    write!(w, "Running payload entry is {:x}\r\n", payload.entry).unwrap();
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
     payload.run(w);

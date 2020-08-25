@@ -135,6 +135,7 @@ pub struct BzImage {
     pub high_mem_size: u64,
     pub rom_base: usize,
     pub rom_size: usize,
+    pub load: usize,
     pub entry: usize,
 }
 
@@ -189,7 +190,7 @@ impl BzImage {
         if header.xloadflags | XLF_CAN_BE_LOADED_ABOVE_4G == 0 {
             return Err("kernel cannot be loaded above 4GiB");
         }
-        if header.relocatable_kernel == 0 {
+        if false && header.relocatable_kernel == 0 {
             return Err("kernel is not relocatable");
         }
 
@@ -208,9 +209,9 @@ impl BzImage {
         write!(w, "Kernel offset is {:x}\r\n", kernel_offset).unwrap();
         // Copy from driver into segment.
         let mut buf = [0u8; 512];
-        let mut load: usize = 0x1000000;
         let mut amt: usize = 0;
-        write!(w, "Copy {:x} to {:x} for {:x}\n", kernel_offset + self.rom_base, load, 0x300000).unwrap();
+        write!(w, "Copy {:x} to {:x} for {:x}\n", kernel_offset + self.rom_base, self.load, 0x300000).unwrap();
+        let mut load = self.load;
         loop {
             if amt > 0x300000 {
                 break;
@@ -219,7 +220,7 @@ impl BzImage {
                 Ok(x) => x,
                 _x => break,
             };
-            //write!(w, "Copy {:x} to {:x} for {:x}\n", buf.as_ptr() as u64, load, size).unwrap();
+            //write!(w, "Copy {:x} to {:x} for {:x}\n", buf.as_ptr() as u64, self.load, size).unwrap();
             unsafe { copy(buf.as_ptr(), load as *mut u8, size) };
             kernel_offset += size;
             load += size;
@@ -293,8 +294,8 @@ impl BzImage {
         // See: linux/Documentation/arm/Booting
         unsafe {
             let f = transmute::<usize, EntryPoint>(self.entry);
-            write!(w, "on to {:#x}", self.entry).unwrap();
-            f(1, 0);
+            write!(w, "on to {:#x} ", self.entry).unwrap();
+            f(1, 0x90000);
         }
         // TODO: error when payload returns.
     }
