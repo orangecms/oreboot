@@ -16,7 +16,7 @@
 use clock::ClockNode;
 use core::ptr;
 use model::*;
-use wrappers::Memory;
+use x86_64::instructions::{rdmsr, wrmsr};
 
 const FCH_UART_LEGACY_DECODE: u32 = 0xfedc0020;
 const FCH_LEGACY_3F8_SH: u16 = 1 << 3;
@@ -25,6 +25,20 @@ fn poke16(a: u32, v: u16) -> () {
     let y = a as *mut u16;
     unsafe {
         ptr::write_volatile(y, v);
+    }
+}
+
+fn poke32(a: u32, v: u32) -> () {
+    let y = a as *mut u32;
+    unsafe {
+        ptr::write_volatile(y, v);
+    }
+}
+
+fn peek32(a: u32) -> u32 {
+    let y = a as *mut u32;
+    unsafe {
+        return ptr::read_volatile(y);
     }
 }
 
@@ -39,17 +53,27 @@ impl MainBoard {
 
 impl Driver for MainBoard {
     fn init(&mut self) -> Result<()> {
-        let cbfs = [
-            0x4cu8, 0x42u8, 0x49u8, 0x4fu8, 0x18u8, 0x00u8, 0x00u8, 0x00u8, 0xcfu8, 0x17u8, 0x00u8, 0x00u8, 0x88u8, 0x02u8, 0x00u8, 00u8, 0xe5u8, 0x53u8, 0x00u8, 0x00u8, 0x16u8, 0x00u8, 0x00u8, 0x00u8, 0x01u8, 0x00u8, 0x00u8, 0x00u8, 0x80u8, 0x00u8,
-            0x00u8, 00u8,
-        ];
         // Knowledge from coreboot to get minimal serial working.
         // GPIO defaults are fine.
-        // clock default is fine.
-        // The only thing we need is to set up the legacy decode.
+        // clock default is NOT fine.
+        // Need to set it to 8 mhz.
+        // this should fuck up uart output but we'll see.
+        //uart_ctrl = sm_pci_read32(SMB_UART_CONFIG);
+        //uart_ctrl |= 1 << (SMB_UART_1_8M_SHIFT + idx);
+        //sm_pci_write32(SMB_UART_CONFIG, uart_ctrl);
+        // FED8000 is the basic MMIO space.
+        // fed800fc is the uart control reg.
+        // bit 28 is the bit which sets it between 48m and 1.8m
+        // we want 1.8m. They made oddball 48m default. Stupid.
+        let mut uc = peek32(0xfed800fc);
+        uc = uc | (1 << 28);
+        poke32(0xfed800fc, uc);
+        // Set up the legacy decode.
         poke16(FCH_UART_LEGACY_DECODE, FCH_LEGACY_3F8_SH);
-        let ram_cbfs = &mut Memory {};
-        ram_cbfs.pwrite(&cbfs, 0x10000).unwrap();
+        unsafe {
+        let v = rdmsr(0x1b) | 0x900;
+        wrmsr(0x1b, v);
+        }
         Ok(())
     }
 

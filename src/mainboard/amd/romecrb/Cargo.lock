@@ -21,6 +21,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit_field"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff91a64014e1bc53bf643920f2c9ab5f0980d92a0948295f3ee550e9266849ad"
+
+[[package]]
 name = "byteorder"
 version = "1.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -177,6 +183,7 @@ dependencies = [
  "static-ref",
  "uart",
  "wrappers",
+ "x86_64",
 ]
 
 [[package]]
@@ -254,4 +261,13 @@ name = "wrappers"
 version = "0.1.0"
 dependencies = [
  "model",
+]
+
+[[package]]
+name = "x86_64"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73464a8ba159d4fdbfdbea0911c9d06887a4dbbb0f0521742c545f3e11bc8ea4"
+dependencies = [
+ "bit_field",
 ]
