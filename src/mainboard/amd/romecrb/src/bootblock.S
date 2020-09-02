@@ -83,14 +83,13 @@ gdtptr16:
 	popl %eax
 	lgdt (%eax)
 	// Now fix up the page table
+	// pml3 is fine, but pml4 needs the pointer set.
+	// by doing this we remove dependence on the linker to
+	// set pml4[0] correctly.
 	movl $pml3, %eax
 	orl $3, %eax
 	movl %eax, pml4
 	outb %al, $0x80
-	movl	%cr0, %eax
-	andl	$0x7FFAFFD1, %eax /* PG,AM,WP,NE,TS,EM,MP = 0 */
-	orl	$0x60000001, %eax /* CD, NW, PE = 1 */
-	movl	%eax, %cr0
 
 	movb $0xbe, %al
 	outb %al, $0x80
