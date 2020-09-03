@@ -185,9 +185,7 @@ gdt_end:
 1:
 	nop
 	nop
-	nop
-	nop
-	nop
-
+	movl $0x76ff0010, %esp
 	movl $0x76ff0000, %eax
-	jmpl *%eax
+	pushl %eax
+	ret
