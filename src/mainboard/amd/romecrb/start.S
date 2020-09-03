@@ -112,10 +112,10 @@ _start16bit:
 
 	movw	%cs, %ax
 	shlw	$4, %ax
-	movw	$0xffe0, %bx
+	movw	$0xffc0, %bx
 	subw	%ax, %bx
 	lidt	%cs:(%bx)
-	movw	$0xffe8, %bx
+	movw	$0xffc8, %bx
 	subw	%ax, %bx
 	lgdtl	%cs:(%bx)
 
@@ -147,11 +147,11 @@ protected:
 	 * at 0x08, and a 4 GB data segment at 0x10;
 	 */
 .org 0xFFc8
-.align	4
 .globl gdtptr16
 gdtptr16:
 	.word	gdt_end - gdt -1 /* compute the table limit */
 	.long	gdt		 /* we know the offset */
+.align	4
 gdt:
 	/* selgdt 0, unused */
 	.word	0x0000, 0x0000		/* dummy */
@@ -166,7 +166,7 @@ gdt:
 	.word	0xffff, 0x0000
 	.byte	0x00, 0x93, 0xcf, 0x00
 
-.align	4
+.org 0xFFe8
 .globl nullidt
 nullidt:
 	.word	0	/* limit */
