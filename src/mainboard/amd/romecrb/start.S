@@ -140,7 +140,7 @@ protected:
 
 	/* Restore the BIST value to %eax */
 	movl	%ebp, %eax
-	jmp protected
+	jmp 1f
 
 	/**
 	 * The gdt is defined in entry32.inc, it has a 4 Gb code segment
@@ -180,4 +180,14 @@ gdt_end:
 
 .org 0xfff0
 .byte 0xeb, 0x80
-.byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.code32
+// Make the jmp be the last bytes -- makes patching it easy
+1:
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	movl $0x76ff0000, %eax
+	jmpl *%eax
