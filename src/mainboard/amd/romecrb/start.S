@@ -112,7 +112,7 @@ _start16bit:
 
 	movw	%cs, %ax
 	shlw	$4, %ax
-	movw	$0xffc0, %bx
+	movw	$0xffe8, %bx
 	subw	%ax, %bx
 	lidt	%cs:(%bx)
 	movw	$0xffc8, %bx
@@ -149,8 +149,8 @@ protected:
 .org 0xFFc8
 .globl gdtptr16
 gdtptr16:
-	.word	gdt_end - gdt -1 /* compute the table limit */
-	.long	gdt		 /* we know the offset */
+	.word	0x1f			  /* compute the table limit */
+	.long	0xffffffd0		 /* we know the offset */
 .align	4
 gdt:
 	/* selgdt 0, unused */
