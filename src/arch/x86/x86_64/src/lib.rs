@@ -6,6 +6,9 @@
 
 pub mod ioport;
 pub mod bzimage;
+pub mod bios;
+pub mod consts;
+pub mod utils;
 
 pub fn halt() -> ! {
     loop {
