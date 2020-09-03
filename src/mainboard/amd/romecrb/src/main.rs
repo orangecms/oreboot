@@ -6,6 +6,7 @@
 
 use arch::bzimage::BzImage;
 use arch::ioport::IOPort;
+use arch::bios::setup_bios_tables;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use model::Driver;
@@ -13,7 +14,7 @@ use print;
 use uart::i8250::I8250;
 mod mainboard;
 use mainboard::MainBoard;
-
+use x86_64::instructions::{rdmsr, wrmsr};
 extern crate heapless; // v0.4.x
 use heapless::consts::*;
 use heapless::Vec;
@@ -22,10 +23,17 @@ use core::ptr;
 // Until we are done hacking on this, use our private copy.
 // Plan to copy it back later.
 global_asm!(include_str!("bootblock.S"));
-//fn peek32(a: u32) -> u32 {
-//    let y = a as *const u32;
-//    unsafe { ptr::read_volatile(y) }
-//}
+fn poke32(a: u32, v: u32) -> () {
+    let y = a as *mut u32;
+    unsafe {
+        ptr::write_volatile(y, v);
+    }
+}
+
+fn peek32(a: u32) -> u32 {
+    let y = a as *const u32;
+    unsafe { ptr::read_volatile(y) }
+}
 // extern "C" {
 //     fn run32(w: &mut print::WriteTo, start_address: usize, dtb: usize);
 // }
@@ -146,6 +154,25 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     let mut p: [u8; 1] = [0xf0; 1];
     post.pwrite(&p, 0x80).unwrap();
     let w = &mut print::WriteTo::new(uart0);
+
+    // It is hard to say if we need to do this.
+    if true {
+        let v = rdmsr(0xc001_1004);
+        write!(w, "c001_1004 is {:x} and APIC is bit {:x}\r\n", v, 1 << 9).unwrap();
+        // it's set already
+        //unsafe {wrmsr(0xc001_1004, v | (1 << 9));}
+        //let v = rdmsr(0xc001_1004);
+        //write!(w, "c001_1004 is {:x} and APIC is bit {:x}\r\n", v, 1 << 9).unwrap();
+    }
+    if true {
+        let v = rdmsr(0xc001_1005);
+        write!(w, "c001_1005 is {:x} and APIC is bit {:x}\r\n", v, 1 << 9).unwrap();
+        // it's set already
+        //unsafe {wrmsr(0xc001_1004, v | (1 << 9));}
+        //let v = rdmsr(0xc001_1004);
+        //write!(w, "c001_1004 is {:x} and APIC is bit {:x}\r\n", v, 1 << 9).unwrap();
+    }
+        write!(w, "0x1b is {:x} \r\n", rdmsr(0x1b)).unwrap();
     p[0] = p[0] + 1;
     let payload = &mut BzImage {
         low_mem_size: 0x80000000,
@@ -158,6 +185,9 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
         entry: 0x1000200,
     };
     p[0] = p[0] + 1;
+    write!(w, "LDN is {:x}\r\n", peek32(0xfee000d0)).unwrap();
+    poke32(0xfee000d0, 0x1000000);
+    write!(w, "LDN is {:x}\r\n", peek32(0xfee000d0)).unwrap();
     write!(w, "loading payload with fdt_address {}\r\n", fdt_address).unwrap();
     debug(w);
     post.pwrite(&p, 0x80).unwrap();

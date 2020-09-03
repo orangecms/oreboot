@@ -73,6 +73,8 @@ impl Driver for MainBoard {
         unsafe {
         let v = rdmsr(0x1b) | 0x900;
         wrmsr(0x1b, v);
+        let v = rdmsr(0x1b) | 0xd00;
+        wrmsr(0x1b, v);
         }
         Ok(())
     }
