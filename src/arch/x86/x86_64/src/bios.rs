@@ -4,7 +4,9 @@
 use crate::consts::x86::*;
 use crate::utils::round_up_4k;
 use core::mem::size_of;
-use core::num::Wrapping;
+use core::fmt::Write;
+use print;
+use core::ptr;
 // https://uefi.org/sites/default/files/resources/ACPI_6_3_May16.pdf
 
 // Table 5-27 RSDP Structure
@@ -43,16 +45,7 @@ pub const ACPI_TABLE_HEADER_CHECKSUM_OFFSET: usize = 9;
 
 impl AcpiTableHeader {
     pub fn new() -> Self {
-        AcpiTableHeader {
-            revision: 2,
-            checksum: 0,
-            oem_id: *b"AKAROS",
-            oem_table_id: *b"ALPHABET",
-            oem_revision: 0,
-            asl_compiler_id: *b"RON ",
-            asl_compiler_revision: 0,
-            ..Default::default()
-        }
+        AcpiTableHeader { revision: 2, checksum: 0, oem_id: *b"AKAROS", oem_table_id: *b"ALPHABET", oem_revision: 0, asl_compiler_id: *b"RON ", asl_compiler_revision: 0, ..Default::default() }
     }
 }
 
@@ -75,62 +68,62 @@ pub struct AcpiGenericAddress {
 #[repr(packed)]
 #[derive(Default)]
 pub struct AcpiTableFadt {
-    pub header: AcpiTableHeader,               /* Common ACPI table header */
-    pub facs: u32,                             /* 32-bit physical address of FACS */
-    pub dsdt: u32,                             /* 32-bit physical address of DSDT */
-    pub model: u8, /* System Interrupt Model (ACPI 1.0) - not used in ACPI 2.0+ */
-    pub preferred_profile: u8, /* Conveys preferred power management profile to OSPM. */
-    pub sci_interrupt: u16, /* System vector of SCI interrupt */
-    pub smi_command: u32, /* 32-bit Port address of SMI command port */
-    pub acpi_enable: u8, /* Value to write to SMI_CMD to enable ACPI */
-    pub acpi_disable: u8, /* Value to write to SMI_CMD to disable ACPI */
-    pub s4_bios_request: u8, /* Value to write to SMI_CMD to enter S4BIOS state */
-    pub pstate_control: u8, /* Processor performance state control */
-    pub pm1a_event_block: u32, /* 32-bit port address of Power Mgt 1a Event Reg Blk */
-    pub pm1b_event_block: u32, /* 32-bit port address of Power Mgt 1b Event Reg Blk */
-    pub pm1a_control_block: u32, /* 32-bit port address of Power Mgt 1a Control Reg Blk */
-    pub pm1b_control_block: u32, /* 32-bit port address of Power Mgt 1b Control Reg Blk */
-    pub pm2_control_block: u32, /* 32-bit port address of Power Mgt 2 Control Reg Blk */
-    pub pm_timer_block: u32, /* 32-bit port address of Power Mgt Timer Ctrl Reg Blk */
-    pub gpe0_block: u32, /* 32-bit port address of General Purpose Event 0 Reg Blk */
-    pub gpe1_block: u32, /* 32-bit port address of General Purpose Event 1 Reg Blk */
-    pub pm1_event_length: u8, /* Byte Length of ports at pm1x_event_block */
-    pub pm1_control_length: u8, /* Byte Length of ports at pm1x_control_block */
-    pub pm2_control_length: u8, /* Byte Length of ports at pm2_control_block */
-    pub pm_timer_length: u8, /* Byte Length of ports at pm_timer_block */
-    pub gpe0_block_length: u8, /* Byte Length of ports at gpe0_block */
-    pub gpe1_block_length: u8, /* Byte Length of ports at gpe1_block */
-    pub gpe1_base: u8, /* Offset in GPE number space where GPE1 events start */
-    pub cst_control: u8, /* Support for the _CST object and C-States change notification */
-    pub c2_latency: u16, /* Worst case HW latency to enter/exit C2 state */
-    pub c3_latency: u16, /* Worst case HW latency to enter/exit C3 state */
-    pub flush_size: u16, /* Processor memory cache line width, in bytes */
-    pub flush_stride: u16, /* Number of flush strides that need to be read */
-    pub duty_offset: u8, /* Processor duty cycle index in processor P_CNT reg */
-    pub duty_width: u8, /* Processor duty cycle value bit width in P_CNT register */
-    pub day_alarm: u8, /* Index to day-of-month alarm in RTC CMOS RAM */
-    pub month_alarm: u8, /* Index to month-of-year alarm in RTC CMOS RAM */
-    pub century: u8, /* Index to century in RTC CMOS RAM */
-    pub boot_flags: u16, /* IA-PC Boot Architecture Flags (see below for individual flags) */
-    pub reserved: u8, /* Reserved, must be zero */
-    pub flags: u32, /* Miscellaneous flag bits (see below for individual flags) */
-    pub reset_register: AcpiGenericAddress, /* 64-bit address of the Reset register */
-    pub reset_value: u8, /* Value to write to the reset_register port to reset the system */
-    pub arm_boot_flags: u16, /* ARM-Specific Boot Flags (see below for individual flags) (ACPI 5.1) */
-    pub minor_revision: u8,  /* FADT Minor Revision (ACPI 5.1) */
-    pub xfacs: u64,          /* 64-bit physical address of FACS */
-    pub xdsdt: u64,          /* 64-bit physical address of DSDT */
-    pub xpm1a_event_block: AcpiGenericAddress, /* 64-bit Extended Power Mgt 1a Event Reg Blk address */
-    pub xpm1b_event_block: AcpiGenericAddress, /* 64-bit Extended Power Mgt 1b Event Reg Blk address */
+    pub header: AcpiTableHeader,                 /* Common ACPI table header */
+    pub facs: u32,                               /* 32-bit physical address of FACS */
+    pub dsdt: u32,                               /* 32-bit physical address of DSDT */
+    pub model: u8,                               /* System Interrupt Model (ACPI 1.0) - not used in ACPI 2.0+ */
+    pub preferred_profile: u8,                   /* Conveys preferred power management profile to OSPM. */
+    pub sci_interrupt: u16,                      /* System vector of SCI interrupt */
+    pub smi_command: u32,                        /* 32-bit Port address of SMI command port */
+    pub acpi_enable: u8,                         /* Value to write to SMI_CMD to enable ACPI */
+    pub acpi_disable: u8,                        /* Value to write to SMI_CMD to disable ACPI */
+    pub s4_bios_request: u8,                     /* Value to write to SMI_CMD to enter S4BIOS state */
+    pub pstate_control: u8,                      /* Processor performance state control */
+    pub pm1a_event_block: u32,                   /* 32-bit port address of Power Mgt 1a Event Reg Blk */
+    pub pm1b_event_block: u32,                   /* 32-bit port address of Power Mgt 1b Event Reg Blk */
+    pub pm1a_control_block: u32,                 /* 32-bit port address of Power Mgt 1a Control Reg Blk */
+    pub pm1b_control_block: u32,                 /* 32-bit port address of Power Mgt 1b Control Reg Blk */
+    pub pm2_control_block: u32,                  /* 32-bit port address of Power Mgt 2 Control Reg Blk */
+    pub pm_timer_block: u32,                     /* 32-bit port address of Power Mgt Timer Ctrl Reg Blk */
+    pub gpe0_block: u32,                         /* 32-bit port address of General Purpose Event 0 Reg Blk */
+    pub gpe1_block: u32,                         /* 32-bit port address of General Purpose Event 1 Reg Blk */
+    pub pm1_event_length: u8,                    /* Byte Length of ports at pm1x_event_block */
+    pub pm1_control_length: u8,                  /* Byte Length of ports at pm1x_control_block */
+    pub pm2_control_length: u8,                  /* Byte Length of ports at pm2_control_block */
+    pub pm_timer_length: u8,                     /* Byte Length of ports at pm_timer_block */
+    pub gpe0_block_length: u8,                   /* Byte Length of ports at gpe0_block */
+    pub gpe1_block_length: u8,                   /* Byte Length of ports at gpe1_block */
+    pub gpe1_base: u8,                           /* Offset in GPE number space where GPE1 events start */
+    pub cst_control: u8,                         /* Support for the _CST object and C-States change notification */
+    pub c2_latency: u16,                         /* Worst case HW latency to enter/exit C2 state */
+    pub c3_latency: u16,                         /* Worst case HW latency to enter/exit C3 state */
+    pub flush_size: u16,                         /* Processor memory cache line width, in bytes */
+    pub flush_stride: u16,                       /* Number of flush strides that need to be read */
+    pub duty_offset: u8,                         /* Processor duty cycle index in processor P_CNT reg */
+    pub duty_width: u8,                          /* Processor duty cycle value bit width in P_CNT register */
+    pub day_alarm: u8,                           /* Index to day-of-month alarm in RTC CMOS RAM */
+    pub month_alarm: u8,                         /* Index to month-of-year alarm in RTC CMOS RAM */
+    pub century: u8,                             /* Index to century in RTC CMOS RAM */
+    pub boot_flags: u16,                         /* IA-PC Boot Architecture Flags (see below for individual flags) */
+    pub reserved: u8,                            /* Reserved, must be zero */
+    pub flags: u32,                              /* Miscellaneous flag bits (see below for individual flags) */
+    pub reset_register: AcpiGenericAddress,      /* 64-bit address of the Reset register */
+    pub reset_value: u8,                         /* Value to write to the reset_register port to reset the system */
+    pub arm_boot_flags: u16,                     /* ARM-Specific Boot Flags (see below for individual flags) (ACPI 5.1) */
+    pub minor_revision: u8,                      /* FADT Minor Revision (ACPI 5.1) */
+    pub xfacs: u64,                              /* 64-bit physical address of FACS */
+    pub xdsdt: u64,                              /* 64-bit physical address of DSDT */
+    pub xpm1a_event_block: AcpiGenericAddress,   /* 64-bit Extended Power Mgt 1a Event Reg Blk address */
+    pub xpm1b_event_block: AcpiGenericAddress,   /* 64-bit Extended Power Mgt 1b Event Reg Blk address */
     pub xpm1a_control_block: AcpiGenericAddress, /* 64-bit Extended Power Mgt 1a Control Reg Blk address */
     pub xpm1b_control_block: AcpiGenericAddress, /* 64-bit Extended Power Mgt 1b Control Reg Blk address */
-    pub xpm2_control_block: AcpiGenericAddress, /* 64-bit Extended Power Mgt 2 Control Reg Blk address */
-    pub xpm_timer_block: AcpiGenericAddress, /* 64-bit Extended Power Mgt Timer Ctrl Reg Blk address */
-    pub xgpe0_block: AcpiGenericAddress, /* 64-bit Extended General Purpose Event 0 Reg Blk address */
-    pub xgpe1_block: AcpiGenericAddress, /* 64-bit Extended General Purpose Event 1 Reg Blk address */
-    pub sleep_control: AcpiGenericAddress, /* 64-bit Sleep Control register (ACPI 5.0) */
-    pub sleep_status: AcpiGenericAddress, /* 64-bit Sleep Status register (ACPI 5.0) */
-    pub hypervisor_id: u64,              /* Hypervisor Vendor ID (ACPI 6.0) */
+    pub xpm2_control_block: AcpiGenericAddress,  /* 64-bit Extended Power Mgt 2 Control Reg Blk address */
+    pub xpm_timer_block: AcpiGenericAddress,     /* 64-bit Extended Power Mgt Timer Ctrl Reg Blk address */
+    pub xgpe0_block: AcpiGenericAddress,         /* 64-bit Extended General Purpose Event 0 Reg Blk address */
+    pub xgpe1_block: AcpiGenericAddress,         /* 64-bit Extended General Purpose Event 1 Reg Blk address */
+    pub sleep_control: AcpiGenericAddress,       /* 64-bit Sleep Control register (ACPI 5.0) */
+    pub sleep_status: AcpiGenericAddress,        /* 64-bit Sleep Status register (ACPI 5.0) */
+    pub hypervisor_id: u64,                      /* Hypervisor Vendor ID (ACPI 6.0) */
 }
 
 #[repr(packed)]
@@ -177,14 +170,18 @@ pub struct AcpiMadtLocalX2apic {
     pub uid: u32, /* ACPI processor UID */
 }
 
-fn write<T> (val: T, offset: usize, index: usize) {
-    let ptr = (0xf0000 as usize + offset + index * size_of::<T>()) as *mut T;
-    unsafe { ptr.write(val);}
+fn write<T>(w: &mut print::WriteTo, val: T, offset: usize, index: usize) {
+    let y = (offset + index * size_of::<T>()) as *mut T;
+    unsafe {
+        ptr::write_volatile(y, val);
+    }
+    write!(w, "write to {:x?}: \r\n", y).unwrap();
 }
 
-fn read<T> (offset: usize, index: usize)  -> T {
-    let ptr = (0xf0000 as usize + offset + index * size_of::<T>()) as *mut T;
-    unsafe { ptr.read()}
+fn read<T>(offset: usize, index: usize) -> T {
+    let y = (offset + index * size_of::<T>()) as *mut T;
+    let v = unsafe { ptr::read_volatile(y) };
+    v
 }
 
 /*
@@ -228,17 +225,20 @@ pub const DSDT_DSDTTBL_HEADER: [u8; 36] = [
 #[inline]
 fn gencsum(start: usize, end: usize) -> u8 {
     let mut tot: u16 = 0;
-    for i in start..end+1 {
+    for i in start..end + 1 {
         let b: u8 = read(i, 0);
         tot = tot + b as u16;
     }
     tot as u8
 }
+
+// I still don't know why these were different, I thought it was the
+// same algorithm.
 #[inline]
-fn acpi_tb_checkksum(data: &[u8]) -> u8 {
+fn acpi_tb_checksum(start: usize, end: usize) -> u8 {
     // I don't understand this one
     // data.iter().map(|x| Wrapping(*x)).sum::<Wrapping<u8>>().0
-    0
+    gencsum(start, end)
 }
 
 const SIG_RSDP: [u8; 8] = *b"RSD PTR ";
@@ -256,14 +256,12 @@ const MADT_LOCAL_X2APIC: u8 = 9;
 /// of the guest. `low_mem` is a host virtual memory block which is mapped to
 /// the lowest memory of the guest. `cores` is the number of logical CPUs of the guest.
 /// Total number of bytes occupied by the BIOS tables is returned.
-pub fn setup_bios_tables(cores: u32) -> usize {
+pub fn setup_bios_tables(w: &mut print::WriteTo, start: usize, cores: u32) -> usize {
     // calculate offsets first
     // variables with suffix `_offset` mean the offset in `low_mem`. They are
     // also the guest physical address of the corresponding tables, since `low_mem` is
     // mapped to the lowest memory of the guest's physical address space.
-    let mut low_mem: [u8; 65536] = 0xf0000 as [u8;65536];
-    
-    let start = 0;
+
     let rsdp_offset = start;
     let xsdt_offset = rsdp_offset + size_of::<AcpiTableRsdp>();
     let xsdt_entry_offset = xsdt_offset + size_of::<AcpiTableHeader>();
@@ -274,130 +272,60 @@ pub fn setup_bios_tables(cores: u32) -> usize {
     let madt_local_apic_offset = madt_offset + size_of::<AcpiTableMadt>();
     let io_apic_offset = madt_local_apic_offset + cores as usize * size_of::<AcpiMadtLocalApic>();
     let local_x2apic_offset = io_apic_offset + size_of::<AcpiMadtIoApic>();
-    let total_size =
-        local_x2apic_offset + cores as usize * size_of::<AcpiMadtLocalX2apic>() - start;
+    let total_size = local_x2apic_offset + cores as usize * size_of::<AcpiMadtLocalX2apic>() - start;
 
     // setup rsdp
-    let rsdp = AcpiTableRsdp {
-        signature: SIG_RSDP,
-        revision: 2,
-        length: 36,
-        xsdt_physical_address: xsdt_offset as u64,
-        ..Default::default()
-    };
-    write(rsdp, rsdp_offset, 0);
-    write(gencsum(rsdp_offset,rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH), rsdp_offset, ACPI_RSDP_CHECKSUM_OFFSET); // XXX
-    debug_assert_eq!(
-        acpi_tb_checksum(rsdp_offset, (rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH)),
-        0
-    );
-    write(gencsum(rsdp_offset,rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH), rsdp_offset, ACPI_RSDP_XCHECKSUM_OFFSET); // XXX
-    debug_assert_eq!(
-        acpi_tb_checksum(rsdp_offset, (rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH)),
-        0
-    );
+    let rsdp = AcpiTableRsdp { signature: SIG_RSDP, revision: 2, length: 36, xsdt_physical_address: xsdt_offset as u64, ..Default::default() };
+    write!(w, "Write rsdp  at {:x?} \r\n", rsdp_offset).unwrap();
+    write(w, rsdp, rsdp_offset, 0);
+    write(w, gencsum(rsdp_offset, rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH), rsdp_offset, ACPI_RSDP_CHECKSUM_OFFSET); // XXX
+    debug_assert_eq!(acpi_tb_checksum(rsdp_offset, rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH), 0);
+    write(w, gencsum(rsdp_offset, rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH), rsdp_offset, ACPI_RSDP_XCHECKSUM_OFFSET); // XXX
+    debug_assert_eq!(acpi_tb_checksum(rsdp_offset, rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH), 0);
 
     // xsdt
     let xsdt_total_length = size_of::<AcpiTableHeader>() + size_of::<u64>() * NUM_XSDT_ENTRIES;
-    let xsdt = AcpiTableHeader {
-        signature: SIG_XSDT,
-        length: xsdt_total_length as u32,
-        ..AcpiTableHeader::new()
-    };
-    write(xsdt, xsdt_offset, 0);
+    let xsdt = AcpiTableHeader { signature: SIG_XSDT, length: xsdt_total_length as u32, ..AcpiTableHeader::new() };
+    write(w, xsdt, xsdt_offset, 0);
     // xsdt entries
     let mut xsdt_entries: [u64; NUM_XSDT_ENTRIES] = [0; NUM_XSDT_ENTRIES];
     xsdt_entries[0] = fadt_offset as u64;
     xsdt_entries[3] = madt_offset as u64;
-    write(xsdt_entries, xsdt_entry_offset, 0);
-    write(gencsum(xsdt_offset,xsdt_offset + xsdt_total_length), xsdt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
-    debug_assert_eq!(
-        acpi_tb_checksum(xsdt_offset, (xsdt_offset + xsdt_total_length)),
-        0
-    );
+    write(w, xsdt_entries, xsdt_entry_offset, 0);
+    write(w, gencsum(xsdt_offset, xsdt_offset + xsdt_total_length), xsdt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
+    debug_assert_eq!(acpi_tb_checksum(xsdt_offset, xsdt_offset + xsdt_total_length), 0);
 
     // fadt
-    let fadt = AcpiTableFadt {
-        header: AcpiTableHeader {
-            signature: SIG_FADT,
-            length: size_of::<AcpiTableFadt>() as u32,
-            ..AcpiTableHeader::new()
-        },
-        xdsdt: dsdt_offset as u64,
-        ..Default::default()
-    };
-    write(fadt, fadt_offset, 0);
-    write(gencsum(fadt_offset,fadt_offset + size_of::<AcpiTableFadt>()), fadt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
-    debug_assert_eq!(
-        acpi_tb_checksum(fadt_offset, (fadt_offset + size_of::<AcpiTableFadt>())),
-        0
-    );
+    let fadt = AcpiTableFadt { header: AcpiTableHeader { signature: SIG_FADT, length: size_of::<AcpiTableFadt>() as u32, ..AcpiTableHeader::new() }, xdsdt: dsdt_offset as u64, ..Default::default() };
+    write(w, fadt, fadt_offset, 0);
+    write(w, gencsum(fadt_offset, fadt_offset + size_of::<AcpiTableFadt>()), fadt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
+    debug_assert_eq!(acpi_tb_checksum(fadt_offset, fadt_offset + size_of::<AcpiTableFadt>()), 0);
 
     // dsdt
-    write(DSDT_DSDTTBL_HEADER, dsdt_offset, 0);
+    write(w, DSDT_DSDTTBL_HEADER, dsdt_offset, 0);
 
     // madt
-    let madt_total_length = size_of::<AcpiTableMadt>()
-        + size_of::<AcpiMadtIoApic>()
-        + cores as usize * (size_of::<AcpiMadtLocalApic>() + size_of::<AcpiMadtLocalX2apic>());
-    let madt = AcpiTableMadt {
-        header: AcpiTableHeader {
-            signature: SIG_MADT,
-            length: madt_total_length as u32,
-            ..AcpiTableHeader::new()
-        },
-        address: APIC_BASE as u32,
-        flags: 0,
-        ..Default::default()
-    };
-    write(madt, madt_offset, 0);
+    let madt_total_length = size_of::<AcpiTableMadt>() + size_of::<AcpiMadtIoApic>() + cores as usize * (size_of::<AcpiMadtLocalApic>() + size_of::<AcpiMadtLocalX2apic>());
+    let madt = AcpiTableMadt { header: AcpiTableHeader { signature: SIG_MADT, length: madt_total_length as u32, ..AcpiTableHeader::new() }, address: APIC_BASE as u32, flags: 0, ..Default::default() };
+    write(w, madt, madt_offset, 0);
 
     // local apic
     for i in 0..cores {
-        let lapic = AcpiMadtLocalApic {
-            header: AcpiSubtableHader {
-                r#type: MADT_LOCAL_APIC,
-                length: size_of::<AcpiMadtLocalApic>() as u8,
-            },
-            processor_id: i as u8,
-            id: i as u8,
-            lapic_flags: 1,
-        };
-        write(lapic, madt_local_apic_offset, i as usize)
+        let lapic = AcpiMadtLocalApic { header: AcpiSubtableHader { r#type: MADT_LOCAL_APIC, length: size_of::<AcpiMadtLocalApic>() as u8 }, processor_id: i as u8, id: i as u8, lapic_flags: 1 };
+        write(w, lapic, madt_local_apic_offset, i as usize)
     }
 
     // io apiic
-    let io_apic = AcpiMadtIoApic {
-        header: AcpiSubtableHader {
-            r#type: MADT_IO_APIC,
-            length: size_of::<AcpiMadtIoApic>() as u8,
-        },
-        id: 0,
-        address: IO_APIC_BASE as u32,
-        global_irq_base: 0,
-        ..Default::default()
-    };
-    write(io_apic, io_apic_offset, 0);
+    let io_apic = AcpiMadtIoApic { header: AcpiSubtableHader { r#type: MADT_IO_APIC, length: size_of::<AcpiMadtIoApic>() as u8 }, id: 0, address: IO_APIC_BASE as u32, global_irq_base: 0, ..Default::default() };
+    write(w, io_apic, io_apic_offset, 0);
 
     // local x2apic
     for i in 0..cores {
-        let x2apic = AcpiMadtLocalX2apic {
-            header: AcpiSubtableHader {
-                r#type: MADT_LOCAL_X2APIC,
-                length: size_of::<AcpiMadtLocalX2apic>() as u8,
-            },
-            local_apic_id: i,
-            uid: i,
-            lapic_flags: 1,
-            ..Default::default()
-        };
-        write(x2apic, local_x2apic_offset, i as usize)
+        let x2apic = AcpiMadtLocalX2apic { header: AcpiSubtableHader { r#type: MADT_LOCAL_X2APIC, length: size_of::<AcpiMadtLocalX2apic>() as u8 }, local_apic_id: i, uid: i, lapic_flags: 1, ..Default::default() };
+        write(w, x2apic, local_x2apic_offset, i as usize)
     }
-    write(gencsum(madt_offset,madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
-    debug_assert_eq!(
-        acpi_tb_checksum(madt_offset, (madt_offset + madt_total_length)),
-        0
-    );
+    write(w, gencsum(madt_offset, madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
+    debug_assert_eq!(acpi_tb_checksum(madt_offset, madt_offset + madt_total_length), 0);
 
     round_up_4k(total_size)
 }

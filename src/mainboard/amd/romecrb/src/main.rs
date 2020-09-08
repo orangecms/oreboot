@@ -14,7 +14,7 @@ use print;
 use uart::i8250::I8250;
 mod mainboard;
 use mainboard::MainBoard;
-use x86_64::instructions::{rdmsr, wrmsr};
+use x86_64::instructions::{rdmsr};
 extern crate heapless; // v0.4.x
 use heapless::consts::*;
 use heapless::Vec;
@@ -89,8 +89,9 @@ fn memb(w: &mut print::WriteTo, a: Vec<u8, U16>) -> () {
     // I wish I knew rust. This code is shit.
     for a in vals.iter() {
         for i in 0..16 {
-            let m = peekb(*a + i);
-            write!(w, "{:x?}: {:x?}\r\n", *a + i, m).unwrap();
+            let addr = *a + i;
+            let m = peekb(addr);
+            write!(w, "{:x?}: {:x?}\r\n", addr, m).unwrap();
         }
     }
 }
@@ -130,7 +131,7 @@ fn debug(w: &mut print::WriteTo) -> () {
             b'm' => {
                 mem(w, line);
             }
-            b'b' => {
+            b'h' => {
                 memb(w, line);
             }
             _ => {}
@@ -185,11 +186,14 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
         entry: 0x1000200,
     };
     p[0] = p[0] + 1;
+    write!(w, "Write bios tables\r\n").unwrap();
+    setup_bios_tables(w, 0xf0000, 1);
+    write!(w, "Wrote bios tables, entering debug\r\n").unwrap();
+    debug(w);
     write!(w, "LDN is {:x}\r\n", peek32(0xfee000d0)).unwrap();
     poke32(0xfee000d0, 0x1000000);
     write!(w, "LDN is {:x}\r\n", peek32(0xfee000d0)).unwrap();
     write!(w, "loading payload with fdt_address {}\r\n", fdt_address).unwrap();
-    debug(w);
     post.pwrite(&p, 0x80).unwrap();
     p[0] = p[0] + 1;
     payload.load(w).unwrap();
