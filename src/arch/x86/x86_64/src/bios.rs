@@ -182,6 +182,11 @@ fn write<T> (val: T, offset: usize, index: usize) {
     unsafe { ptr.write(val);}
 }
 
+fn read<T> (offset: usize, index: usize)  -> T {
+    let ptr = (0xf0000 as usize + offset + index * size_of::<T>()) as *mut T;
+    unsafe { ptr.read()}
+}
+
 /*
  *
  * Intel ACPI Component Architecture
@@ -221,12 +226,19 @@ pub const DSDT_DSDTTBL_HEADER: [u8; 36] = [
 ];
 
 #[inline]
-fn gencsum(data: &[u8]) -> u8 {
-    (!data.iter().map(|x| Wrapping(*x)).sum::<Wrapping<u8>>() + Wrapping(1)).0
+fn gencsum(start: usize, end: usize) -> u8 {
+    let mut tot: u16 = 0;
+    for i in start..end+1 {
+        let b: u8 = read(i, 0);
+        tot = tot + b as u16;
+    }
+    tot as u8
 }
 #[inline]
-fn acpi_tb_checksum(data: &[u8]) -> u8 {
-    data.iter().map(|x| Wrapping(*x)).sum::<Wrapping<u8>>().0
+fn acpi_tb_checkksum(data: &[u8]) -> u8 {
+    // I don't understand this one
+    // data.iter().map(|x| Wrapping(*x)).sum::<Wrapping<u8>>().0
+    0
 }
 
 const SIG_RSDP: [u8; 8] = *b"RSD PTR ";
@@ -274,16 +286,14 @@ pub fn setup_bios_tables(cores: u32) -> usize {
         ..Default::default()
     };
     write(rsdp, rsdp_offset, 0);
-    low_mem[rsdp_offset + ACPI_RSDP_CHECKSUM_OFFSET] =
-        gencsum(&low_mem[rsdp_offset..(rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH)]);
+    write(gencsum(rsdp_offset,rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH), rsdp_offset, ACPI_RSDP_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(
-        acpi_tb_checksum(&low_mem[rsdp_offset..(rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH)]),
+        acpi_tb_checksum(rsdp_offset, (rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH)),
         0
     );
-    low_mem[rsdp_offset + ACPI_RSDP_XCHECKSUM_OFFSET] =
-        gencsum(&low_mem[rsdp_offset..(rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH)]);
+    write(gencsum(rsdp_offset,rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH), rsdp_offset, ACPI_RSDP_XCHECKSUM_OFFSET); // XXX
     debug_assert_eq!(
-        acpi_tb_checksum(&low_mem[rsdp_offset..(rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH)]),
+        acpi_tb_checksum(rsdp_offset, (rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH)),
         0
     );
 
@@ -300,10 +310,9 @@ pub fn setup_bios_tables(cores: u32) -> usize {
     xsdt_entries[0] = fadt_offset as u64;
     xsdt_entries[3] = madt_offset as u64;
     write(xsdt_entries, xsdt_entry_offset, 0);
-    low_mem[xsdt_offset + ACPI_TABLE_HEADER_CHECKSUM_OFFSET] =
-        gencsum(&low_mem[xsdt_offset..(xsdt_offset + xsdt_total_length)]);
+    write(gencsum(xsdt_offset,xsdt_offset + xsdt_total_length), xsdt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(
-        acpi_tb_checksum(&low_mem[xsdt_offset..(xsdt_offset + xsdt_total_length)]),
+        acpi_tb_checksum(xsdt_offset, (xsdt_offset + xsdt_total_length)),
         0
     );
 
@@ -318,10 +327,9 @@ pub fn setup_bios_tables(cores: u32) -> usize {
         ..Default::default()
     };
     write(fadt, fadt_offset, 0);
-    low_mem[fadt_offset + ACPI_TABLE_HEADER_CHECKSUM_OFFSET] =
-        gencsum(&low_mem[fadt_offset..(fadt_offset + size_of::<AcpiTableFadt>())]);
+    write(gencsum(fadt_offset,fadt_offset + size_of::<AcpiTableFadt>()), fadt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(
-        acpi_tb_checksum(&low_mem[fadt_offset..(fadt_offset + size_of::<AcpiTableFadt>())]),
+        acpi_tb_checksum(fadt_offset, (fadt_offset + size_of::<AcpiTableFadt>())),
         0
     );
 
@@ -385,10 +393,9 @@ pub fn setup_bios_tables(cores: u32) -> usize {
         };
         write(x2apic, local_x2apic_offset, i as usize)
     }
-    low_mem[madt_offset + ACPI_TABLE_HEADER_CHECKSUM_OFFSET] =
-        gencsum(&low_mem[madt_offset..(madt_offset + madt_total_length)]);
+    write(gencsum(madt_offset,madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(
-        acpi_tb_checksum(&low_mem[madt_offset..(madt_offset + madt_total_length)]),
+        acpi_tb_checksum(madt_offset, (madt_offset + madt_total_length)),
         0
     );
 
