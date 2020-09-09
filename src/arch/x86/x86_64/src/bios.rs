@@ -170,6 +170,16 @@ pub struct AcpiMadtLocalX2apic {
     pub uid: u32, /* ACPI processor UID */
 }
 
+#[repr(packed)]
+#[derive(Default)]
+pub struct AcpiMadtInterruptOverride {
+    pub header: AcpiSubtableHader,
+    pub bus: u8,
+    pub sourceirq: u8,
+    pub globalirq: u32,
+    pub flags: u16,
+}
+
 fn write<T>(w: &mut print::WriteTo, val: T, offset: usize, index: usize) {
     let y = (offset + index * size_of::<T>()) as *mut T;
     unsafe {
@@ -249,6 +259,7 @@ const SIG_MADT: [u8; 4] = *b"APIC";
 const MADT_LOCAL_APIC: u8 = 0;
 const MADT_IO_APIC: u8 = 1;
 const MADT_LOCAL_X2APIC: u8 = 9;
+const MADT_LOCAL_ISOR: u8 = 2;
 
 /// Setup the BIOS tables in the low memory
 ///
@@ -272,7 +283,8 @@ pub fn setup_bios_tables(w: &mut print::WriteTo, start: usize, cores: u32) -> us
     let madt_local_apic_offset = madt_offset + size_of::<AcpiTableMadt>();
     let io_apic_offset = madt_local_apic_offset + cores as usize * size_of::<AcpiMadtLocalApic>();
     let local_x2apic_offset = io_apic_offset + size_of::<AcpiMadtIoApic>();
-    let total_size = local_x2apic_offset + cores as usize * size_of::<AcpiMadtLocalX2apic>() - start;
+    let local_isor_offset = local_x2apic_offset + cores as usize * size_of::<AcpiMadtLocalX2apic>();
+    let total_size = local_isor_offset + 2 * size_of::<AcpiMadtInterruptOverride>() - start;
 
     // setup rsdp
     let rsdp = AcpiTableRsdp { signature: SIG_RSDP, revision: 2, length: 36, xsdt_physical_address: xsdt_offset as u64, ..Default::default() };
@@ -324,6 +336,15 @@ pub fn setup_bios_tables(w: &mut print::WriteTo, start: usize, cores: u32) -> us
         let x2apic = AcpiMadtLocalX2apic { header: AcpiSubtableHader { r#type: MADT_LOCAL_X2APIC, length: size_of::<AcpiMadtLocalX2apic>() as u8 }, local_apic_id: i, uid: i, lapic_flags: 1, ..Default::default() };
         write(w, x2apic, local_x2apic_offset, i as usize)
     }
+    write(w, gencsum(madt_offset, madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
+
+    // isor -- rhymes with eyesore
+    let isor = AcpiMadtInterruptOverride { header: AcpiSubtableHader { r#type: MADT_LOCAL_ISOR, length: size_of::<AcpiMadtInterruptOverride>() as u8 }, bus: 0, sourceirq: 0, globalirq: 2, flags: 0, ..Default::default() };
+    write(w, isor, local_isor_offset, 0 as usize); 
+
+    let isor = AcpiMadtInterruptOverride { header: AcpiSubtableHader { r#type: MADT_LOCAL_ISOR, length: size_of::<AcpiMadtInterruptOverride>() as u8 }, bus: 0, sourceirq: 9, globalirq: 9, flags: 0xf, ..Default::default() };
+    write(w, isor, local_isor_offset, 1 as usize); 
+
     write(w, gencsum(madt_offset, madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(acpi_tb_checksum(madt_offset, madt_offset + madt_total_length), 0);
 

@@ -71,11 +71,21 @@ impl Driver for MainBoard {
         // Set up the legacy decode.
         poke16(FCH_UART_LEGACY_DECODE, FCH_LEGACY_3F8_SH);
         unsafe {
-        let v = rdmsr(0x1b) | 0x900;
-        wrmsr(0x1b, v);
-        let v = rdmsr(0x1b) | 0xd00;
-        wrmsr(0x1b, v);
+            let v = rdmsr(0x1b) | 0x900;
+            wrmsr(0x1b, v);
+            let v = rdmsr(0x1b) | 0xd00;
+            wrmsr(0x1b, v);
         }
+        // IOAPIC
+        //     wmem fed80300 e3070b77
+        //    wmem fed00010 3
+        poke32(0xfed80300, 0xe3070b77);
+        poke32(0xfed00010, 3);
+        let i = peek32(0xfed00010);
+        poke32(0xfed00010, i | 8);
+        // THis is likely not needed but.
+        //poke32(0xfed00108, 0x5b03d997);
+
         Ok(())
     }
 
