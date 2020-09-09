@@ -180,6 +180,23 @@ pub struct AcpiMadtInterruptOverride {
     pub flags: u16,
 }
 
+#[repr(packed)]
+#[derive(Default)]
+pub struct AcpiMadtNMI {
+    pub header: AcpiSubtableHader,
+    pub flags: u16,
+    pub globalirq: u32,
+}
+
+#[repr(packed)]
+#[derive(Default)]
+pub struct AcpiMadtLAPICNMI {
+    pub header: AcpiSubtableHader,
+    pub acpi_processor_uid: u8,
+    pub flags: u16,
+    pub local_interrupt: u8,
+}
+
 fn write<T>(w: &mut print::WriteTo, val: T, offset: usize, index: usize) {
     let y = (offset + index * size_of::<T>()) as *mut T;
     unsafe {
@@ -260,6 +277,8 @@ const MADT_LOCAL_APIC: u8 = 0;
 const MADT_IO_APIC: u8 = 1;
 const MADT_LOCAL_X2APIC: u8 = 9;
 const MADT_LOCAL_ISOR: u8 = 2;
+// annoying. const MADT_LOCAL_NMI: u8 = 3;
+const MADT_LOCAL_LAPICNMI: u8 = 4;
 
 /// Setup the BIOS tables in the low memory
 ///
@@ -283,7 +302,8 @@ pub fn setup_bios_tables(w: &mut print::WriteTo, start: usize, cores: u32) -> us
     let madt_local_apic_offset = madt_offset + size_of::<AcpiTableMadt>();
     let io_apic_offset = madt_local_apic_offset + cores as usize * size_of::<AcpiMadtLocalApic>();
     let local_x2apic_offset = io_apic_offset + size_of::<AcpiMadtIoApic>();
-    let local_isor_offset = local_x2apic_offset + cores as usize * size_of::<AcpiMadtLocalX2apic>();
+    let local_lapicnmi_offset = local_x2apic_offset + cores as usize * size_of::<AcpiMadtLocalX2apic>();
+    let local_isor_offset = local_lapicnmi_offset + size_of::<AcpiMadtLAPICNMI>();
     let total_size = local_isor_offset + 2 * size_of::<AcpiMadtInterruptOverride>() - start;
 
     // setup rsdp
@@ -328,7 +348,7 @@ pub fn setup_bios_tables(w: &mut print::WriteTo, start: usize, cores: u32) -> us
     }
 
     // io apiic
-    let io_apic = AcpiMadtIoApic { header: AcpiSubtableHader { r#type: MADT_IO_APIC, length: size_of::<AcpiMadtIoApic>() as u8 }, id: 0, address: IO_APIC_BASE as u32, global_irq_base: 0, ..Default::default() };
+    let io_apic = AcpiMadtIoApic { header: AcpiSubtableHader { r#type: MADT_IO_APIC, length: size_of::<AcpiMadtIoApic>() as u8 }, id: 0xf0, address: IO_APIC_BASE as u32, global_irq_base: 0, ..Default::default() };
     write(w, io_apic, io_apic_offset, 0);
 
     // local x2apic
@@ -338,13 +358,21 @@ pub fn setup_bios_tables(w: &mut print::WriteTo, start: usize, cores: u32) -> us
     }
     write(w, gencsum(madt_offset, madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
 
+    // LAPICNMI
+    write!(w, "LAPICNMI\r\n").unwrap();
+    let lapicnmi = AcpiMadtLAPICNMI { header: AcpiSubtableHader { r#type: MADT_LOCAL_LAPICNMI, length: size_of::<AcpiMadtLAPICNMI>() as u8 }, acpi_processor_uid: 0xff, flags:5 , local_interrupt: 1, ..Default::default() };
+    write(w, lapicnmi, local_lapicnmi_offset, 0 as usize); 
+
     // isor -- rhymes with eyesore
-    let isor = AcpiMadtInterruptOverride { header: AcpiSubtableHader { r#type: MADT_LOCAL_ISOR, length: size_of::<AcpiMadtInterruptOverride>() as u8 }, bus: 0, sourceirq: 0, globalirq: 2, flags: 0, ..Default::default() };
+    write!(w, "First ISOR\r\n").unwrap();
+    let isor = AcpiMadtInterruptOverride { header: AcpiSubtableHader { r#type: MADT_LOCAL_ISOR, length: size_of::<AcpiMadtInterruptOverride>() as u8 }, bus: 0, sourceirq: 9, globalirq: 9, flags: 0xf, ..Default::default() };
     write(w, isor, local_isor_offset, 0 as usize); 
 
-    let isor = AcpiMadtInterruptOverride { header: AcpiSubtableHader { r#type: MADT_LOCAL_ISOR, length: size_of::<AcpiMadtInterruptOverride>() as u8 }, bus: 0, sourceirq: 9, globalirq: 9, flags: 0xf, ..Default::default() };
+    write!(w, "Second ISOR\r\n").unwrap();
+    let isor = AcpiMadtInterruptOverride { header: AcpiSubtableHader { r#type: MADT_LOCAL_ISOR, length: size_of::<AcpiMadtInterruptOverride>() as u8 }, bus: 0, sourceirq: 0, globalirq: 2, flags: 0, ..Default::default() };
     write(w, isor, local_isor_offset, 1 as usize); 
 
+    write!(w, "Gencsum from {:x} to {:x} store into {:x}\r\n", madt_offset, madt_offset + madt_total_length, ACPI_TABLE_HEADER_CHECKSUM_OFFSET).unwrap();
     write(w, gencsum(madt_offset, madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(acpi_tb_checksum(madt_offset, madt_offset + madt_total_length), 0);
 
