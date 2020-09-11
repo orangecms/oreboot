@@ -25,6 +25,7 @@ fn poke(v: u32, a: u32) -> () {
     }
 }
 
+// _start is where we jump from assembly :)
 #[no_mangle]
 pub extern "C" fn _start(fdt_address: usize) -> ! {
     let io = &mut IOPort;
