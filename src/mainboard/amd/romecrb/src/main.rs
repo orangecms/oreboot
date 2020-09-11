@@ -140,6 +140,7 @@ fn debug(w: &mut print::WriteTo) -> () {
 }
 //global_asm!(include_str!("init.S"));
 
+// _start is where we jump from assembly :)
 #[no_mangle]
 pub extern "C" fn _start(fdt_address: usize) -> ! {
     let m = &mut MainBoard::new();
