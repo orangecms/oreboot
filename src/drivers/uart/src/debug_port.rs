@@ -35,6 +35,12 @@ impl<'a> Driver for DebugPort<'a> {
                 self.timer.sleep(4_000_000); // that's in fs
             }
             self.d.pwrite(&s, self.address).unwrap();
+            for _j in 0..125 {
+                // shorter sleep time here so that it also works in 32 bit
+                self.timer.sleep(4_000_000); // that's in fs
+            }
+            s[0] = 0x0;
+            self.d.pwrite(&s, self.address).unwrap();
         }
         Ok(data.len())
     }
