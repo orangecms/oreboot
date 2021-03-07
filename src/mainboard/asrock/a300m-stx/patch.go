@@ -104,23 +104,16 @@ func main() {
 		0x00, 0x00, 0xc0, 0x76, 0x00, 0x00, 0x00, 0x00, // RAM destination
 	}
 
+	// 1e8000 BHD
+	// 2e8000 BL2
+	// 47f000 BHD
+	// 5df000 BL2
+
 	// We just patch the individual entries here.
-	copy(b[0x1680b8:], entry)
-
-	// There are three more entries to patch, and they are all the same. This is
-	// for different versions of the PSP firmware to pick them up.
-
-	// 0063f080: 0000 200a 0000 0000 6200 0100 0000 3000  .. .....b.....0.
-	// 0063f090: 0000 d0ff 0000 0000 0000 d009 0000 0000  ................
-	copy(b[0x63f088:], entry)
-
-	// 00268080: 0000 200a 0000 0000 6200 0100 0000 3000  .. .....b.....0.
-	// 00268090: 0000 d0ff 0000 0000 0000 d009 0000 0000  ................
-	copy(b[0x268088:], entry)
-
-	// 004d00b0: 0000 200a 0000 0000 6200 0100 0000 3000  .. .....b.....0.
-	// 004d00c0: 0000 d0ff 0000 0000 0000 d009 0000 0000  ................
-	copy(b[0x4d00b8:], entry)
+	copy(b[0x1e8088:], entry)
+	copy(b[0x2e8070:], entry)
+	copy(b[0x47f088:], entry)
+	copy(b[0x5df070:], entry)
 
 	if err := ioutil.WriteFile(*out, b, 0644); err != nil {
 		log.Fatal(err)
