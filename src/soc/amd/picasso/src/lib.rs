@@ -28,5 +28,7 @@ pub fn soc_init(w: &mut impl core::fmt::Write) -> Result<(), &'static str> {
             write!(w, "MP1 interface version error: {}\r\n", e).unwrap();
         }
     }
+    let topology = df::FabricTopology::new();
+    write!(w, "Topology: {:?}\r\n", topology);
     Ok(())
 }
