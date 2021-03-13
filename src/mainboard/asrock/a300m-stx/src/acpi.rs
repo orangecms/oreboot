@@ -47,6 +47,8 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
 
     write!(w, "Write rsdp  at {:x?} \r\n", rsdp_offset).unwrap();
     write(w, rsdp, rsdp_offset, 0);
+    let rsdp_sig: u64 = read(rsdp_offset, 0);
+    write!(w, "RSDP signature: {:x?}\r\n", rsdp_sig).unwrap();
     write(
         w,
         gencsum(rsdp_offset, rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH),
@@ -68,7 +70,6 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         acpi_tb_checksum(rsdp_offset, rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH),
         0
     );
-    /*
     // xsdt - Extended System Description Table
     let xsdt_total_length = size_of::<AcpiTableHeader>() + size_of::<u64>() * NUM_XSDT_ENTRIES;
     let xsdt = AcpiTableHeader { signature: SIG_XSDT, length: xsdt_total_length as u32, revision: 1, ..AcpiTableHeader::new() };
@@ -80,6 +81,7 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
     write(w, gencsum(xsdt_offset, xsdt_offset + xsdt_total_length), xsdt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(acpi_tb_checksum(xsdt_offset, xsdt_offset + xsdt_total_length), 0);
 
+    /*
     const FADT_FLAGS: u32 = 0b0011_0000_0101_1010_0101;
     // fadt - Fixed ACPI Description Table
     let fadt = AcpiTableFadt {
@@ -128,7 +130,9 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
 
     // dsdt - Differentiated System Description Table
     write(w, DSDT_DSDTTBL_HEADER, dsdt_offset, 0);
+    */
 
+    /*
     // madt - Multiple APIC Description Table
     // TODO: Recalculate for SMP
     // let madt_total_length = size_of::<AcpiTableMadt>() + cores as usize * (size_of::<AcpiMadtLocalApic>() + size_of::<AcpiMadtLocalX2apic>());
@@ -137,7 +141,9 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
 
     let madt = AcpiTableMadt { header: AcpiTableHeader { signature: SIG_MADT, length: madt_total_length as u32, revision: 4, ..AcpiTableHeader::new() }, address: x86::APIC_BASE as u32, flags: 1 };
     write(w, madt, madt_offset, 0);
+    */
 
+    /*
     // Processor Local APIC
     for i in 0..cores {
         let local_apic = AcpiMadtLocalApic { header: AcpiSubtableHeader { r#type: MADT_LOCAL_APIC, length: size_of::<AcpiMadtLocalApic>() as u8 }, processor_id: i as u8, id: i as u8, lapic_flags: 1 };
