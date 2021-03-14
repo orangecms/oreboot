@@ -257,7 +257,6 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     m.init().unwrap();
     let io = &mut IOPort;
     let uart0 = &mut I8250::new(0x3f8, 0, io);
-    uart0.init().unwrap();
     //let debug_io = &mut IOPort;
     //let debug = &mut DebugPort::new(0x80, debug_io);
     uart0.init().unwrap();
