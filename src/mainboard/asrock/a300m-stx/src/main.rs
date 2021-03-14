@@ -256,6 +256,7 @@ fn cpu_init(w: &mut impl core::fmt::Write) -> Result<(), &str> {
 pub extern "C" fn _start(fdt_address: usize) -> ! {
     let m = &mut MainBoard::new();
     m.init().unwrap();
+    // console
     let io = &mut IOPort;
     let uart0 = &mut I8250::new(0x3f8, 0, io);
     //let debug_io = &mut IOPort;
