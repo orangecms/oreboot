@@ -3,6 +3,7 @@
 #![no_std]
 #![no_main]
 #![feature(global_asm)]
+#![feature(abi_x86_interrupt)]
 
 use arch::bzimage::BzImage;
 use arch::ioport::IOPort;
@@ -25,6 +26,8 @@ use msr::msrs;
 // use c00::c00;
 mod acpi;
 use acpi::setup_acpi_tables;
+mod interrupts;
+use interrupts::{init_idt, init_pics};
 use x86_64::registers::model_specific::Msr;
 extern crate heapless; // v0.4.x
 use heapless::consts::*;
@@ -261,6 +264,15 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
         console.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
     }
     let w = &mut print::WriteToDyn::new(console);
+
+    init_pics();
+    init_idt();
+
+    write!(w, "Let's go BOOM!\r\n").unwrap();
+    unsafe {
+        llvm_asm!("mov %ebx, 0\ndiv %ebx" :::: "volatile");
+    }
+    write!(w, "Didn't explode :(\r\n").unwrap();
 
     // It is hard to say if we need to do this.
     if true {
