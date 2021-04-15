@@ -26,6 +26,10 @@ postcard = "0.4.3"
 vcell = "0.1.2"
 x86_64 = "0.14.4"
 
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
+
 [dependencies.uart]
 path = "../../../drivers/uart"
 features = ["i8250", "debug_port", "amdmmio"]
