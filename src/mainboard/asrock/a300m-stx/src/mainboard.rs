@@ -16,6 +16,7 @@
 
 #![allow(non_upper_case_globals)]
 
+use arch::ioport::IOPort;
 use clock::ClockNode;
 use core::ops::BitAnd;
 use core::ops::BitOr;
@@ -23,6 +24,8 @@ use core::ops::Not;
 use core::ptr;
 use model::*;
 use smn::smn_write;
+use uart::debug_port::DebugPort;
+use uart::i8250::I8250;
 use vcell::VolatileCell;
 use x86_64::registers::model_specific::Msr;
 
@@ -80,11 +83,17 @@ where
 }
 
 // WIP: mainboard driver. I mean the concept is a WIP.
-pub struct MainBoard {}
+pub struct MainBoard {
+    com1: I8250<IOPort>,
+    debug: DebugPort<IOPort>,
+}
 
 impl MainBoard {
     pub fn new() -> MainBoard {
-        MainBoard {}
+        Self { com1: I8250::new(0x3f8, 0, IOPort {}), debug: DebugPort::new(0x80, IOPort {}) }
+    }
+    pub fn text_output_drivers(&mut self) -> [&mut dyn Driver; 2] {
+        [&mut self.com1, &mut self.debug]
     }
 }
 
@@ -154,6 +163,10 @@ impl Driver for MainBoard {
             // enable ioapic redirection
             // IOHC::IOAPIC_BASE_ADDR_LO
             smn_write(0x13B1_02f0, 0xFEC0_0001);
+
+            for driver in self.text_output_drivers().iter_mut() {
+                driver.init()?;
+            }
 
             Ok(())
         }
