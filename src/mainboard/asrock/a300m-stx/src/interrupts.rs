@@ -39,8 +39,7 @@ extern "x86-interrupt" fn interrupt_handler(stack_frame: &mut InterruptStackFram
 //    };
 //}
 
-pub fn init_idt(w: &mut impl core::fmt::Write) {
-    write!(w, "We love interrupts\r\n").unwrap();
+pub fn init_idt() {
     //    IDT.load();
     unsafe {
         let mut idt = 0x100000 as *mut InterruptDescriptorTable;
@@ -52,8 +51,7 @@ pub fn init_idt(w: &mut impl core::fmt::Write) {
     }
 }
 
-pub fn init_pics(w: &mut impl core::fmt::Write) {
-    write!(w, "Setting up PICs\r\n").unwrap();
+pub fn init_pics() {
     // Topology: CPU <- PIC A <- PIC B
 
     // Initialize both PICs
@@ -74,5 +72,4 @@ pub fn init_pics(w: &mut impl core::fmt::Write) {
                       // Mask all interrupts
     outb(0x21, 0xFB); // PIC A: Mask all interrupts except the one caused by PIC B (Rationale: if someone unmasks a regular interrupt in the PIC, the PIC cascade is an implementation detail and thus the user shouldn't need to set it manually)
     outb(0xA1, 0xFF); // PIC B: Mask all interrupts
-    write!(w, "80ies PICs are all set\r\n").unwrap();
 }
