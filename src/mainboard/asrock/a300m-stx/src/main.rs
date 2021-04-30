@@ -266,8 +266,8 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     }
     let w = &mut print::WriteToDyn::new(console);
 
-    init_pics();
-    init_idt();
+    init_pics(w);
+    init_idt(w);
 
     write!(w, "Let's go BOOM!\r\n").unwrap();
     //panic!("AAAAAAAAAH"); <-- this works :)
