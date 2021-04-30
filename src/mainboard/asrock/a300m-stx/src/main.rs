@@ -269,8 +269,9 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     init_idt();
 
     write!(w, "Let's go BOOM!\r\n").unwrap();
+    //panic!("AAAAAAAAAH"); <-- this works :)
     unsafe {
-        llvm_asm!("mov %ebx, 0\ndiv %ebx" :::: "volatile");
+        llvm_asm!("xorl %ebx, %ebx\ndiv %ebx" : /* no outputs */ : /* no inputs */ : "ebx" : "volatile");
     }
     write!(w, "Didn't explode :(\r\n").unwrap();
 
