@@ -19,6 +19,7 @@ dependencies = [
  "smn",
  "soc",
  "static-ref",
+ "timer",
  "uart",
  "util",
  "vcell",

@@ -32,6 +32,7 @@ use x86_64::registers::model_specific::Msr;
 extern crate heapless; // v0.4.x
 use heapless::consts::*;
 use heapless::Vec;
+use timer::hpet::HPET;
 use wrappers::DoD;
 
 use core::ptr;
@@ -348,5 +349,10 @@ fn panic(info: &PanicInfo) -> ! {
     // Printing in the panic handler is best-effort because we really don't want to invoke the panic
     // handler from inside itself.
     let _ = write!(w, "PANIC: {}\r\n", info);
+    let timer = HPET::hpet();
+    for _i in 1..250 {
+        // 1ms
+        timer.sleep(4_000_000); // *10^-15
+    }
     arch::halt()
 }
