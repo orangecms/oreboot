@@ -34,6 +34,7 @@ use heapless::consts::*;
 use heapless::Vec;
 use timer::hpet::HPET;
 use wrappers::DoD;
+use x86_64::instructions::interrupts::int3;
 
 use core::ptr;
 // Until we are done hacking on this, use our private copy.
@@ -272,7 +273,9 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     write!(w, "Let's go BOOM!\r\n").unwrap();
     //panic!("AAAAAAAAAH"); <-- this works :)
     unsafe {
-        llvm_asm!("xorl %ebx, %ebx\ndiv %ebx" : /* no outputs */ : /* no inputs */ : "ebx" : "volatile");
+        // llvm_asm!("int3" :::: "volatile");
+        int3();
+        // llvm_asm!("xorl %ebx, %ebx\ndiv %ebx" : /* no outputs */ : /* no inputs */ : "ebx" : "volatile");
     }
     write!(w, "Didn't explode :(\r\n").unwrap();
 

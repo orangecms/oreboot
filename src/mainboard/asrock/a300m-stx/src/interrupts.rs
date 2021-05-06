@@ -22,7 +22,7 @@ extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackF
 }
 
 extern "x86-interrupt" fn divide_error_handler(stack_frame: &mut InterruptStackFrame) {
-    panic!("Exception: Division by zero.\r\n{:#?}", stack_frame);
+    panic!("NOOOOOOO\r\n");
 }
 
 extern "x86-interrupt" fn interrupt_handler(stack_frame: &mut InterruptStackFrame) {
@@ -46,6 +46,7 @@ pub fn init_idt() {
         (*idt).breakpoint.set_handler_fn(breakpoint_handler);
         (*idt).double_fault.set_handler_fn(double_fault_handler);
         (*idt).divide_error.set_handler_fn(divide_error_handler);
+        (*idt).simd_floating_point.set_handler_fn(divide_error_handler);
         (*idt)[32].set_handler_fn(interrupt_handler);
         (*idt).load();
     }
