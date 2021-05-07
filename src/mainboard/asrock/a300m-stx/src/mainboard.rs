@@ -27,7 +27,6 @@ use smn::smn_write;
 use uart::debug_port::DebugPort;
 use uart::i8250::I8250;
 use vcell::VolatileCell;
-use x86_64::registers::model_specific::Msr;
 
 const SMB_UART_CONFIG: *const VolatileCell<u32> = 0xfed8_00fc as *const _;
 const SMB_UART_1_8M_SHIFT: u8 = 28;
@@ -155,15 +154,6 @@ impl Driver for MainBoard {
             //(*FCH_UART_LEGACY_DECODE).set(FCH_LEGACY_3F8_SH);
             (*FCH_UART_LEGACY_DECODE).set(0);
 
-            let mut msr0 = Msr::new(0x1b);
-            /*unsafe*/
-            {
-                let v = msr0.read() | 0x900;
-                msr0.write(v);
-                //let v = msr.read() | 0xd00;
-                //write!(w, "NOT ENABLING x2apic!!!\n\r");
-                //msr.write(v);
-            }
             // IOAPIC
             //     wmem fed80300 e3070b77
             //    wmem fed00010 3
