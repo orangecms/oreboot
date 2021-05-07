@@ -5,8 +5,8 @@
 #![feature(global_asm)]
 #![feature(abi_x86_interrupt)]
 
-use arch::bzimage::BzImage;
 use arch::ioport::IOPort;
+use boot::boot;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use cpu::model::amd_family_id;
@@ -25,8 +25,6 @@ mod msr;
 use msr::msrs;
 // mod c00;
 // use c00::c00;
-mod acpi;
-use acpi::setup_acpi_tables;
 use pci::config32;
 use pci::PciAddress;
 mod interrupts;
@@ -41,7 +39,7 @@ use x86_64::instructions::interrupts::int3;
 use core::ptr;
 // Until we are done hacking on this, use our private copy.
 // Plan to copy it back later.
-global_asm!(include_str!("bootblock.S"), options(att_syntax));
+// global_asm!(include_str!("bootblock.S"), options(att_syntax));
 
 fn poke32(a: u32, v: u32) -> () {
     let y = a as *mut u32;
@@ -56,159 +54,9 @@ fn poke8(a: u32, v: u8) -> () {
     }
 }
 
-fn peek8(a: u32) -> u8 {
-    let y = a as *mut u8;
-    unsafe { ptr::read_volatile(y) }
-}
-
-/// Write 32 bits to port
-unsafe fn outl(port: u16, val: u32) {
-    asm!("outl %eax, %dx", in("eax") val, in("dx") port, options(att_syntax));
-}
-
-/// Read 32 bits from port
-unsafe fn inl(port: u16) -> u32 {
-    let ret: u32;
-    asm!("inl %dx, %eax", in("dx") port, out("eax") ret, options(att_syntax));
-    ret
-}
-
 fn peek32(a: u32) -> u32 {
     let y = a as *const u32;
     unsafe { ptr::read_volatile(y) }
-}
-// extern "C" {
-//     fn run32(w: &mut impl core::fmt::Write, start_address: usize, dtb: usize);
-// }
-
-fn peek(a: u64) -> u64 {
-    let y = a as *const u64;
-    unsafe { ptr::read_volatile(y) }
-}
-
-fn peekb(a: u64) -> u8 {
-    let y = a as *const u8;
-    unsafe { ptr::read_volatile(y) }
-}
-
-// Returns a slice of u32 for each sequence of hex chars in a.
-fn hex(a: &[u8], vals: &mut Vec<u64, U8>) -> () {
-    let mut started: bool = false;
-    let mut val: u64 = 0u64;
-    for c in a.iter() {
-        let v = *c;
-        if v >= b'0' && v <= b'9' {
-            started = true;
-            val = val << 4;
-            val = val + (*c - b'0') as u64;
-        } else if v >= b'a' && v <= b'f' {
-            started = true;
-            val = (val << 4) | (*c - b'a' + 10) as u64;
-        } else if v >= b'A' && v <= b'F' {
-            started = true;
-            val = (val << 4) | (*c - b'A' + 10) as u64;
-        } else if started {
-            vals.push(val).unwrap();
-            val = 0;
-        }
-    }
-}
-
-fn mem(w: &mut impl core::fmt::Write, a: Vec<u8, U16>) -> () {
-    let mut vals: Vec<u64, U8> = Vec::new();
-    hex(&a, &mut vals);
-
-    // I wish I knew rust. This code is shit.
-    for a in vals.iter() {
-        let m = peek(*a);
-        write!(w, "{:x?}: {:x?}\r\n", *a, m).unwrap();
-    }
-}
-
-fn ind(w: &mut impl core::fmt::Write, a: Vec<u8, U16>) -> () {
-    let mut vals: Vec<u64, U8> = Vec::new();
-    hex(&a, &mut vals);
-
-    // I wish I knew rust. This code is shit.
-    for a in vals.iter() {
-        let m = unsafe { inl(*a as u16) };
-        write!(w, "{:x?}: {:x?}\r\n", *a, m).unwrap();
-    }
-}
-
-fn out(w: &mut impl core::fmt::Write, a: Vec<u8, U16>) -> () {
-    let mut vals: Vec<u64, U8> = Vec::new();
-    hex(&a, &mut vals);
-
-    // I wish I knew rust. This code is shit.
-    for i in 0..vals.len() / 2 {
-        let a = vals[i * 2] as u16;
-        let v = vals[i * 2 + 1] as u32;
-        unsafe {
-            outl(a, v);
-        };
-        write!(w, "{:x?}: {:x?}\r\n", a, v).unwrap();
-    }
-}
-
-fn memb(w: &mut impl core::fmt::Write, a: Vec<u8, U16>) -> () {
-    let mut vals: Vec<u64, U8> = Vec::new();
-    hex(&a, &mut vals);
-    write!(w, "dump bytes: {:x?}\r\n", vals).expect("Failed to write.");
-    for a in vals.iter() {
-        for i in 0..16 {
-            let m = peekb(*a + i);
-            write!(w, "{:x?}: {:x?}\r\n", *a + i, m).unwrap();
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn _asdebug(w: &mut impl core::fmt::Write, a: u64) -> () {
-    write!(w, "here we are in asdebug\r\n").unwrap();
-    write!(w, "stack is {:x?}\r\n", a).unwrap();
-    consdebug(w);
-    write!(w, "back to hell\r\n").unwrap();
-}
-
-fn consdebug(w: &mut impl core::fmt::Write) -> () {
-    let mut done: bool = false;
-    let newline: [u8; 2] = [10, 13];
-    while done == false {
-        let uart0 = &mut I8250::new(0x3f8, 0, IOPort {});
-        let mut line: Vec<u8, U16> = Vec::new();
-        loop {
-            let mut c: [u8; 1] = [12; 1];
-            uart0.pread(&mut c, 1).unwrap();
-            uart0.pwrite(&c, 1).unwrap();
-            line.push(c[0]).unwrap();
-            if c[0] == 13 || c[0] == 10 || c[0] == 4 {
-                uart0.pwrite(&newline, 2).unwrap();
-                break;
-            }
-            if line.len() > 15 {
-                break;
-            }
-        }
-        match line[0] {
-            0 | 4 => {
-                done = true;
-            }
-            b'm' => {
-                mem(w, line);
-            }
-            b'i' => {
-                ind(w, line);
-            }
-            b'o' => {
-                out(w, line);
-            }
-            b'h' => {
-                memb(w, line);
-            }
-            _ => {}
-        }
-    }
 }
 
 const LPC_ISA_BRIDGE_DEVICE: u8 = 0x14;
@@ -221,7 +69,6 @@ const IO_PORT_DECODE_ENABLE_3F8: u32 = 1 << IO_PORT_DECODE_ENABLE_3F8_SHIFT;
 const LPC_IO_OR_MEM_DECODE_ENABLE: u16 = 0x048;
 const DECODE_SIO_ENABLE: u32 = 1;
 
-//global_asm!(include_str!("init.S"));
 fn smnhack(w: &mut impl core::fmt::Write, reg: u32, want: u32) -> () {
     let got = smn_read(reg);
     write!(w, "{:x}: got {:x}, want {:x}\r\n", reg, got, want).unwrap();
@@ -330,16 +177,6 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
         write!(w, "0x1b is {:x} \r\n", Msr::new(0x1b).read()).unwrap();
     }
 
-    let payload = &mut BzImage {
-        low_mem_size: 0x8000_0000,
-        high_mem_start: 0x1_0000_0000,
-        high_mem_size: 0,
-        // TODO: get this from the FDT.
-        rom_base: 0xffc0_0000,
-        rom_size: 0x30_0000,
-        load: 0x0100_0000,
-        entry: 0x100_0200,
-    };
     if true {
         msrs(w);
     }
@@ -382,12 +219,6 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
         }
     }
 
-    write!(w, "Write acpi tables\r\n").unwrap();
-    if (true) {
-        setup_acpi_tables(w, 0xf0000, 1);
-    }
-    write!(w, "Wrote bios tables, entering debug\r\n").unwrap();
-
     if false {
         msrs(w);
     }
@@ -397,11 +228,8 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     poke32(0xfee000d0, 0x1000000);
     write!(w, "LDN is {:x}\r\n", peek32(0xfee000d0)).unwrap();
     write!(w, "loading payload with fdt_address {}\r\n", fdt_address).unwrap();
-    payload.load(w).unwrap();
-    write!(w, "Back from loading payload, call debug\r\n").unwrap();
 
-    write!(w, "Running payload entry is {:x}\r\n", payload.entry).unwrap();
-    payload.run(w);
+    boot(w, fdt_address);
 
     write!(w, "Unexpected return from payload\r\n").unwrap();
     arch::halt()
