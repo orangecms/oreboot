@@ -187,7 +187,7 @@ pub fn boot(w: &mut impl core::fmt::Write, fdt_address: usize) {
     };
 
     write!(w, "Write acpi tables\r\n").unwrap();
-    setup_acpi_tables(w, 0xf_0000); // Note: Linux needs to be compiled with CONFIG_ACPI_LEGACY_TABLES_LOOKUP enabled for that address to be used.
+    //setup_acpi_tables(w, 0xf_0000); // Note: Linux needs to be compiled with CONFIG_ACPI_LEGACY_TABLES_LOOKUP enabled for that address to be used.
     if false {
         write!(w, "Wrote bios tables, entering debug\r\n").unwrap();
         consdebug(w);

@@ -107,7 +107,7 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
 
     init_pics();
     init_idt();
-
+    /*
     write!(w, "Let's go BOOM!\r\n").unwrap();
     //panic!("AAAAAAAAAH"); <-- this works :)
     unsafe {
@@ -116,7 +116,7 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
         // llvm_asm!("xorl %ebx, %ebx\ndiv %ebx" : /* no outputs */ : /* no inputs */ : "ebx" : "volatile");
     }
     write!(w, "Didn't explode :(\r\n").unwrap();
-
+    */
     // disable legacy interrupts
     // smnhack(w, 0x13F0_0004, 0x0010_0400u32);
     // smnhack(w, 0x13F0_0064, 0x0010_0400u32); // 847405
