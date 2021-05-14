@@ -41,24 +41,6 @@ use core::ptr;
 // Plan to copy it back later.
 // global_asm!(include_str!("bootblock.S"), options(att_syntax));
 
-fn poke32(a: u32, v: u32) -> () {
-    let y = a as *mut u32;
-    unsafe {
-        ptr::write_volatile(y, v);
-    }
-}
-fn poke8(a: u32, v: u8) -> () {
-    let y = a as *mut u8;
-    unsafe {
-        ptr::write_volatile(y, v);
-    }
-}
-
-fn peek32(a: u32) -> u32 {
-    let y = a as *const u32;
-    unsafe { ptr::read_volatile(y) }
-}
-
 const LPC_ISA_BRIDGE_DEVICE: u8 = 0x14;
 const LPC_ISA_BRIDGE_FUNCTION: u8 = 0x3;
 // p 433
@@ -224,14 +206,9 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     }
     // TODO: Is this specific to Rome?
     // c00(w);
-    write!(w, "LDN is {:x}\r\n", peek32(0xfee000d0)).unwrap();
-    poke32(0xfee000d0, 0x1000000);
-    write!(w, "LDN is {:x}\r\n", peek32(0xfee000d0)).unwrap();
-    write!(w, "loading payload with fdt_address {}\r\n", fdt_address).unwrap();
 
     boot(w, fdt_address);
 
-    write!(w, "Unexpected return from payload\r\n").unwrap();
     arch::halt()
 }
 
