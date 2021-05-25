@@ -72,7 +72,8 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize) -> usize {
         0
     );
 
-    /*
+    panic!("HEEEEEEEELP");
+
     // xsdt - Extended System Description Table
     let xsdt_total_length = size_of::<AcpiTableHeader>() + size_of::<u64>() * NUM_XSDT_ENTRIES;
     let xsdt = AcpiTableHeader {
@@ -102,6 +103,7 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize) -> usize {
         0
     );
 
+    /*
     const FADT_FLAGS: u32 = 0b0011_0000_0101_1010_0101;
     // fadt - Fixed ACPI Description Table
     let fadt = AcpiTableFadt {
