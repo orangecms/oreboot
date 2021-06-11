@@ -56,6 +56,11 @@ const SMBUS_ASF_IO_EN: u8 = 1 << 4;
 const FCH_AOACx40_D3_CONTROL: *const [VolatileCell<u8>; 64] = (AOAC_BASE + 0x40) as *const _; // Note: 32 times (control: u8, status: u8) block
 const AOAC_PWR_ON_DEV: u8 = 1 << 3;
 
+const FCH_PM_BASE: usize = 0xfed8_0300;
+const FCH_PM_LPC_MISC: *const VolatileCell<u8> = (FCH_PM_BASE + 0x0B9) as *const _;
+const LPC_MISC_CLK_RUN_DISABLE_SHIFT: u8 = 3;
+const LPC_MISC_CLK_RUN_DISABLE: u8 = 1 << LPC_MISC_CLK_RUN_DISABLE_SHIFT;
+
 /* TODO: Use D3 State:
 FCH_AOAC_PWR_RST_STATE        BIT(0)
 FCH_AOAC_RST_CLK_OK_STATE     BIT(1)
@@ -164,6 +169,9 @@ impl Driver for MainBoard {
             // (*FCH_UART_LEGACY_DECODE).set(FCH_LEGACY_3F8_SH | FCH_WUR3);
             // Turn off legacy decode for UART 0.
             (*FCH_UART_LEGACY_DECODE).set(0);
+
+            (*FCH_PM_LPC_MISC).set(LPC_MISC_CLK_RUN_DISABLE);
+            // (*FCH_PM_LPC_MISC).set(0);
 
             // IOAPIC
             //     wmem fed80300 e3070b77
