@@ -72,7 +72,7 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize) -> usize {
         0
     );
 
-    panic!("HEEEEEEEELP");
+    // panic!("HEEEEEEEELP");
 
     // xsdt - Extended System Description Table
     let xsdt_total_length = size_of::<AcpiTableHeader>() + size_of::<u64>() * NUM_XSDT_ENTRIES;
