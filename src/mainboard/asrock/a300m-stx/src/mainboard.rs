@@ -57,6 +57,12 @@ const FCH_AOACx40_D3_CONTROL: *const [VolatileCell<u8>; 64] = (AOAC_BASE + 0x40)
 const AOAC_PWR_ON_DEV: u8 = 1 << 3;
 
 const FCH_PM_BASE: usize = 0xfed8_0300;
+
+// p488 "only needed for certain old LPC devices"
+const FCH_PM_PCI_CTL: *const VolatileCell<u32> = (FCH_PM_BASE + 0x008) as *const _;
+const AB_STALL_EN_SHIFT: u8 = 23;
+const AB_STALL_EN: u32 = 1 << AB_STALL_EN_SHIFT;
+
 const FCH_PM_LPC_MISC: *const VolatileCell<u8> = (FCH_PM_BASE + 0x0B9) as *const _;
 const LPC_MISC_CLK_RUN_DISABLE_SHIFT: u8 = 3;
 const LPC_MISC_CLK_RUN_DISABLE: u8 = 1 << LPC_MISC_CLK_RUN_DISABLE_SHIFT;
@@ -172,6 +178,8 @@ impl Driver for MainBoard {
 
             (*FCH_PM_LPC_MISC).set(LPC_MISC_CLK_RUN_DISABLE);
             // (*FCH_PM_LPC_MISC).set(0);
+
+            (*FCH_PM_PCI_CTL).set((*FCH_PM_PCI_CTL).get() | AB_STALL_EN);
 
             // IOAPIC
             //     wmem fed80300 e3070b77
