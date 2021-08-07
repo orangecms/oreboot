@@ -51,6 +51,8 @@ const IO_PORT_DECODE_ENABLE_3F8: u32 = 1 << IO_PORT_DECODE_ENABLE_3F8_SHIFT;
 const LPC_IO_OR_MEM_DECODE_ENABLE: u16 = 0x048;
 const DECODE_SIO_ENABLE: u32 = 1;
 
+const LPC_CLK_CNTL: u16 = 0x07D;
+
 fn smnhack(w: &mut impl core::fmt::Write, reg: u32, want: u32) -> () {
     let got = smn_read(reg);
     write!(w, "{:x}: got {:x}, want {:x}\r\n", reg, got, want).unwrap();
