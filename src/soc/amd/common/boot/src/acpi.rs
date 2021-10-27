@@ -48,8 +48,10 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize) -> usize {
         ..Default::default()
     };
 
-    write!(w, "Write rsdp  at {:x?} \r\n", rsdp_offset).unwrap();
+    // write!(w, "Write rsdp  at {:x?} \r\n", rsdp_offset).unwrap();
     write(w, rsdp, rsdp_offset, 0);
+
+    /*
     write(
         w,
         gencsum(rsdp_offset, rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH),
@@ -60,7 +62,6 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize) -> usize {
         acpi_tb_checksum(rsdp_offset, rsdp_offset + ACPI_RSDP_CHECKSUM_LENGTH),
         0
     );
-
     write(
         w,
         gencsum(rsdp_offset, rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH),
@@ -71,6 +72,7 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize) -> usize {
         acpi_tb_checksum(rsdp_offset, rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH),
         0
     );
+    */
 
     // panic!("HEEEEEEEELP");
 
