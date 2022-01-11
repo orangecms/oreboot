@@ -5,6 +5,7 @@ QEMU       ?= qemu-system-riscv64
 QEMU_FLAGS += -m 1g -machine sifive_u,start-in-flash=true -nographic -device loader,addr=0x20000000,file=${IMAGE} -bios none -smp 4
 XFEL       ?= xfel
 IMAGE      ?= target/$(TARGET)/release/image.bin
+MKIMAGE    ?= mkimage
 # DRAM space starts at 0x40000000, see manual p34
 MEMADDR    ?= 0x40000000
 include $(OREBOOT)/Makefile.inc
@@ -18,6 +19,10 @@ boot:
 	$(XFEL) ddr ddr3
 	$(XFEL) write $(MEMADDR) target/$(TARGET)/release/bootblob.bin
 	$(XFEL) exec $(MEMADDR)
+
+image:
+	 $(MKIMAGE) -A riscv -T sunxi_egon -C none -n bootblob \
+		 -d target/$(TARGET)/release/bootblob.bin bootblob.img
 
 objdump:
 	rust-objdump -d target/$(TARGET)/release/nezha
