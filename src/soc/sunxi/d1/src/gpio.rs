@@ -23,11 +23,21 @@ pub struct RegisterBlock {
     pbdrv1: ReadWrite<u32, GPIO_PB_DRV1::Register>,
     _pad2: [u32; 2],
     /* PB Pull config */
-    pbpull: ReadWrite<u32, GPIO_PB_PULL::Register>,
+    pbpull: ReadWrite<u32, GPIO_PB_PULL::Register>, // 0x54
+    _pad3: [u32; 2],
     /* Port C Config Register 0 */
-    pccfg0: ReadWrite<u32, GPIO_PC_CFG0::Register>,
+    pccfg0: ReadWrite<u32, GPIO_PC_CFG0::Register>, // 0x60
+    _pad4: [u32; 3],
     /* PC Data Register */
-    pcdat: ReadWrite<u32, GPIO_PC_DAT::Register>,
+    pcdat: ReadWrite<u32, GPIO_PC_DAT::Register>, // 0x70
+    _pad5: [u32; 7],
+    /* Port D Config Register 0 */
+    pdcfg0: ReadWrite<u32, GPIO_PD_CFG0::Register>, // 0x90
+    pdcfg1: ReadWrite<u32, GPIO_PD_CFG1::Register>, // 0x94
+    pdcfg2: ReadWrite<u32, GPIO_PD_CFG2::Register>, // 0x98
+    _pad6: [u32; 1],
+    /* PD Data Register */
+    pddat: ReadWrite<u32, GPIO_PD_DAT::Register>, // 0xA0
 }
 
 pub struct GPIO {
@@ -130,6 +140,63 @@ register_bitfields! [
         PC5_DAT OFFSET(5) NUMBITS(1) [],
         PC6_DAT OFFSET(6) NUMBITS(1) [],
         PC7_DAT OFFSET(7) NUMBITS(1) [],
+        // 8-31: reserved
+    ],
+    GPIO_PD_CFG0 [
+        PD0_SELECT OFFSET(0) NUMBITS(4) [],
+        PD1_SELECT OFFSET(4) NUMBITS(4) [],
+        PD2_SELECT OFFSET(8) NUMBITS(4) [],
+        PD3_SELECT OFFSET(12) NUMBITS(4) [],
+        PD4_SELECT OFFSET(16) NUMBITS(4) [],
+        PD5_SELECT OFFSET(20) NUMBITS(4) [],
+        PD6_SELECT OFFSET(24) NUMBITS(4) [],
+        PD7_SELECT OFFSET(28) NUMBITS(4) []
+    ],
+    GPIO_PD_CFG1 [
+        PD8_SELECT OFFSET(0) NUMBITS(4) [],
+        PD9_SELECT OFFSET(4) NUMBITS(4) [],
+        PD10_SELECT OFFSET(8) NUMBITS(4) [],
+        PD11_SELECT OFFSET(12) NUMBITS(4) [],
+        PD12_SELECT OFFSET(16) NUMBITS(4) [],
+        PD13_SELECT OFFSET(20) NUMBITS(4) [],
+        PD14_SELECT OFFSET(24) NUMBITS(4) [],
+        PD15_SELECT OFFSET(28) NUMBITS(4) []
+    ],
+    GPIO_PD_CFG2 [
+        PD16_SELECT OFFSET(0) NUMBITS(4) [],
+        PD17_SELECT OFFSET(4) NUMBITS(4) [],
+        PD18_SELECT OFFSET(8) NUMBITS(4) [],
+        PD19_SELECT OFFSET(12) NUMBITS(4) [],
+        PD20_SELECT OFFSET(16) NUMBITS(4) [],
+        PD21_SELECT OFFSET(20) NUMBITS(4) [],
+        PD22_SELECT OFFSET(24) NUMBITS(4) [],
+        // 28-31: reserved
+    ],
+    GPIO_PD_DAT [
+        PD0_DAT OFFSET(0) NUMBITS(1) [],
+        PD1_DAT OFFSET(1) NUMBITS(1) [],
+        PD2_DAT OFFSET(2) NUMBITS(1) [],
+        PD3_DAT OFFSET(3) NUMBITS(1) [],
+        PD4_DAT OFFSET(4) NUMBITS(1) [],
+        PD5_DAT OFFSET(5) NUMBITS(1) [],
+        PD6_DAT OFFSET(6) NUMBITS(1) [],
+        PD7_DAT OFFSET(7) NUMBITS(1) [],
+        PD8_DAT OFFSET(8) NUMBITS(1) [],
+        PD9_DAT OFFSET(9) NUMBITS(1) [],
+        PD10_DAT OFFSET(10) NUMBITS(1) [],
+        PD11_DAT OFFSET(11) NUMBITS(1) [],
+        PD12_DAT OFFSET(12) NUMBITS(1) [],
+        PD13_DAT OFFSET(13) NUMBITS(1) [],
+        PD14_DAT OFFSET(14) NUMBITS(1) [],
+        PD15_DAT OFFSET(15) NUMBITS(1) [],
+        PD16_DAT OFFSET(16) NUMBITS(1) [],
+        PD17_DAT OFFSET(17) NUMBITS(1) [],
+        PD18_DAT OFFSET(18) NUMBITS(1) [],
+        PD19_DAT OFFSET(19) NUMBITS(1) [],
+        PD20_DAT OFFSET(20) NUMBITS(1) [],
+        PD21_DAT OFFSET(21) NUMBITS(1) [],
+        PD22_DAT OFFSET(22) NUMBITS(1) [],
+        // 23-31: reserved
     ],
 ];
 
@@ -155,6 +222,10 @@ impl Driver for GPIO {
         // set port C GPIO1 high (LED on Lichee RV)
         self.pccfg0.modify(GPIO_PC_CFG0::PC1_SELECT.val(1)); // output / LED
         self.pcdat.modify(GPIO_PC_DAT::PC1_DAT.val(1)); // high
+
+        // set port D GPIO18 high (SPI backlight on Lichee RV)
+        self.pdcfg2.modify(GPIO_PD_CFG2::PD18_SELECT.val(1)); // output / LED
+        self.pddat.modify(GPIO_PD_DAT::PD18_DAT.val(1)); // high
 
         // Config GPIOB8 and GPIOB9 to txd0 and rxd0
         self.pbcfg1.modify(GPIO_PB_CFG1::PB8_SELECT.val(6)); // 0110: UART0 TX
