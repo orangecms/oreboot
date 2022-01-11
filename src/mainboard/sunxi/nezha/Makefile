@@ -21,8 +21,12 @@ boot:
 	$(XFEL) exec $(MEMADDR)
 
 image:
-	 $(MKIMAGE) -A riscv -T sunxi_egon -C none -n bootblob \
+	$(MKIMAGE) -A riscv -T sunxi_egon -C none -n bootblob \
 		 -d target/$(TARGET)/release/bootblob.bin bootblob.img
+
+# see https://linux-sunxi.org/Allwinner_Nezha#BSP_boot0_SPL
+sdcard: image
+	sudo dd if=bootblob.img of=/dev/mmcblk0 bs=8192 seek=16
 
 objdump:
 	rust-objdump -d target/$(TARGET)/release/nezha
