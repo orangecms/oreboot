@@ -3,7 +3,7 @@ use consts::DeviceCtl;
 use core::ops;
 use model::*;
 
-//use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::ReadWriteable;
 use tock_registers::register_bitfields;
 use tock_registers::registers::ReadWrite;
 
@@ -57,6 +57,18 @@ impl CCU {
 
 impl Driver for CCU {
     fn init(&mut self) -> Result<()> {
+        // TODO: full init needs this; keep it here, assuming that we always
+        // need it anyway? How about panic?
+        // reset
+        self.bgr.modify(CCU_UART_BGR::UART0_RST.val(0));
+        for _ in 1..100 {}
+        self.bgr.modify(CCU_UART_BGR::UART0_RST.val(1));
+
+        // gate
+        self.bgr.modify(CCU_UART_BGR::UART0_GATING.val(0));
+        for _ in 1..100 {}
+        self.bgr.modify(CCU_UART_BGR::UART0_GATING.val(1));
+
         Ok(())
     }
 

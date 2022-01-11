@@ -112,20 +112,6 @@ impl Sunxi {
 
 impl Driver for Sunxi {
     fn init(&mut self) -> Result<()> {
-        // TODO: full init needs this; put it in the mainboard main.rs or in the
-        // CCU init, assuming that we always need it anyway? How about panic?
-        /*
-        // reset
-        self.bgr.modify(CCU_UART_BGR::UART0_RST.val(0));
-        for i in 1..100 {}
-        self.bgr.modify(CCU_UART_BGR::UART0_RST.val(1));
-
-        // gate
-        self.bgr.modify(CCU_UART_BGR::UART0_GATING.val(0));
-        for i in 1..100 {}
-        self.bgr.modify(CCU_UART_BGR::UART0_GATING.val(1));
-        */
-
         // disable interrupts
         self.u0dlhie.modify(UART0_DLH_IE::ETBEI.val(0));
         // enable FIFO
