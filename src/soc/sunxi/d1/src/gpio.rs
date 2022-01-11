@@ -223,10 +223,6 @@ impl Driver for GPIO {
         self.pccfg0.modify(GPIO_PC_CFG0::PC1_SELECT.val(1)); // output / LED
         self.pcdat.modify(GPIO_PC_DAT::PC1_DAT.val(1)); // high
 
-        // set port D GPIO18 high (SPI backlight on Lichee RV)
-        self.pdcfg2.modify(GPIO_PD_CFG2::PD18_SELECT.val(1)); // output / LED
-        self.pddat.modify(GPIO_PD_DAT::PD18_DAT.val(1)); // high
-
         // Config GPIOB8 and GPIOB9 to txd0 and rxd0
         self.pbcfg1.modify(GPIO_PB_CFG1::PB8_SELECT.val(6)); // 0110: UART0 TX
         self.pbcfg1.modify(GPIO_PB_CFG1::PB9_SELECT.val(6)); // 0110: UART0 RX
