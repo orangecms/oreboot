@@ -44,9 +44,9 @@ pub extern "C" fn _start() -> ! {
     let cached_mem = 0x8000_0000;
     let payload_offset = 0x2_0000;
     let payload_size = 0x1e_0000;
-    let linuxboot_offset = 0x20_0000;
+    let linuxboot_offset = payload_offset + payload_size;
     let linuxboot_size = 0x120_0000;
-    let dtb_offset = 0x140_0000;
+    let dtb_offset = linuxboot_offset + linuxboot_size;
     let dtb_size = 0xe000;
 
     // TODO; This payload structure should be loaded from boot medium rather

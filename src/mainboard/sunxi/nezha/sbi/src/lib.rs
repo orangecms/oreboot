@@ -87,7 +87,7 @@ fn init_pmp() {
     pmpcfg0::write(cfg);
     // pmpcfg2::write(0);
     pmpaddr0::write(0x40000000usize >> 2);
-    pmpaddr1::write(0x40200000usize >> 2);
+    pmpaddr1::write(0x40020000usize >> 2);
     pmpaddr2::write(0x80000000usize >> 2);
     pmpaddr3::write(0xc0000000usize >> 2);
     pmpaddr4::write(0xffffffffusize >> 2);
