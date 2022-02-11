@@ -25,7 +25,7 @@ use core::ops::Not;
 use core::ptr;
 use model::*;
 use smn::smn_write;
-use uart::debug_port::DebugPort;
+// use uart::debug_port::DebugPort;
 use uart::i8250::I8250;
 use vcell::VolatileCell;
 

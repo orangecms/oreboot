@@ -1,4 +1,5 @@
 #![feature(asm_const)]
+#![feature(fmt_internals)]
 #![feature(lang_items, start)]
 #![no_std]
 #![no_main]
@@ -17,7 +18,7 @@ use raw_cpuid::CpuId;
 use smn::{smn_read, smn_write};
 use soc::soc_init;
 // use uart::amdmmio::UART;
-use uart::debug_port::DebugPort;
+// use uart::debug_port::DebugPort;
 use uart::i8250::I8250;
 mod mainboard;
 use mainboard::MainBoard;
@@ -31,8 +32,8 @@ use pci::config32;
 use pci::PciAddress;
 use x86_64::registers::model_specific::Msr;
 extern crate heapless; // v0.4.x
-use heapless::consts::*;
 use heapless::Vec;
+use heapless::consts::{U8, U16};
 use wrappers::DoD;
 
 use core::ptr;
@@ -285,11 +286,32 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     m.init().unwrap();
     let mut text_output_drivers = m.text_output_drivers();
     let console = &mut DoD::new(&mut text_output_drivers);
+    let n = &mut MainBoard::new();
+    n.init().unwrap();
+    let mut text_output_driver = n.text_output_drivers();
+    let onsole = &mut DoD::new(&mut text_output_driver);
 
-    for _i in 1..32 {
+    /*
+    for _i in -1..0 {
         console.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
     }
+    */
+    // console.pwrite(b"Welcome to oreboot 1\r\n", 0).unwrap();
     let w = &mut print::WriteToDyn::new(console);
+    let o = 1;
+    // onsole.pwrite(b"Welcome to oreboot 2\r\n", 0).unwrap();
+    let x = &mut print::WriteToDyn::new(onsole);
+    // write!(x, "stupid crap {:p}\r\n", &o).unwrap();
+    // onsole.pwrite(b"Welcome to oreboot 3\r\n", 0).unwrap();
+    write!(x, "stupid crap\r\n").unwrap();
+    /*
+    x.write_fmt(
+        ::core::fmt::Arguments::new_v1(
+            &["stupid crap\r\n"],
+            &match () { () => [] },
+        )
+    ).unwrap();
+    */
 
     // It is hard to say if we need to do this.
     if true {
