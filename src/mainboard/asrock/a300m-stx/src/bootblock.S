@@ -80,7 +80,7 @@ gdt_end:
 	movb $0x42, %al
 	outb %al, $0x80
 	movw $0x3F8, %dx
-  movb $0xAA, %al
+  movb $0xA5, %al
   call p4
 	// TOS contains a pointer to the gdt descriptor
 	popl %eax
@@ -242,8 +242,8 @@ __protected_start_no_load_segs:
 	// Set a pointer to the page table pages in %cr3.
 	// We can use cr3 as a scratch register here;
 	// its value won't matter until we set PG in CR0 below.
-	movl $pml4, %esp
-	movl %esp, %cr3
+	movl $pml4, %eax
+	movl %eax, %cr3
 
 	// Now for the big fun: Long Mode.
 	// Once again we put the data structures inline in this
