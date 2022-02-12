@@ -81,7 +81,6 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
     write(w, gencsum(xsdt_offset, xsdt_offset + xsdt_total_length), xsdt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(acpi_tb_checksum(xsdt_offset, xsdt_offset + xsdt_total_length), 0);
 
-    /*
     const FADT_FLAGS: u32 = 0b0011_0000_0101_1010_0101;
     // fadt - Fixed ACPI Description Table
     let fadt = AcpiTableFadt {
@@ -121,6 +120,7 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         ..Default::default()
     };
     write(w, fadt, fadt_offset, 0);
+    /*
     write(w, gencsum(fadt_offset, fadt_offset + size_of::<AcpiTableFadt>()), fadt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(acpi_tb_checksum(fadt_offset, fadt_offset + size_of::<AcpiTableFadt>()), 0);
 
