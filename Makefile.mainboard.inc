@@ -36,6 +36,15 @@ mainboard: $(IMAGE)
 objdump: $(ELF)
 	rust-objdump -d $(ELF)
 
+targetlist:
+	RUST_TARGET_PATH=$(TOP)/src/custom_targets \
+		cargo rustc --print target-list
+
+expand:
+	RUST_TARGET_PATH=$(TOP)/src/custom_targets \
+		cargo expand --target "$(TARGET)" \
+       		-Z build-std=core,alloc
+
 stack-sizes: $(ELF)
 	stack-sizes $(ELF)
 
