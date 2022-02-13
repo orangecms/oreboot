@@ -6,8 +6,7 @@
 
 use arch::bzimage::BzImage;
 use arch::ioport::IOPort;
-use core::arch::asm;
-use core::arch::global_asm;
+use core::arch::{asm, global_asm};
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use cpu::model::amd_family_id;
@@ -32,8 +31,8 @@ use pci::config32;
 use pci::PciAddress;
 use x86_64::registers::model_specific::Msr;
 extern crate heapless; // v0.4.x
+use heapless::consts::{U16, U8};
 use heapless::Vec;
-use heapless::consts::{U8, U16};
 use wrappers::DoD;
 
 use core::ptr;
@@ -232,6 +231,8 @@ fn smnhack(w: &mut impl core::fmt::Write, reg: u32, want: u32) -> () {
 }
 
 fn cpu_init(w: &mut impl core::fmt::Write) -> Result<(), &str> {
+    let o = 1;
+    write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
     let cpuid = CpuId::new();
     match cpuid.get_vendor_info() {
         Some(vendor) => {
@@ -243,7 +244,18 @@ fn cpu_init(w: &mut impl core::fmt::Write) -> Result<(), &str> {
             panic!("Could not determine whether or not CPU is AMD");
         }
     }
-    // write!(w, "CPU Model is: {}\r\n", cpuid.get_extended_function_info().as_ref().map_or_else(|| "n/a", |extfuninfo| extfuninfo.processor_brand_string().unwrap_or("unreadable"),)); // "AMD EPYC TITUS N-Core Processor"
+    /*
+    write!(
+        w,
+        "CPU Model is: {}\r\n",
+        cpuid.get_extended_function_info().as_ref().map_or_else(
+            || "n/a",
+            |extfuninfo| extfuninfo.processor_brand_string().unwrap_or("unreadable"),
+        )
+    ); // "AMD EPYC TITUS N-Core Processor"
+    */
+    let o = 1;
+    write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
     let amd_family_id = cpuid.get_feature_info().map(|info| amd_family_id(&info));
     let amd_model_id = cpuid.get_feature_info().map(|info| amd_model_id(&info));
     match amd_family_id {
@@ -288,22 +300,11 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     let console = &mut DoD::new(&mut text_output_drivers);
     let n = &mut MainBoard::new();
     n.init().unwrap();
-    let mut text_output_driver = n.text_output_drivers();
-    let onsole = &mut DoD::new(&mut text_output_driver);
 
-    /*
-    for _i in -1..0 {
-        console.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
-    }
-    */
-    // console.pwrite(b"Welcome to oreboot 1\r\n", 0).unwrap();
+    console.pwrite(b"Welcome to oreboot 1\r\n", 0).unwrap();
     let w = &mut print::WriteToDyn::new(console);
     let o = 1;
-    // onsole.pwrite(b"Welcome to oreboot 2\r\n", 0).unwrap();
-    let x = &mut print::WriteToDyn::new(onsole);
-    // write!(x, "stupid crap {:p}\r\n", &o).unwrap();
-    // onsole.pwrite(b"Welcome to oreboot 3\r\n", 0).unwrap();
-    write!(x, "stupid crap\r\n").unwrap();
+    write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
     /*
     x.write_fmt(
         ::core::fmt::Arguments::new_v1(

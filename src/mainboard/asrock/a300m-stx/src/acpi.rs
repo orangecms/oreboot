@@ -44,6 +44,8 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         xsdt_physical_address: xsdt_offset as u64,
         ..Default::default()
     };
+    let o = 1;
+    write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
 
     write!(w, "Write rsdp  at {:x?} \r\n", rsdp_offset).unwrap();
     write(w, rsdp, rsdp_offset, 0);
@@ -60,6 +62,7 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         0
     );
 
+    /*
     write(
         w,
         gencsum(rsdp_offset, rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH),
@@ -120,7 +123,6 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         ..Default::default()
     };
     write(w, fadt, fadt_offset, 0);
-    /*
     write(w, gencsum(fadt_offset, fadt_offset + size_of::<AcpiTableFadt>()), fadt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(acpi_tb_checksum(fadt_offset, fadt_offset + size_of::<AcpiTableFadt>()), 0);
 
