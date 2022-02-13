@@ -41,7 +41,7 @@ SECTIONS
         KEEP(*(.stack_sizes));
     }
 
-    /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*)
+    /DISCARD/ : { *(.comment) *(.gnu*) *(.note*) *(.eh_frame*)
     /* Unused exception related info that only wastes space */
     }
 }

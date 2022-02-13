@@ -44,8 +44,6 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         xsdt_physical_address: xsdt_offset as u64,
         ..Default::default()
     };
-    let o = 1;
-    write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
 
     write!(w, "Write rsdp  at {:x?} \r\n", rsdp_offset).unwrap();
     write(w, rsdp, rsdp_offset, 0);

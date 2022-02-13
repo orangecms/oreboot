@@ -231,8 +231,6 @@ fn smnhack(w: &mut impl core::fmt::Write, reg: u32, want: u32) -> () {
 }
 
 fn cpu_init(w: &mut impl core::fmt::Write) -> Result<(), &str> {
-    let o = 1;
-    write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
     let cpuid = CpuId::new();
     match cpuid.get_vendor_info() {
         Some(vendor) => {
@@ -254,8 +252,6 @@ fn cpu_init(w: &mut impl core::fmt::Write) -> Result<(), &str> {
         )
     ); // "AMD EPYC TITUS N-Core Processor"
     */
-    let o = 1;
-    write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
     let amd_family_id = cpuid.get_feature_info().map(|info| amd_family_id(&info));
     let amd_model_id = cpuid.get_feature_info().map(|info| amd_model_id(&info));
     match amd_family_id {
@@ -298,11 +294,10 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     m.init().unwrap();
     let mut text_output_drivers = m.text_output_drivers();
     let console = &mut DoD::new(&mut text_output_drivers);
-    let n = &mut MainBoard::new();
-    n.init().unwrap();
 
-    console.pwrite(b"Welcome to oreboot 1\r\n", 0).unwrap();
+    // console.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
     let w = &mut print::WriteToDyn::new(console);
+    write!(w, "Welcome to oreboot\r\n").unwrap();
     let o = 1;
     write!(w, "stupid crap {:p}  \r\n", &o).unwrap();
     /*
@@ -379,6 +374,8 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     )
     .unwrap();
     lpc_io_or_mem_decode_enable.set(lpc_io_or_mem_decode_enable.get() | DECODE_SIO_ENABLE);
+    let f = 1;
+    write!(w, "stupid crap {:p}  \r\n", &f).unwrap();
 
     match cpu_init(w) {
         Ok(()) => {}
