@@ -2,14 +2,15 @@ use x86_64::registers::model_specific::Msr;
 
 /// read_msr reads the MSR, compares it to a known good value, and prints a message indicating whether they match
 fn read_msr(w: &mut impl core::fmt::Write, address: u32, expected_value: u64) {
-    write!(w, "{:x} ", address).expect("Failed to write!");
+    // write!(w, "{:x} ", address).expect("Failed to write!");
     let read_value = unsafe { Msr::new(address).read() };
-    let d = if read_value != expected_value {
-        "DIFF:"
-    } else {
-        "SAME:"
+    /*
+    let d = match read_value {
+        expected_value => "SAME:",
+        _ => "DIFF:",
     };
     writeln!(w, "{}{:x} got {:x}\r", d, expected_value, read_value,).expect("Failed to write!");
+    */
 }
 
 /// read_write_msr reads the MSR, compares the existing contents to the input value,
@@ -22,7 +23,9 @@ fn read_write_msr(w: &mut impl core::fmt::Write, address: u32, value: u64) {
         msr.write(value);
     }
     let checked_value = unsafe { msr.read() }; // Some msrs error on read so this has to be unsafe
-    writeln!(w, " -- wrmsr: and got {:x}; \r", checked_value).expect("Failed to write!");
+    if false {
+        writeln!(w, " -- wrmsr: and got {:x}; \r", checked_value).expect("Failed to write!");
+    }
 }
 
 /// write_msr writes the input value to an MSR without checking

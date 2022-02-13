@@ -60,7 +60,6 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         0
     );
 
-    /*
     write(
         w,
         gencsum(rsdp_offset, rsdp_offset + ACPI_RSDP_XCHECKSUM_LENGTH),
@@ -130,9 +129,7 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
 
     // dsdt - Differentiated System Description Table
     write(w, DSDT_DSDTTBL_HEADER, dsdt_offset, 0);
-    */
 
-    /*
     // madt - Multiple APIC Description Table
     // TODO: Recalculate for SMP
     // let madt_total_length = size_of::<AcpiTableMadt>() + cores as usize * (size_of::<AcpiMadtLocalApic>() + size_of::<AcpiMadtLocalX2apic>());
@@ -141,17 +138,13 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
 
     let madt = AcpiTableMadt { header: AcpiTableHeader { signature: SIG_MADT, length: madt_total_length as u32, revision: 4, ..AcpiTableHeader::new() }, address: x86::APIC_BASE as u32, flags: 1 };
     write(w, madt, madt_offset, 0);
-    */
 
-    /*
     // Processor Local APIC
     for i in 0..cores {
         let local_apic = AcpiMadtLocalApic { header: AcpiSubtableHeader { r#type: MADT_LOCAL_APIC, length: size_of::<AcpiMadtLocalApic>() as u8 }, processor_id: i as u8, id: i as u8, lapic_flags: 1 };
         write(w, local_apic, madt_local_apic_offset, i as usize)
     }
-    */
 
-    /*
     // Processor Local x2APIC
     for i in 0..cores {
         let local_x2apic = AcpiMadtLocalX2Apic {
@@ -173,15 +166,11 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
         ..Default::default()
     };
     write(w, local_x2apic_nmi, madt_local_x2apic_nmi_offset, 0 as usize);
-    */
 
-    /*
     // I/O APICs
     let io_apic = AcpiMadtIoApic { header: AcpiSubtableHeader { r#type: MADT_IO_APIC, length: size_of::<AcpiMadtIoApic>() as u8 }, id: 0xf0, address: 0xFEC0_0000 as u32, global_irq_base: 0, ..Default::default() };
     write(w, io_apic, madt_io_apic_offset, 0);
-    */
 
-    /*
     // isor - interrupt source override0
     write!(w, "First ISOR\r\n").unwrap();
     let isor = AcpiMadtInterruptOverride { header: AcpiSubtableHeader { r#type: MADT_LOCAL_ISOR, length: size_of::<AcpiMadtInterruptOverride>() as u8 }, bus: 0, sourceirq: 0, globalirq: 2, flags: 0 /* polarity and trigger mode = 0 */ };
@@ -194,16 +183,12 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
     write!(w, "MADT checksum from {:x} to {:x} store into {:x}\r\n", madt_offset, madt_offset + madt_total_length, ACPI_TABLE_HEADER_CHECKSUM_OFFSET).unwrap();
     write(w, gencsum(madt_offset, madt_offset + madt_total_length), madt_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET); // XXX
     debug_assert_eq!(acpi_tb_checksum(madt_offset, madt_offset + madt_total_length), 0);
-    */
 
-    /*
     // MCFG - Memory Mapped Configuration Space Structure
     let mcfg = AcpiTableMcfg { header: AcpiTableHeader { signature: SIG_MCFG, length: size_of::<AcpiTableMcfg>() as u32, ..AcpiTableHeader::new() }, base_address: 0xE000_0000, end_bus: 0xFF, ..Default::default() };
     write(w, mcfg, mcfg_offset, 0);
     write(w, gencsum(mcfg_offset, mcfg_offset + size_of::<AcpiTableMcfg>()), mcfg_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET);
-    */
 
-    /*
     // HPET - High Precision Event Timer Table
     let hpet = AcpiTableHpet {
         header: AcpiTableHeader { signature: SIG_HPET, length: size_of::<AcpiTableHpet>() as u32, ..AcpiTableHeader::new() },
@@ -215,7 +200,6 @@ pub fn setup_acpi_tables(w: &mut impl core::fmt::Write, start: usize, cores: u32
     };
     write(w, hpet, hpet_offset, 0);
     write(w, gencsum(hpet_offset, hpet_offset + size_of::<AcpiTableHpet>()), hpet_offset, ACPI_TABLE_HEADER_CHECKSUM_OFFSET);
-    */
 
     round_up_4k(total_size)
 }

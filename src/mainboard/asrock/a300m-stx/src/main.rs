@@ -242,7 +242,6 @@ fn cpu_init(w: &mut impl core::fmt::Write) -> Result<(), &str> {
             panic!("Could not determine whether or not CPU is AMD");
         }
     }
-    /*
     write!(
         w,
         "CPU Model is: {}\r\n",
@@ -250,8 +249,7 @@ fn cpu_init(w: &mut impl core::fmt::Write) -> Result<(), &str> {
             || "n/a",
             |extfuninfo| extfuninfo.processor_brand_string().unwrap_or("unreadable"),
         )
-    ); // "AMD EPYC TITUS N-Core Processor"
-    */
+    ).unwrap(); // "AMD EPYC TITUS N-Core Processor"
     let amd_family_id = cpuid.get_feature_info().map(|info| amd_family_id(&info));
     let amd_model_id = cpuid.get_feature_info().map(|info| amd_model_id(&info));
     match amd_family_id {
@@ -385,7 +383,7 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
     }
 
     write!(w, "Write acpi tables\r\n").unwrap();
-    setup_acpi_tables(w, 0xf0000, 1);
+    // setup_acpi_tables(w, 0xf0000, 1);
     write!(w, "Wrote bios tables, entering debug\r\n").unwrap();
 
     if false {
