@@ -3,6 +3,7 @@ use super::{
     read_reg, write_reg,
 };
 use core::convert::Infallible;
+use core::fmt;
 use embedded_hal::serial::{Read, Write};
 // const SUNXI_UART_USR_NF: u32 = 0x02;
 const SUNXI_UART_USR_RFNE: u32 = 0x04;
