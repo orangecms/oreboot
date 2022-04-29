@@ -25,17 +25,6 @@
                 size = <0x1e0000>; // 1.875MiB for M-mode payloads such as xv6
                 file = "$(PAYLOAD_A)";
             };
-            area@3 {
-                description = "Payload B";
-                // TODO: reduce when support compressed payloads
-                size = <0x1200000>; // 18MiB, enough for Linux + initramfs
-                file = "$(PAYLOAD_B)";
-            };
-            area@4 {
-                description = "Payload C";
-                size = <0xe000>; // 56K
-                file = "$(PAYLOAD_C)";
-            };
         };
     };
 };

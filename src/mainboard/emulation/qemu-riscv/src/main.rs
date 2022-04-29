@@ -6,7 +6,7 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use oreboot_arch::riscv64 as arch;
 use oreboot_drivers::{
-    uart::ns16550::NS16550,
+    uart::sunxi::Sunxi,
     wrappers::{Memory, SectionReader, SliceReader},
     Driver,
 };
@@ -17,7 +17,7 @@ global_asm!(include_str!("init.S"));
 
 #[no_mangle]
 pub extern "C" fn _start(fdt_address: usize) -> ! {
-    let uart0 = &mut NS16550::new(0x10000000, 115200);
+    let uart0 = &mut Sunxi::new(0x10000000, 115200);
     uart0.init().unwrap();
     uart0.pwrite(b"Welcome to oreboot\r\n", 0).unwrap();
 
@@ -56,7 +56,7 @@ pub extern "C" fn _start(fdt_address: usize) -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     // Assume that uart0.init() has already been called before the panic.
-    let uart0 = &mut NS16550::new(0x10000000, 115200);
+    let uart0 = &mut Sunxi::new(0x10000000, 115200);
     let w = &mut print::WriteTo::new(uart0);
     // Printing in the panic handler is best-effort because we really don't want to invoke the panic
     // handler from inside itself.

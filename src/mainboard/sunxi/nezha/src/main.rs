@@ -68,7 +68,7 @@ pub extern "C" fn _start() -> ! {
         },
     ];
     // TODO: Get this from configuration
-    let use_sbi = true;
+    let use_sbi = false;
     if use_sbi {
         writeln!(
             w,

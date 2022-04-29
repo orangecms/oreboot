@@ -23,4 +23,4 @@ features = ["sifive_fu540"]
 
 [dependencies.oreboot-drivers]
 path = "../../../drivers"
-features = ["uart_ns16550"]
+features = ["uart_sunxi"]
