@@ -27,6 +27,28 @@ static PLATFORM: &str = "T-HEAD Xuantie Platform";
 #[global_allocator]
 static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
 
+fn init_heap_plic_peripheral() {
+    init_heap();
+    unsafe {
+        init_plic();
+    }
+    peripheral::init_peripheral();
+    println!("[rustsbi] RustSBI version {}\r", rustsbi::VERSION);
+    println!("{}", rustsbi::LOGO);
+    println!("[rustsbi] Platform Name: {}\r", PLATFORM);
+    println!(
+        "[rustsbi] Implementation: RustSBI-NeZha Version {}\r",
+        env!("CARGO_PKG_VERSION")
+    );
+}
+
+fn print_info(payload_offset: usize, dtb_offset: usize) {
+    hart_csr_utils::print_hart_csrs();
+    println!("[rustsbi] enter supervisor 0x{:x}\r", payload_offset);
+    println!("[rustsbi] dtb handed over from 0x{:x}\r", dtb_offset);
+    print_hart_pmp();
+}
+
 pub fn sbi_init(payload_offset: usize, dtb_offset: usize) -> ! {
     let hartid = riscv::register::mhartid::read();
     if hartid == 0 {
@@ -35,27 +57,13 @@ pub fn sbi_init(payload_offset: usize, dtb_offset: usize) -> ! {
     init_pmp();
     runtime::init();
     if hartid == 0 {
-        init_heap();
-        unsafe {
-            init_plic();
-        }
-        peripheral::init_peripheral();
-        println!("[rustsbi] RustSBI version {}\r", rustsbi::VERSION);
-        println!("{}", rustsbi::LOGO);
-        println!("[rustsbi] Platform Name: {}\r", PLATFORM);
-        println!(
-            "[rustsbi] Implementation: RustSBI-NeZha Version {}\r",
-            env!("CARGO_PKG_VERSION")
-        );
+        init_heap_plic_peripheral();
     }
     unsafe {
         delegate_interrupt_exception();
     }
     if hartid == 0 {
-        hart_csr_utils::print_hart_csrs();
-        println!("[rustsbi] enter supervisor 0x{:x}\r", payload_offset);
-        println!("[rustsbi] dtb handed over from 0x{:x}\r", dtb_offset);
-        print_hart_pmp();
+        print_info(payload_offset, dtb_offset);
     }
     execute::execute_supervisor(payload_offset, hartid, dtb_offset)
 }
