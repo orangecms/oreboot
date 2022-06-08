@@ -52,6 +52,7 @@ This bit will be reset to 1’b0.
 
 .globl _boot
 _boot:
+    # j _debug
     /*disable interrupt*/
     csrw mie, zero
 
