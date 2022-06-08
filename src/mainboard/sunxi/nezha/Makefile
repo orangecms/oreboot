@@ -4,7 +4,8 @@ TARGET     = riscv64gc-unknown-none-elf
 QEMU       ?= qemu-system-riscv64
 QEMU_FLAGS += -m 1g -machine sifive_u,start-in-flash=true -nographic -device loader,addr=0x20000000,file=${IMAGE} -bios none -smp 4
 XFEL       ?= xfel
-IMAGE      ?= target/$(TARGET)/release/image.bin
+TARGET_DIR = $(OREBOOT)/target/$(TARGET)/release
+IMAGE      ?= $(TARGET_DIR)/sunxi-nezha.bin
 # DRAM space starts at 0x40000000, see manual p34
 MEMADDR    ?= 0x40000000
 include $(OREBOOT)/Makefile.inc
@@ -15,7 +16,7 @@ ciclippy: clippy
 citest: skiptest
 
 boot: raminit
-	$(XFEL) write $(MEMADDR) target/$(TARGET)/release/bootblob.bin
+	$(XFEL) write $(MEMADDR) $(TARGET_DIR)/sunxi-nezha-bootblob.bin
 	$(XFEL) exec $(MEMADDR)
 
 raminit:
