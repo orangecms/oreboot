@@ -89,7 +89,7 @@ pub extern "C" fn _start() -> ! {
     let use_sbi = true;
     if use_sbi {
         let lb_addr = MEM + 0x0020_0000;
-        let dtb_addr = lb_addr + linuxboot_size;
+        let dtb_addr = lb_addr + 0x0100_0000;
         /*
         unsafe {
             // backwards, so DTB first
