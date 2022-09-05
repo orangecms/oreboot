@@ -9,8 +9,24 @@ const DEBUG_THIS: bool = false;
 
 #[inline]
 pub fn emulate_rdtime(ctx: &mut SupervisorContext, ins: usize) -> bool {
-    //  c0002573     rdcycle a0
-    if ins & 0xFFFFF07F == 0xC0002073 {
+    if ins & 0xFF0000FF == 0xf10000f3 {
+        // 0xf14025f3
+        ctx.mepc = ctx.mepc.wrapping_add(4); // skip current instruction
+        println!("[rustsbi] something {:x}\r", ins);
+        true
+    } else if ins & 0xFF00007F == 0x7c000073 {
+        // 0x7c23a073
+        // 0x7c032073
+        ctx.mepc = ctx.mepc.wrapping_add(4); // skip current instruction
+        println!("[rustsbi] something {:x}\r", ins);
+        true
+    } else if ins & 0xFF0FF07F == 0x30005073 {
+        // 0x30405073
+        ctx.mepc = ctx.mepc.wrapping_add(4); // skip current instruction
+        println!("[rustsbi] something {:x}\r", ins);
+        true
+    } else if ins & 0xFFFFF07F == 0xC0002073 {
+        //  c0002573     rdcycle a0
         let rd = ((ins >> 7) & 0b1_1111) as u8;
         let cycle_usize = cycle::read64() as usize;
         set_register_xi(ctx, rd, cycle_usize);
