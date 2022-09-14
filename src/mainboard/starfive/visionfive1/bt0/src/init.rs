@@ -197,69 +197,55 @@ pub fn clock_init() {
 }
 
 pub const SYSCON_IOPAD_CTRL_BASE: u32 = 0x00_1185_8000;
-pub const syscon_iopad_ctrl_register32: u32 = SYSCON_IOPAD_CTRL_BASE + 0x80;
-pub const syscon_iopad_ctrl_register33: u32 = SYSCON_IOPAD_CTRL_BASE + 0x84;
-pub const syscon_iopad_ctrl_register34: u32 = SYSCON_IOPAD_CTRL_BASE + 0x88;
-pub const syscon_iopad_ctrl_register35: u32 = SYSCON_IOPAD_CTRL_BASE + 0x8c;
-pub const syscon_iopad_ctrl_register38: u32 = SYSCON_IOPAD_CTRL_BASE + 0x98;
-pub const syscon_iopad_ctrl_register39: u32 = SYSCON_IOPAD_CTRL_BASE + 0x9C;
-pub const syscon_iopad_ctrl_register50: u32 = SYSCON_IOPAD_CTRL_BASE + 0xC8;
+pub const SYSCON_IOPAD_CTRL32: u32 = SYSCON_IOPAD_CTRL_BASE + 0x80;
+pub const SYSCON_IOPAD_CTRL33: u32 = SYSCON_IOPAD_CTRL_BASE + 0x84;
+pub const SYSCON_IOPAD_CTRL34: u32 = SYSCON_IOPAD_CTRL_BASE + 0x88;
+pub const SYSCON_IOPAD_CTRL35: u32 = SYSCON_IOPAD_CTRL_BASE + 0x8c;
+pub const SYSCON_IOPAD_CTRL38: u32 = SYSCON_IOPAD_CTRL_BASE + 0x98;
+pub const SYSCON_IOPAD_CTRL39: u32 = SYSCON_IOPAD_CTRL_BASE + 0x9C;
+pub const SYSCON_IOPAD_CTRL50: u32 = SYSCON_IOPAD_CTRL_BASE + 0xC8;
 
 pub fn _SET_SYSCON_REG_register50_SCFG_funcshare_pad_ctrl_18(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register50);
-    nv &= !(0xFFFFFFFF);
-    nv |= (v);
-    serial_out(syscon_iopad_ctrl_register50, nv);
+    serial_in(SYSCON_IOPAD_CTRL50);
+    serial_out(SYSCON_IOPAD_CTRL50, v);
 }
 
 pub fn _SET_SYSCON_REG_register104_SCFG_io_padshare_sel(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register104);
-    nv &= !(0x7);
-    nv |= (v & 0x7);
-    serial_out(syscon_iopad_ctrl_register104, nv);
+    let nv = serial_in(syscon_iopad_ctrl_register104) & !(0x7);
+    serial_out(syscon_iopad_ctrl_register104, nv | v & 0x7);
 }
 
 pub fn _SET_SYSCON_REG_register32_SCFG_funcshare_pad_ctrl_0(v: u32) {
     // NOTE: for whatever reason, it appears that writing only works after
     // reading i.e., if you remove the `serial_in`, it breaks the code
     // let's hope the compiler does not remove it in optimization
-    serial_in(syscon_iopad_ctrl_register32);
-    serial_out(syscon_iopad_ctrl_register32, v);
+    serial_in(SYSCON_IOPAD_CTRL32);
+    serial_out(SYSCON_IOPAD_CTRL32, v);
 }
 
 pub fn _SET_SYSCON_REG_register33_SCFG_funcshare_pad_ctrl_1(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register33);
-    nv &= !(0xFFFFFFFF);
-    nv |= (v);
-    serial_out(syscon_iopad_ctrl_register33, nv);
+    serial_in(SYSCON_IOPAD_CTRL33);
+    serial_out(SYSCON_IOPAD_CTRL33, v);
 }
 
 pub fn _SET_SYSCON_REG_register34_SCFG_funcshare_pad_ctrl_2(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register34);
-    nv &= !(0xFFFFFFFF);
-    nv |= (v);
-    serial_out(syscon_iopad_ctrl_register34, nv);
+    serial_in(SYSCON_IOPAD_CTRL34);
+    serial_out(SYSCON_IOPAD_CTRL34, v);
 }
 
 pub fn _SET_SYSCON_REG_register35_SCFG_funcshare_pad_ctrl_3(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register35);
-    nv &= !(0xFFFFFFFF);
-    nv |= (v);
-    serial_out(syscon_iopad_ctrl_register35, nv);
+    serial_in(SYSCON_IOPAD_CTRL35);
+    serial_out(SYSCON_IOPAD_CTRL35, v);
 }
 
 pub fn _SET_SYSCON_REG_register38_SCFG_funcshare_pad_ctrl_6(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register38);
-    nv &= !(0xFFFFFFFF);
-    nv |= (v);
-    serial_out(syscon_iopad_ctrl_register38, nv);
+    serial_in(SYSCON_IOPAD_CTRL38);
+    serial_out(SYSCON_IOPAD_CTRL38, v);
 }
 
 pub fn _SET_SYSCON_REG_register39_SCFG_funcshare_pad_ctrl_7(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register39);
-    nv &= !(0xFFFFFFFF);
-    nv |= (v);
-    serial_out(syscon_iopad_ctrl_register39, nv);
+    serial_in(SYSCON_IOPAD_CTRL39);
+    serial_out(SYSCON_IOPAD_CTRL39, v);
 }
 
 pub fn iopad_init() {
@@ -267,8 +253,8 @@ pub fn iopad_init() {
     _SET_SYSCON_REG_register33_SCFG_funcshare_pad_ctrl_1(0x00c000c0);
     _SET_SYSCON_REG_register34_SCFG_funcshare_pad_ctrl_2(0x00c000c0);
     _SET_SYSCON_REG_register35_SCFG_funcshare_pad_ctrl_3(0x00c000c0);
-    _SET_SYSCON_REG_register39_SCFG_funcshare_pad_ctrl_7(0x00c300c3);
     _SET_SYSCON_REG_register38_SCFG_funcshare_pad_ctrl_6(0x00c00000);
+    _SET_SYSCON_REG_register39_SCFG_funcshare_pad_ctrl_7(0x00c300c3);
     unsafe { asm!("fence") };
 }
 
