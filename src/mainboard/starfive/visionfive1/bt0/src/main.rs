@@ -24,9 +24,11 @@ global_asm!(include_str!("../start.S"));
 #[link_section = ".text.entry"]
 pub unsafe extern "C" fn start() -> ! {
     asm!(
+        "0:",
         "li t4, 0x43",
         "li t5, 0x12440000",
         "sw t4, 0(t5)",
+        // "j 0b", // debug: CCCCCCCCCCC
         // Clear feature disable CSR
         "csrwi  0x7c1, 0",
 
