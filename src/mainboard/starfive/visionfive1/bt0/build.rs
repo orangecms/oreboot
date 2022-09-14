@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 const FLASH: &[u8] = b"
 OUTPUT_ARCH(riscv)
-ENTRY(boot)
+ENTRY(_start)
 MEMORY {
     SRAM : ORIGIN = 0x18000000, LENGTH = 16K
 }
@@ -13,6 +13,7 @@ SECTIONS {
     .head : {
         *(.head.text)
         KEEP(*(.debug))
+        KEEP(*(.bootblock.boot))
     } > SRAM
     .text : {
         KEEP(*(.text.entry))
