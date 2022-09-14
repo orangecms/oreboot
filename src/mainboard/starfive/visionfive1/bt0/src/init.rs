@@ -3,18 +3,18 @@ use core::ptr::{read_volatile, write_volatile};
 
 const UART3_BASE: u32 = 0x1244_0000;
 
-const REG_THR: u32 = 0x00; /* Transmitter holding reg. */
-const REG_RDR: u32 = 0x00; /* Receiver data reg.       */
-const REG_BRDL: u32 = 0x00; /* Baud rate divisor (LSB)  */
-const REG_BRDH: u32 = 0x01; /* Baud rate divisor (MSB)  */
-const REG_IER: u32 = 0x01; /* Interrupt enable reg.    */
-const REG_IIR: u32 = 0x02; /* Interrupt ID reg.        */
-const REG_FCR: u32 = 0x02; /* FIFO control reg.        */
-const REG_LCR: u32 = 0x03; /* Line control reg.        */
-const REG_MDC: u32 = 0x04; /* Modem control reg.       */
-const REG_LSR: u32 = 0x05; /* Line status reg.         */
-const REG_MSR: u32 = 0x06; /* Modem status reg.        */
-const REG_DLF: u32 = 0xC0; /* Divisor Latch Fraction   */
+const REG_THR: u32 = UART3_BASE + 0x00; /* Transmitter holding reg. */
+const REG_RDR: u32 = UART3_BASE + 0x00; /* Receiver data reg.       */
+const REG_BRDL: u32 = UART3_BASE + 0x00; /* Baud rate divisor (LSB)  */
+const REG_BRDH: u32 = UART3_BASE + 0x01; /* Baud rate divisor (MSB)  */
+const REG_IER: u32 = UART3_BASE + 0x01; /* Interrupt enable reg.    */
+const REG_IIR: u32 = UART3_BASE + 0x02; /* Interrupt ID reg.        */
+const REG_FCR: u32 = UART3_BASE + 0x02; /* FIFO control reg.        */
+const REG_LCR: u32 = UART3_BASE + 0x03; /* Line control reg.        */
+const REG_MDC: u32 = UART3_BASE + 0x04; /* Modem control reg.       */
+const REG_LSR: u32 = UART3_BASE + 0x05; /* Line status reg.         */
+const REG_MSR: u32 = UART3_BASE + 0x06; /* Modem status reg.        */
+const REG_DLF: u32 = UART3_BASE + 0xC0; /* Divisor Latch Fraction   */
 
 fn serial_out(reg: u32, val: u32) {
     unsafe {
