@@ -124,6 +124,12 @@ pub const CLK_DLA_ROOT_CTRL: u32 = CLKGEN_BASE + 0x4;
 pub const CLK_DSP_ROOT_CTRL: u32 = CLKGEN_BASE + 0x8;
 pub const CLK_GMACUSB_ROOT_CTRL: u32 = CLKGEN_BASE + 0xC;
 pub const CLK_PERH0_ROOT_CTRL: u32 = CLKGEN_BASE + 0x10;
+pub const CLK_X2C_AXI_CTRL: u32 = CLKGEN_BASE + 0x15C;
+pub const CLK_MSI_APB_CTRL: u32 = CLKGEN_BASE + 0x2D8;
+
+pub const CLK_GMAC_AHB_CTRL: u32 = CLKGEN_BASE + 0x1E0;
+pub const CLK_GMAC_PTP_REFCLK_CTRL: u32 = CLKGEN_BASE + 0x1E8;
+pub const CLK_GMAC_GTXCLK_CTRL: u32 = CLKGEN_BASE + 0x1EC;
 
 pub fn clk_cpundbus_root_pll0_out() {
     let v = read_32(CLK_CPUNDBUS_ROOT_CTRL) & !(0x3 << 24);
@@ -145,6 +151,45 @@ pub fn clk_perh0_root_pll0_out() {
     write_32(CLK_PERH0_ROOT_CTRL, v | 1 << 24);
 }
 
+pub fn enable_clk_x2c_axi_() {
+    let mut v = read_32(CLK_X2C_AXI_CTRL);
+    v &= !(0x1 << 31);
+    v |= 1 << 31;
+    write_32(CLK_X2C_AXI_CTRL, v);
+}
+
+pub fn enable_clk_msi_apb_() {
+    let mut v = read_32(CLK_MSI_APB_CTRL);
+    v &= !(0x1 << 31);
+    v |= 1 << 31;
+    write_32(CLK_MSI_APB_CTRL, v);
+}
+
+pub fn enable_clk_gmac_ahb_() {
+    let v = read_32(CLK_GMAC_AHB_CTRL) & !(0x1 << 31);
+    write_32(CLK_GMAC_AHB_CTRL, v | 1 << 31);
+}
+
+pub fn enable_clk_gmac_ptp_refclk_() {
+    let v = read_32(CLK_GMAC_PTP_REFCLK_CTRL) & !(0x1 << 31);
+    write_32(CLK_GMAC_PTP_REFCLK_CTRL, v | 1 << 31);
+}
+
+pub fn enable_clk_gmac_gtxclk_() {
+    let v = read_32(CLK_GMAC_GTXCLK_CTRL) & !(0x1 << 31);
+    write_32(CLK_GMAC_GTXCLK_CTRL, v | 1 << 31);
+}
+
+/// NOTE: Datasheet p33 / 8.1:
+/// Two external oscillator OSC0 and OSC1 input
+/// - OSC0 25M default for USB, GMAC and system main clock source
+/// - OSC1 input 12-27MHz according to application
+///
+/// Three PLLs
+/// - PLL0 used for system main logic, including CPU, bus
+/// - PLL1 output to support DDR, DLA and DSP
+/// - PLL2 output to support slow speed peripherals, video input and video
+///   output
 fn init_coreclk() {
     // TODO: make base a parameter.
     clk_cpundbus_root_pll0_out();
@@ -260,6 +305,75 @@ pub fn syscon_func_18(v: u32) {
     write_32(SYSCON_IOPAD_CTRL50, v);
 }
 
+pub fn syscon_func_57(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL89);
+    write_32(SYSCON_IOPAD_CTRL89, v);
+}
+
+pub fn syscon_func_58(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL90);
+    write_32(SYSCON_IOPAD_CTRL90, v);
+}
+
+pub fn syscon_func_59(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL91);
+    write_32(SYSCON_IOPAD_CTRL91, v);
+}
+
+pub fn syscon_func_60(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL92);
+    write_32(SYSCON_IOPAD_CTRL92, v);
+}
+
+pub fn syscon_func_61(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL93);
+    write_32(SYSCON_IOPAD_CTRL93, v);
+}
+
+pub fn syscon_func_62(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL94);
+    write_32(SYSCON_IOPAD_CTRL94, v);
+}
+
+pub fn syscon_func_63(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL95);
+    write_32(SYSCON_IOPAD_CTRL95, v);
+}
+
+pub fn syscon_func_64(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL96);
+    write_32(SYSCON_IOPAD_CTRL96, v);
+}
+
+pub fn syscon_func_65(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL97);
+    write_32(SYSCON_IOPAD_CTRL97, v);
+}
+
+pub fn syscon_func_66(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL98);
+    write_32(SYSCON_IOPAD_CTRL98, v);
+}
+pub fn syscon_func_67(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL99);
+    write_32(SYSCON_IOPAD_CTRL99, v);
+}
+
+pub fn syscon_func_68(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL100);
+    write_32(SYSCON_IOPAD_CTRL100, v);
+}
+
+pub fn syscon_func_69(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL101);
+    write_32(SYSCON_IOPAD_CTRL101, v);
+}
+
+pub fn syscon_func_70(v: u32) {
+    read_32(SYSCON_IOPAD_CTRL102);
+    write_32(SYSCON_IOPAD_CTRL102, v);
+}
+
 pub fn iopad_init() {
     syscon_func_0(0x00c00000);
     syscon_func_1(0x00c000c0);
@@ -308,22 +422,6 @@ pub fn clear_rstgen_rstn_hifi4noc_axi_() {
             break;
         }
     }
-}
-
-pub const CLK_X2C_AXI_CTRL: u32 = CLKGEN_BASE + 0x15C;
-pub const CLK_MSI_APB_CTRL: u32 = CLKGEN_BASE + 0x2D8;
-pub fn enable_clk_x2c_axi_() {
-    let mut v = read_32(CLK_X2C_AXI_CTRL);
-    v &= !(0x1 << 31);
-    v |= 1 << 31;
-    write_32(CLK_X2C_AXI_CTRL, v);
-}
-
-pub fn enable_clk_msi_apb_() {
-    let mut v = read_32(CLK_MSI_APB_CTRL);
-    v &= !(0x1 << 31);
-    v |= 1 << 31;
-    write_32(CLK_MSI_APB_CTRL, v);
 }
 
 pub fn clear_rstgen_rstn_x2c_axi_() {
@@ -396,93 +494,6 @@ pub fn clear_rstgen_rstn_dma1p_axi_() {
     }
 }
 
-pub fn rstgen_init() {
-    clear_rstgen_rstn_usbnoc_axi_();
-    clear_rstgen_rstn_hifi4noc_axi_();
-
-    enable_clk_x2c_axi_();
-    clear_rstgen_rstn_x2c_axi_();
-
-    clear_rstgen_rstn_dspx2c_axi_();
-    clear_rstgen_rstn_dma1p_axi_();
-
-    enable_clk_msi_apb_();
-    clear_rstgen_rstn_msi_apb_();
-
-    assert_rstgen_rstn_x2c_axi_();
-    clear_rstgen_rstn_x2c_axi_();
-    unsafe { asm!("fence") };
-}
-
-pub fn syscon_func_57(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL89);
-    write_32(SYSCON_IOPAD_CTRL89, v);
-}
-
-pub fn syscon_func_58(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL90);
-    write_32(SYSCON_IOPAD_CTRL90, v);
-}
-
-pub fn syscon_func_59(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL91);
-    write_32(SYSCON_IOPAD_CTRL91, v);
-}
-
-pub fn syscon_func_60(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL92);
-    write_32(SYSCON_IOPAD_CTRL92, v);
-}
-
-pub fn syscon_func_61(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL93);
-    write_32(SYSCON_IOPAD_CTRL93, v);
-}
-
-pub fn syscon_func_62(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL94);
-    write_32(SYSCON_IOPAD_CTRL94, v);
-}
-
-pub fn syscon_func_63(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL95);
-    write_32(SYSCON_IOPAD_CTRL95, v);
-}
-
-pub fn syscon_func_64(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL96);
-    write_32(SYSCON_IOPAD_CTRL96, v);
-}
-
-pub fn syscon_func_65(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL97);
-    write_32(SYSCON_IOPAD_CTRL97, v);
-}
-
-pub fn syscon_func_66(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL98);
-    write_32(SYSCON_IOPAD_CTRL98, v);
-}
-pub fn syscon_func_67(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL99);
-    write_32(SYSCON_IOPAD_CTRL99, v);
-}
-
-pub fn syscon_func_68(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL100);
-    write_32(SYSCON_IOPAD_CTRL100, v);
-}
-
-pub fn syscon_func_69(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL101);
-    write_32(SYSCON_IOPAD_CTRL101, v);
-}
-
-pub fn syscon_func_70(v: u32) {
-    read_32(SYSCON_IOPAD_CTRL102);
-    write_32(SYSCON_IOPAD_CTRL102, v);
-}
-
 pub fn clear_rstgen_rstn_gmac_ahb_() {
     let mut v = read_32(RSTGEN_SOFT_ASSERT1);
     v &= !(0x1 << 28);
@@ -511,26 +522,25 @@ pub fn assert_rstgen_rstn_gmac_ahb_() {
     }
 }
 
-pub const CLK_GMAC_AHB_CTRL: u32 = CLKGEN_BASE + 0x1E0;
-pub const CLK_GMAC_PTP_REFCLK_CTRL: u32 = CLKGEN_BASE + 0x1E8;
-pub const CLK_GMAC_GTXCLK_CTRL: u32 = CLKGEN_BASE + 0x1EC;
+pub fn rstgen_init() {
+    clear_rstgen_rstn_usbnoc_axi_();
+    clear_rstgen_rstn_hifi4noc_axi_();
 
-pub fn enable_clk_gmac_ahb_() {
-    let v = read_32(CLK_GMAC_AHB_CTRL) & !(0x1 << 31);
-    write_32(CLK_GMAC_AHB_CTRL, v | 1 << 31);
+    enable_clk_x2c_axi_();
+    clear_rstgen_rstn_x2c_axi_();
+
+    clear_rstgen_rstn_dspx2c_axi_();
+    clear_rstgen_rstn_dma1p_axi_();
+
+    enable_clk_msi_apb_();
+    clear_rstgen_rstn_msi_apb_();
+
+    assert_rstgen_rstn_x2c_axi_();
+    clear_rstgen_rstn_x2c_axi_();
+    unsafe { asm!("fence") };
 }
 
-pub fn enable_clk_gmac_ptp_refclk_() {
-    let v = read_32(CLK_GMAC_PTP_REFCLK_CTRL) & !(0x1 << 31);
-    write_32(CLK_GMAC_PTP_REFCLK_CTRL, v | 1 << 31);
-}
-
-pub fn enable_clk_gmac_gtxclk_() {
-    let v = read_32(CLK_GMAC_GTXCLK_CTRL) & !(0x1 << 31);
-    write_32(CLK_GMAC_GTXCLK_CTRL, v | 1 << 31);
-}
-
-pub fn syscon_init() {
+pub fn gmac_init() {
     /*phy must use gpio to hardware reset*/
     enable_clk_gmac_ahb_();
     enable_clk_gmac_ptp_refclk_();

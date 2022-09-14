@@ -5,7 +5,7 @@
 mod init;
 use core::arch::global_asm;
 use core::{arch::asm, panic::PanicInfo};
-use init::{clock_init, iopad_init, rstgen_init, syscon_init, uart_init, uart_write};
+use init::{clock_init, gmac_init, iopad_init, rstgen_init, uart_init, uart_write};
 
 const STACK_SIZE: usize = 1 * 1024; // 1KiB
 
@@ -65,8 +65,11 @@ fn main() {
     // move UART to other header
     crate::init::syscon_io_padshare_sel(6);
     iopad_init();
+    // NOTE: In mask ROM mode, the UART is already set up for 9600 baud
+    // We reconfigure it to 115200, but put it on the other header so that you
+    // can use both headers with the respective different baud rates.
     uart_init();
-    syscon_init();
+    gmac_init();
     loop {
         uart_write('o');
         uart_write('r');
