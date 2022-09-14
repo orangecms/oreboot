@@ -60,8 +60,10 @@ pub unsafe extern "C" fn start() -> ! {
 fn main() {
     clock_init();
     // for illegal instruction exception
-    crate::init::syscon_cfg_50_func_18(0x00c000c0);
+    crate::init::syscon_func_18(0x00c000c0);
     rstgen_init();
+    // move UART to other header
+    crate::init::syscon_io_padshare_sel(6);
     iopad_init();
     uart_init();
     syscon_init();
