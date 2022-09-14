@@ -210,8 +210,8 @@ pub fn syscon_cfg_50_func_18(v: u32) {
 }
 
 pub fn syscon_cfg_104_io_padshare_sel(v: u32) {
-    let nv = serial_in(syscon_cfg_iopad_ctrl104) & !(0x7);
-    serial_out(syscon_cfg_iopad_ctrl104, nv | v & 0x7);
+    let nv = serial_in(SYSCON_CFG_IOPAD_CTRL104) & !(0x7);
+    serial_out(SYSCON_CFG_IOPAD_CTRL104, nv | v & 0x7);
 }
 
 pub fn syscon_cfg_32_func_0(v: u32) {
@@ -400,90 +400,90 @@ pub fn rstgen_init() {
     unsafe { asm!("fence") };
 }
 
-pub const syscon_cfg_iopad_ctrl89: u32 = SYSCON_IOPAD_CTRL_BASE + 0x164;
-pub const syscon_cfg_iopad_ctrl90: u32 = SYSCON_IOPAD_CTRL_BASE + 0x168;
-pub const syscon_cfg_iopad_ctrl91: u32 = SYSCON_IOPAD_CTRL_BASE + 0x16C;
-pub const syscon_cfg_iopad_ctrl92: u32 = SYSCON_IOPAD_CTRL_BASE + 0x170;
-pub const syscon_cfg_iopad_ctrl93: u32 = SYSCON_IOPAD_CTRL_BASE + 0x174;
-pub const syscon_cfg_iopad_ctrl94: u32 = SYSCON_IOPAD_CTRL_BASE + 0x178;
-pub const syscon_cfg_iopad_ctrl95: u32 = SYSCON_IOPAD_CTRL_BASE + 0x17C;
-pub const syscon_cfg_iopad_ctrl96: u32 = SYSCON_IOPAD_CTRL_BASE + 0x180;
-pub const syscon_cfg_iopad_ctrl97: u32 = SYSCON_IOPAD_CTRL_BASE + 0x184;
-pub const syscon_cfg_iopad_ctrl98: u32 = SYSCON_IOPAD_CTRL_BASE + 0x188;
-pub const syscon_cfg_iopad_ctrl99: u32 = SYSCON_IOPAD_CTRL_BASE + 0x18C;
-pub const syscon_cfg_iopad_ctrl100: u32 = SYSCON_IOPAD_CTRL_BASE + 0x190;
-pub const syscon_cfg_iopad_ctrl101: u32 = SYSCON_IOPAD_CTRL_BASE + 0x194;
-pub const syscon_cfg_iopad_ctrl102: u32 = SYSCON_IOPAD_CTRL_BASE + 0x198;
-pub const syscon_cfg_iopad_ctrl103: u32 = SYSCON_IOPAD_CTRL_BASE + 0x19C;
-pub const syscon_cfg_iopad_ctrl104: u32 = SYSCON_IOPAD_CTRL_BASE + 0x1A0;
+pub const SYSCON_CFG_IOPAD_CTRL89: u32 = SYSCON_IOPAD_CTRL_BASE + 0x164;
+pub const SYSCON_CFG_IOPAD_CTRL90: u32 = SYSCON_IOPAD_CTRL_BASE + 0x168;
+pub const SYSCON_CFG_IOPAD_CTRL91: u32 = SYSCON_IOPAD_CTRL_BASE + 0x16C;
+pub const SYSCON_CFG_IOPAD_CTRL92: u32 = SYSCON_IOPAD_CTRL_BASE + 0x170;
+pub const SYSCON_CFG_IOPAD_CTRL93: u32 = SYSCON_IOPAD_CTRL_BASE + 0x174;
+pub const SYSCON_CFG_IOPAD_CTRL94: u32 = SYSCON_IOPAD_CTRL_BASE + 0x178;
+pub const SYSCON_CFG_IOPAD_CTRL95: u32 = SYSCON_IOPAD_CTRL_BASE + 0x17C;
+pub const SYSCON_CFG_IOPAD_CTRL96: u32 = SYSCON_IOPAD_CTRL_BASE + 0x180;
+pub const SYSCON_CFG_IOPAD_CTRL97: u32 = SYSCON_IOPAD_CTRL_BASE + 0x184;
+pub const SYSCON_CFG_IOPAD_CTRL98: u32 = SYSCON_IOPAD_CTRL_BASE + 0x188;
+pub const SYSCON_CFG_IOPAD_CTRL99: u32 = SYSCON_IOPAD_CTRL_BASE + 0x18C;
+pub const SYSCON_CFG_IOPAD_CTRL100: u32 = SYSCON_IOPAD_CTRL_BASE + 0x190;
+pub const SYSCON_CFG_IOPAD_CTRL101: u32 = SYSCON_IOPAD_CTRL_BASE + 0x194;
+pub const SYSCON_CFG_IOPAD_CTRL102: u32 = SYSCON_IOPAD_CTRL_BASE + 0x198;
+pub const SYSCON_CFG_IOPAD_CTRL103: u32 = SYSCON_IOPAD_CTRL_BASE + 0x19C;
+pub const SYSCON_CFG_IOPAD_CTRL104: u32 = SYSCON_IOPAD_CTRL_BASE + 0x1A0;
 
 pub fn syscon_cfg_89_func_57(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl89);
-    serial_out(syscon_cfg_iopad_ctrl89, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL89);
+    serial_out(SYSCON_CFG_IOPAD_CTRL89, v);
 }
 
 pub fn syscon_cfg_90_func_58(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl90);
-    serial_out(syscon_cfg_iopad_ctrl90, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL90);
+    serial_out(SYSCON_CFG_IOPAD_CTRL90, v);
 }
 
 pub fn syscon_cfg_91_func_59(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl91);
-    serial_out(syscon_cfg_iopad_ctrl91, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL91);
+    serial_out(SYSCON_CFG_IOPAD_CTRL91, v);
 }
 
 pub fn syscon_cfg_92_func_60(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl92);
-    serial_out(syscon_cfg_iopad_ctrl92, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL92);
+    serial_out(SYSCON_CFG_IOPAD_CTRL92, v);
 }
 
 pub fn syscon_cfg_93_func_61(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl93);
-    serial_out(syscon_cfg_iopad_ctrl93, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL93);
+    serial_out(SYSCON_CFG_IOPAD_CTRL93, v);
 }
 
 pub fn syscon_cfg_94_func_62(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl94);
-    serial_out(syscon_cfg_iopad_ctrl94, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL94);
+    serial_out(SYSCON_CFG_IOPAD_CTRL94, v);
 }
 
 pub fn syscon_cfg_95_func_63(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl95);
-    serial_out(syscon_cfg_iopad_ctrl95, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL95);
+    serial_out(SYSCON_CFG_IOPAD_CTRL95, v);
 }
 
 pub fn syscon_cfg_96_func_64(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl96);
-    serial_out(syscon_cfg_iopad_ctrl96, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL96);
+    serial_out(SYSCON_CFG_IOPAD_CTRL96, v);
 }
 
 pub fn syscon_cfg_97_func_65(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl97);
-    serial_out(syscon_cfg_iopad_ctrl97, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL97);
+    serial_out(SYSCON_CFG_IOPAD_CTRL97, v);
 }
 
 pub fn syscon_cfg_98_func_66(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl98);
-    serial_out(syscon_cfg_iopad_ctrl98, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL98);
+    serial_out(SYSCON_CFG_IOPAD_CTRL98, v);
 }
 pub fn syscon_cfg_99_func_67(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl99);
-    serial_out(syscon_cfg_iopad_ctrl99, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL99);
+    serial_out(SYSCON_CFG_IOPAD_CTRL99, v);
 }
 
 pub fn syscon_cfg_100_func_68(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl100);
-    serial_out(syscon_cfg_iopad_ctrl100, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL100);
+    serial_out(SYSCON_CFG_IOPAD_CTRL100, v);
 }
 
 pub fn syscon_cfg_101_func_69(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl101);
-    serial_out(syscon_cfg_iopad_ctrl101, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL101);
+    serial_out(SYSCON_CFG_IOPAD_CTRL101, v);
 }
 
 pub fn syscon_cfg_102_func_70(v: u32) {
-    serial_in(syscon_cfg_iopad_ctrl102);
-    serial_out(syscon_cfg_iopad_ctrl102, v);
+    serial_in(SYSCON_CFG_IOPAD_CTRL102);
+    serial_out(SYSCON_CFG_IOPAD_CTRL102, v);
 }
 pub fn syscon_init() {
     /*phy must use gpio to hardware reset*/
@@ -512,14 +512,4 @@ pub fn syscon_init() {
 
     //   _CLEAR_RESET_rstgen_rstn_gmac_ahb_();
     //   syscon_cfg_28_gmac_phy_intf_sel(0x1); //rgmii
-}
-
-pub fn init() {
-    clock_init();
-    // for illegal instruction exception
-    crate::init::syscon_cfg_50_func_18(0x00c000c0);
-    rstgen_init();
-    iopad_init();
-    uart_init();
-    syscon_init();
 }
