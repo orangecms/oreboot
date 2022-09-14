@@ -85,69 +85,75 @@ pub fn uart_write(c: char) {
     }
 }
 
+fn write_u8(reg: u32, val: u8) {
+    unsafe {
+        write_volatile(reg as *mut u8, val);
+    }
+}
+
 pub fn uart_init() {
     // move UART to other header
     _SET_SYSCON_REG_register104_SCFG_io_padshare_sel(6);
     let divisor = (UART_CLK / UART_BAUDRATE_32MCLK_115200) >> 4;
 
     let lcr_cache = serial_in(REG_LCR);
-    serial_out(REG_LCR, LCR_DLAB | lcr_cache);
-    serial_out(REG_BRDL, divisor & 0xff);
-    serial_out(REG_BRDH, (divisor >> 8) & 0xff);
+    write_u8(REG_LCR, (LCR_DLAB | lcr_cache) as u8);
+    write_u8(REG_BRDL, divisor as u8);
+    write_u8(REG_BRDH, (divisor >> 8) as u8);
 
     /* restore the DLAB to access the baud rate divisor registers */
-    serial_out(REG_LCR, lcr_cache);
+    write_u8(REG_LCR, lcr_cache as u8);
     /* 8 data bits, 1 stop bit, no parity, clear DLAB */
-    serial_out(REG_LCR, LCR_CS8 | LCR_1_STB | LCR_PDIS);
+    write_u8(REG_LCR, (LCR_CS8 | LCR_1_STB | LCR_PDIS) as u8);
 
-    serial_out(REG_MDC, 0); /*disable flow control*/
+    write_u8(REG_MDC, 0); /*disable flow control*/
 
     /*
      * Program FIFO: enabled, mode 0 (set for compatibility with quark),
      * generate the interrupt at 8th byte
      * Clear TX and RX FIFO
      */
-    serial_out(
+    write_u8(
         REG_FCR,
-        FCR_FIFO | FCR_MODE1 | /*FCR_FIFO_1*/FCR_FIFO_8 | FCR_RCVRCLR | FCR_XMITCLR,
+        (FCR_FIFO | FCR_MODE1 | /*FCR_FIFO_1*/FCR_FIFO_8 | FCR_RCVRCLR | FCR_XMITCLR) as u8,
     );
 
-    serial_out(REG_IER, 0); //dis the ser interrupt
+    write_u8(REG_IER, 0); // disable the serial interrupt
 }
 
 pub const CLKGEN_BASE_ADDR: u32 = 0x1180_0000;
-const clk_cpundbus_root_ctrl_REG_ADDR: u32 = CLKGEN_BASE_ADDR + 0x0;
-pub const clk_dla_root_ctrl_REG_ADDR: u32 = CLKGEN_BASE_ADDR + 0x4;
-pub const clk_dsp_root_ctrl_REG_ADDR: u32 = CLKGEN_BASE_ADDR + 0x8;
-pub const clk_gmacusb_root_ctrl_REG_ADDR: u32 = CLKGEN_BASE_ADDR + 0xC;
-pub const clk_perh0_root_ctrl_REG_ADDR: u32 = CLKGEN_BASE_ADDR + 0x10;
+const clk_cpundbus_root_ctrl: u32 = CLKGEN_BASE_ADDR + 0x0;
+pub const clk_dla_root_ctrl: u32 = CLKGEN_BASE_ADDR + 0x4;
+pub const clk_dsp_root_ctrl: u32 = CLKGEN_BASE_ADDR + 0x8;
+pub const clk_gmacusb_root_ctrl: u32 = CLKGEN_BASE_ADDR + 0xC;
+pub const clk_perh0_root_ctrl: u32 = CLKGEN_BASE_ADDR + 0x10;
 
 pub fn _SWITCH_CLOCK_clk_cpundbus_root_SOURCE_clk_pll0_out_() {
-    let mut v = serial_in(clk_cpundbus_root_ctrl_REG_ADDR);
+    let mut v = serial_in(clk_cpundbus_root_ctrl);
     v &= !(0x3 << 24);
     v |= (0x1 & 0x3) << 24;
-    serial_out(clk_cpundbus_root_ctrl_REG_ADDR, v);
+    serial_out(clk_cpundbus_root_ctrl, v);
 }
 
 pub fn _SWITCH_CLOCK_clk_dla_root_SOURCE_clk_pll1_out_() {
-    let mut v = serial_in(clk_dla_root_ctrl_REG_ADDR);
+    let mut v = serial_in(clk_dla_root_ctrl);
     v &= !(0x3 << 24);
     v |= (0x1 & 0x3) << 24;
-    serial_out(clk_dla_root_ctrl_REG_ADDR, v);
+    serial_out(clk_dla_root_ctrl, v);
 }
 
 pub fn _SWITCH_CLOCK_clk_dsp_root_SOURCE_clk_pll2_out_() {
-    let mut v = serial_in(clk_dsp_root_ctrl_REG_ADDR);
+    let mut v = serial_in(clk_dsp_root_ctrl);
     v &= !(0x3 << 24);
     v |= 3 << 24;
-    serial_out(clk_dsp_root_ctrl_REG_ADDR, v);
+    serial_out(clk_dsp_root_ctrl, v);
 }
 
 pub fn _SWITCH_CLOCK_clk_perh0_root_SOURCE_clk_pll0_out_() {
-    let mut v = serial_in(clk_perh0_root_ctrl_REG_ADDR);
+    let mut v = serial_in(clk_perh0_root_ctrl);
     v &= !(0x1 << 24);
     v |= 1 << 24;
-    serial_out(clk_perh0_root_ctrl_REG_ADDR, v);
+    serial_out(clk_perh0_root_ctrl, v);
 }
 
 fn init_coreclk() {
@@ -190,69 +196,70 @@ pub fn clock_init() {
     unsafe { asm!("fence") };
 }
 
-pub const SYSCON_IOPAD_CTRL_BASE_ADDR: u32 = 0x00_1185_8000;
-pub const syscon_iopad_ctrl_register32_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x80;
-pub const syscon_iopad_ctrl_register33_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x84;
-pub const syscon_iopad_ctrl_register34_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x88;
-pub const syscon_iopad_ctrl_register35_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x8c;
-pub const syscon_iopad_ctrl_register38_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x98;
-pub const syscon_iopad_ctrl_register39_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x9C;
-pub const syscon_iopad_ctrl_register50_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0xC8;
+pub const SYSCON_IOPAD_CTRL_BASE: u32 = 0x00_1185_8000;
+pub const syscon_iopad_ctrl_register32: u32 = SYSCON_IOPAD_CTRL_BASE + 0x80;
+pub const syscon_iopad_ctrl_register33: u32 = SYSCON_IOPAD_CTRL_BASE + 0x84;
+pub const syscon_iopad_ctrl_register34: u32 = SYSCON_IOPAD_CTRL_BASE + 0x88;
+pub const syscon_iopad_ctrl_register35: u32 = SYSCON_IOPAD_CTRL_BASE + 0x8c;
+pub const syscon_iopad_ctrl_register38: u32 = SYSCON_IOPAD_CTRL_BASE + 0x98;
+pub const syscon_iopad_ctrl_register39: u32 = SYSCON_IOPAD_CTRL_BASE + 0x9C;
+pub const syscon_iopad_ctrl_register50: u32 = SYSCON_IOPAD_CTRL_BASE + 0xC8;
 
 pub fn _SET_SYSCON_REG_register50_SCFG_funcshare_pad_ctrl_18(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register50_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register50);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register50_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register50, nv);
 }
 
 pub fn _SET_SYSCON_REG_register104_SCFG_io_padshare_sel(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register104_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register104);
     nv &= !(0x7);
     nv |= (v & 0x7);
-    serial_out(syscon_iopad_ctrl_register104_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register104, nv);
 }
 
 pub fn _SET_SYSCON_REG_register32_SCFG_funcshare_pad_ctrl_0(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register32_REG_ADDR);
-    nv &= !(0xFFFFFFFF);
-    nv |= (v);
-    serial_out(syscon_iopad_ctrl_register32_REG_ADDR, nv);
+    // NOTE: for whatever reason, it appears that writing only works after
+    // reading i.e., if you remove the `serial_in`, it breaks the code
+    // let's hope the compiler does not remove it in optimization
+    serial_in(syscon_iopad_ctrl_register32);
+    serial_out(syscon_iopad_ctrl_register32, v);
 }
 
 pub fn _SET_SYSCON_REG_register33_SCFG_funcshare_pad_ctrl_1(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register33_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register33);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register33_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register33, nv);
 }
 
 pub fn _SET_SYSCON_REG_register34_SCFG_funcshare_pad_ctrl_2(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register34_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register34);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register34_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register34, nv);
 }
 
 pub fn _SET_SYSCON_REG_register35_SCFG_funcshare_pad_ctrl_3(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register35_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register35);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register35_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register35, nv);
 }
 
 pub fn _SET_SYSCON_REG_register38_SCFG_funcshare_pad_ctrl_6(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register38_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register38);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register38_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register38, nv);
 }
 
 pub fn _SET_SYSCON_REG_register39_SCFG_funcshare_pad_ctrl_7(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register39_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register39);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register39_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register39, nv);
 }
 
 pub fn iopad_init() {
@@ -267,22 +274,22 @@ pub fn iopad_init() {
 
 pub const RSTGEN_BASE_ADDR: u32 = 0x1184_0000;
 #[allow(clippy::identity_op)]
-pub const rstgen_Software_RESET_assert0_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0x0;
-pub const rstgen_Software_RESET_assert1_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0x4;
-pub const rstgen_Software_RESET_assert2_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0x8;
-pub const rstgen_Software_RESET_assert3_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0xC;
+pub const rstgen_Software_RESET_assert0: u32 = RSTGEN_BASE_ADDR + 0x0;
+pub const rstgen_Software_RESET_assert1: u32 = RSTGEN_BASE_ADDR + 0x4;
+pub const rstgen_Software_RESET_assert2: u32 = RSTGEN_BASE_ADDR + 0x8;
+pub const rstgen_Software_RESET_assert3: u32 = RSTGEN_BASE_ADDR + 0xC;
 
-pub const rstgen_Software_RESET_status0_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0x10;
-pub const rstgen_Software_RESET_status1_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0x14;
-pub const rstgen_Software_RESET_status2_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0x18;
-pub const rstgen_Software_RESET_status3_REG_ADDR: u32 = RSTGEN_BASE_ADDR + 0x1C;
+pub const rstgen_Software_RESET_status0: u32 = RSTGEN_BASE_ADDR + 0x10;
+pub const rstgen_Software_RESET_status1: u32 = RSTGEN_BASE_ADDR + 0x14;
+pub const rstgen_Software_RESET_status2: u32 = RSTGEN_BASE_ADDR + 0x18;
+pub const rstgen_Software_RESET_status3: u32 = RSTGEN_BASE_ADDR + 0x1C;
 pub fn _CLEAR_RESET_rstgen_rstn_usbnoc_axi_() {
-    let mut v = serial_in(rstgen_Software_RESET_assert1_REG_ADDR);
+    let mut v = serial_in(rstgen_Software_RESET_assert1);
     v &= !(0x1 << 6);
     v |= 0 << 6;
-    serial_out(rstgen_Software_RESET_assert1_REG_ADDR, v);
+    serial_out(rstgen_Software_RESET_assert1, v);
     loop {
-        let mut v = serial_in(rstgen_Software_RESET_status1_REG_ADDR) >> 6;
+        let mut v = serial_in(rstgen_Software_RESET_status1) >> 6;
         v &= 0x1;
         if !v != 0x1 {
             break;
@@ -291,12 +298,12 @@ pub fn _CLEAR_RESET_rstgen_rstn_usbnoc_axi_() {
 }
 
 pub fn _CLEAR_RESET_rstgen_rstn_hifi4noc_axi_() {
-    let mut v = serial_in(rstgen_Software_RESET_assert1_REG_ADDR);
+    let mut v = serial_in(rstgen_Software_RESET_assert1);
     v &= !(0x1 << 2);
     v |= 0 << 2;
-    serial_out(rstgen_Software_RESET_assert1_REG_ADDR, v);
+    serial_out(rstgen_Software_RESET_assert1, v);
     loop {
-        let mut v = serial_in(rstgen_Software_RESET_status1_REG_ADDR) >> 2;
+        let mut v = serial_in(rstgen_Software_RESET_status1) >> 2;
         v &= 0x1;
         if !v != 0x1 {
             break;
@@ -304,29 +311,29 @@ pub fn _CLEAR_RESET_rstgen_rstn_hifi4noc_axi_() {
     }
 }
 
-pub const clk_x2c_axi_ctrl_REG_ADDR: u32 = CLKGEN_BASE_ADDR + 0x15C;
-pub const clk_msi_apb_ctrl_REG_ADDR: u32 = CLKGEN_BASE_ADDR + 0x2D8;
+pub const clk_x2c_axi_ctrl: u32 = CLKGEN_BASE_ADDR + 0x15C;
+pub const clk_msi_apb_ctrl: u32 = CLKGEN_BASE_ADDR + 0x2D8;
 pub fn _ENABLE_CLOCK_clk_x2c_axi_() {
-    let mut v = serial_in(clk_x2c_axi_ctrl_REG_ADDR);
+    let mut v = serial_in(clk_x2c_axi_ctrl);
     v &= !(0x1 << 31);
     v |= 1 << 31;
-    serial_out(clk_x2c_axi_ctrl_REG_ADDR, v);
+    serial_out(clk_x2c_axi_ctrl, v);
 }
 
 pub fn _ENABLE_CLOCK_clk_msi_apb_() {
-    let mut v = serial_in(clk_msi_apb_ctrl_REG_ADDR);
+    let mut v = serial_in(clk_msi_apb_ctrl);
     v &= !(0x1 << 31);
     v |= 1 << 31;
-    serial_out(clk_msi_apb_ctrl_REG_ADDR, v);
+    serial_out(clk_msi_apb_ctrl, v);
 }
 
 pub fn _CLEAR_RESET_rstgen_rstn_x2c_axi_() {
-    let mut v = serial_in(rstgen_Software_RESET_assert1_REG_ADDR);
+    let mut v = serial_in(rstgen_Software_RESET_assert1);
     v &= !(0x1 << 9);
     v |= 0 << 9;
-    serial_out(rstgen_Software_RESET_assert1_REG_ADDR, v);
+    serial_out(rstgen_Software_RESET_assert1, v);
     loop {
-        let mut v = serial_in(rstgen_Software_RESET_status1_REG_ADDR) >> 9;
+        let mut v = serial_in(rstgen_Software_RESET_status1) >> 9;
         v &= 0x1;
         if !v != 0x1 {
             break;
@@ -335,12 +342,12 @@ pub fn _CLEAR_RESET_rstgen_rstn_x2c_axi_() {
 }
 
 pub fn _ASSERT_RESET_rstgen_rstn_x2c_axi_() {
-    let mut v = serial_in(rstgen_Software_RESET_assert1_REG_ADDR);
+    let mut v = serial_in(rstgen_Software_RESET_assert1);
     v &= !(0x1 << 9);
     v |= 1 << 9;
-    serial_out(rstgen_Software_RESET_assert1_REG_ADDR, v);
+    serial_out(rstgen_Software_RESET_assert1, v);
     loop {
-        let mut v = serial_in(rstgen_Software_RESET_status1_REG_ADDR) >> 9;
+        let mut v = serial_in(rstgen_Software_RESET_status1) >> 9;
         v &= 0x1;
         if !v != 0x0 {
             break;
@@ -349,12 +356,12 @@ pub fn _ASSERT_RESET_rstgen_rstn_x2c_axi_() {
 }
 
 pub fn _CLEAR_RESET_rstgen_rstn_msi_apb_() {
-    let mut v = serial_in(rstgen_Software_RESET_assert3_REG_ADDR);
+    let mut v = serial_in(rstgen_Software_RESET_assert3);
     v &= !(0x1 << 14);
     v |= 0 << 14;
-    serial_out(rstgen_Software_RESET_assert3_REG_ADDR, v);
+    serial_out(rstgen_Software_RESET_assert3, v);
     loop {
-        let mut v = serial_in(rstgen_Software_RESET_status3_REG_ADDR) >> 14;
+        let mut v = serial_in(rstgen_Software_RESET_status3) >> 14;
         v &= 0x1;
         if !v != 0x1 {
             break;
@@ -363,12 +370,12 @@ pub fn _CLEAR_RESET_rstgen_rstn_msi_apb_() {
 }
 
 pub fn _CLEAR_RESET_rstgen_rstn_dspx2c_axi_() {
-    let mut v = serial_in(rstgen_Software_RESET_assert1_REG_ADDR);
+    let mut v = serial_in(rstgen_Software_RESET_assert1);
     v &= !(0x1 << 14);
     v |= 0 << 14;
-    serial_out(rstgen_Software_RESET_assert1_REG_ADDR, v);
+    serial_out(rstgen_Software_RESET_assert1, v);
     loop {
-        let mut v = serial_in(rstgen_Software_RESET_status1_REG_ADDR) >> 14;
+        let mut v = serial_in(rstgen_Software_RESET_status1) >> 14;
         v &= 0x1;
         if !v != 0x1 {
             break;
@@ -377,12 +384,12 @@ pub fn _CLEAR_RESET_rstgen_rstn_dspx2c_axi_() {
 }
 
 pub fn _CLEAR_RESET_rstgen_rstn_dma1p_axi_() {
-    let mut v = serial_in(rstgen_Software_RESET_assert1_REG_ADDR);
+    let mut v = serial_in(rstgen_Software_RESET_assert1);
     v &= !(0x1 << 8);
     v |= 0 << 8;
-    serial_out(rstgen_Software_RESET_assert1_REG_ADDR, v);
+    serial_out(rstgen_Software_RESET_assert1, v);
     loop {
-        let mut v = serial_in(rstgen_Software_RESET_status1_REG_ADDR) >> 8;
+        let mut v = serial_in(rstgen_Software_RESET_status1) >> 8;
         v &= 0x1;
         if !v != 0x1 {
             break;
@@ -408,118 +415,118 @@ pub fn rstgen_init() {
     unsafe { asm!("fence") };
 }
 
-pub const syscon_iopad_ctrl_register89_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x164;
-pub const syscon_iopad_ctrl_register90_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x168;
-pub const syscon_iopad_ctrl_register91_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x16C;
-pub const syscon_iopad_ctrl_register92_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x170;
-pub const syscon_iopad_ctrl_register93_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x174;
-pub const syscon_iopad_ctrl_register94_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x178;
-pub const syscon_iopad_ctrl_register95_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x17C;
-pub const syscon_iopad_ctrl_register96_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x180;
-pub const syscon_iopad_ctrl_register97_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x184;
-pub const syscon_iopad_ctrl_register98_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x188;
-pub const syscon_iopad_ctrl_register99_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x18C;
-pub const syscon_iopad_ctrl_register100_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x190;
-pub const syscon_iopad_ctrl_register101_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x194;
-pub const syscon_iopad_ctrl_register102_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x198;
-pub const syscon_iopad_ctrl_register103_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x19C;
-pub const syscon_iopad_ctrl_register104_REG_ADDR: u32 = SYSCON_IOPAD_CTRL_BASE_ADDR + 0x1A0;
+pub const syscon_iopad_ctrl_register89: u32 = SYSCON_IOPAD_CTRL_BASE + 0x164;
+pub const syscon_iopad_ctrl_register90: u32 = SYSCON_IOPAD_CTRL_BASE + 0x168;
+pub const syscon_iopad_ctrl_register91: u32 = SYSCON_IOPAD_CTRL_BASE + 0x16C;
+pub const syscon_iopad_ctrl_register92: u32 = SYSCON_IOPAD_CTRL_BASE + 0x170;
+pub const syscon_iopad_ctrl_register93: u32 = SYSCON_IOPAD_CTRL_BASE + 0x174;
+pub const syscon_iopad_ctrl_register94: u32 = SYSCON_IOPAD_CTRL_BASE + 0x178;
+pub const syscon_iopad_ctrl_register95: u32 = SYSCON_IOPAD_CTRL_BASE + 0x17C;
+pub const syscon_iopad_ctrl_register96: u32 = SYSCON_IOPAD_CTRL_BASE + 0x180;
+pub const syscon_iopad_ctrl_register97: u32 = SYSCON_IOPAD_CTRL_BASE + 0x184;
+pub const syscon_iopad_ctrl_register98: u32 = SYSCON_IOPAD_CTRL_BASE + 0x188;
+pub const syscon_iopad_ctrl_register99: u32 = SYSCON_IOPAD_CTRL_BASE + 0x18C;
+pub const syscon_iopad_ctrl_register100: u32 = SYSCON_IOPAD_CTRL_BASE + 0x190;
+pub const syscon_iopad_ctrl_register101: u32 = SYSCON_IOPAD_CTRL_BASE + 0x194;
+pub const syscon_iopad_ctrl_register102: u32 = SYSCON_IOPAD_CTRL_BASE + 0x198;
+pub const syscon_iopad_ctrl_register103: u32 = SYSCON_IOPAD_CTRL_BASE + 0x19C;
+pub const syscon_iopad_ctrl_register104: u32 = SYSCON_IOPAD_CTRL_BASE + 0x1A0;
 
 pub fn _SET_SYSCON_REG_register89_SCFG_funcshare_pad_ctrl_57(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register89_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register89);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register89_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register89, nv);
 }
 
 pub fn _SET_SYSCON_REG_register90_SCFG_funcshare_pad_ctrl_58(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register90_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register90);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register90_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register90, nv);
 }
 
 pub fn _SET_SYSCON_REG_register91_SCFG_funcshare_pad_ctrl_59(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register91_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register91);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register91_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register91, nv);
 }
 
 pub fn _SET_SYSCON_REG_register92_SCFG_funcshare_pad_ctrl_60(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register92_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register92);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register92_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register92, nv);
 }
 
 pub fn _SET_SYSCON_REG_register93_SCFG_funcshare_pad_ctrl_61(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register93_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register93);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register93_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register93, nv);
 }
 
 pub fn _SET_SYSCON_REG_register94_SCFG_funcshare_pad_ctrl_62(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register94_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register94);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register94_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register94, nv);
 }
 
 pub fn _SET_SYSCON_REG_register95_SCFG_funcshare_pad_ctrl_63(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register95_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register95);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register95_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register95, nv);
 }
 
 pub fn _SET_SYSCON_REG_register96_SCFG_funcshare_pad_ctrl_64(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register96_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register96);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register96_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register96, nv);
 }
 
 pub fn _SET_SYSCON_REG_register97_SCFG_funcshare_pad_ctrl_65(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register97_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register97);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register97_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register97, nv);
 }
 
 pub fn _SET_SYSCON_REG_register98_SCFG_funcshare_pad_ctrl_66(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register98_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register98);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register98_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register98, nv);
 }
 pub fn _SET_SYSCON_REG_register99_SCFG_funcshare_pad_ctrl_67(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register99_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register99);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register99_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register99, nv);
 }
 
 pub fn _SET_SYSCON_REG_register100_SCFG_funcshare_pad_ctrl_68(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register100_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register100);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register100_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register100, nv);
 }
 
 pub fn _SET_SYSCON_REG_register101_SCFG_funcshare_pad_ctrl_69(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register101_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register101);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register101_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register101, nv);
 }
 
 pub fn _SET_SYSCON_REG_register102_SCFG_funcshare_pad_ctrl_70(v: u32) {
-    let mut nv = serial_in(syscon_iopad_ctrl_register102_REG_ADDR);
+    let mut nv = serial_in(syscon_iopad_ctrl_register102);
     nv &= !(0xFFFFFFFF);
     nv |= (v);
-    serial_out(syscon_iopad_ctrl_register102_REG_ADDR, nv);
+    serial_out(syscon_iopad_ctrl_register102, nv);
 }
 pub fn syscon_init() {
     /*phy must use gpio to hardware reset*/
@@ -548,4 +555,14 @@ pub fn syscon_init() {
 
     //   _CLEAR_RESET_rstgen_rstn_gmac_ahb_();
     //   _SET_SYSCON_REG_register28_SCFG_gmac_phy_intf_sel(0x1); //rgmii
+}
+
+pub fn init() {
+    clock_init();
+    // for illegal instruction exception
+    crate::init::_SET_SYSCON_REG_register50_SCFG_funcshare_pad_ctrl_18(0x00c000c0);
+    rstgen_init();
+    iopad_init();
+    uart_init();
+    syscon_init();
 }

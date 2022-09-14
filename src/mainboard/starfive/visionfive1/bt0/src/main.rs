@@ -9,10 +9,6 @@ use init::{clock_init, iopad_init, rstgen_init, syscon_init, uart_init, uart_wri
 
 const STACK_SIZE: usize = 1 * 1024; // 1KiB
 
-const UART3_BASE: u32 = 0x1244_0000;
-
-use core::ptr::{read_volatile, write_volatile};
-
 #[link_section = ".bss.uninit"]
 static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
@@ -28,11 +24,11 @@ global_asm!(include_str!("../start.S"));
 #[link_section = ".text.entry"]
 pub unsafe extern "C" fn start() -> ! {
     asm!(
-    "li t4, 0x47",
-    "li t5, 0x12440000",
-    "sw t4, 0(t5)",
-
-    "csrwi 0x7c1, 0",
+        "li t4, 0x43",
+        "li t5, 0x12440000",
+        "sw t4, 0(t5)",
+        // Clear feature disable CSR
+        "csrwi  0x7c1, 0",
 
         "csrw   mie, zero",
         "csrw   mstatus, zero",

@@ -2,17 +2,16 @@
 
 // write to UART3 (debug)
 _debug:
-  li t4, 0x42
   li t5, 0x12440000
+  li t4, 0x42
   sw t4, 0(t5)
   li t4, 0x41
-  li t5, 0x12440000
   sw t4, 0(t5)
   li t4, 0x44
-  li t5, 0x12440000
+  sw t4, 0(t5)
+  li t4, '\r'
   sw t4, 0(t5)
   li t4, '\n'
-  li t5, 0x12440000
   sw t4, 0(t5)
 
 boot:
