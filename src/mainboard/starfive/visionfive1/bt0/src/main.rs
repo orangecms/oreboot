@@ -2,13 +2,16 @@
 #![no_std]
 #![no_main]
 
-mod init;
 use core::{
     arch::{asm, global_asm},
     panic::PanicInfo,
 };
-use init::{clock_init, gmac_init, iopad_init, rstgen_init, uart_init, uart_write};
+use init::{clock_init, gmac_init, iopad_init, rstgen_init, uart_write};
 use riscv;
+
+mod init;
+#[macro_use]
+mod log;
 
 global_asm!(include_str!("../start.S"));
 
@@ -97,11 +100,23 @@ fn main() {
     // NOTE: In mask ROM mode, the UART is already set up for 9600 baud
     // We reconfigure it to 115200, but put it on the other header so that you
     // can use both headers with the respective different baud rates.
-    uart_init();
-
+    let serial = init::Serial::new();
     gmac_init();
 
     hello();
+
+    /*
+    let r = serial.write('c' as u8);
+    match r {
+        Ok(_) => hello(),
+        _ => bye(),
+    }
+     */
+
+    log::set_logger(serial);
+    log::_print(core::format_args!("worky?\n"));
+    // print!("hello\n");
+    // println!("oreboot 🦀");
 
     // TODO: continue with DRAM init
 
@@ -117,24 +132,24 @@ fn main() {
     unsafe { riscv::asm::wfi() }
 }
 
-#[cfg_attr(not(test), panic_handler)]
-fn panic(info: &PanicInfo) -> ! {
-    uart_write('P');
-    uart_write('A');
-    uart_write('N');
-    uart_write('I');
-    uart_write('C');
+fn bye() {
+    uart_write('B');
+    uart_write('y');
+    uart_write('e');
     uart_write('!');
     uart_write('\r');
     uart_write('\n');
-    // TODO: implement println!
-    /*
+}
+
+#[cfg_attr(not(test), panic_handler)]
+fn panic(info: &PanicInfo) -> ! {
+    bye();
     if let Some(location) = info.location() {
         println!("panic in '{}' line {}", location.file(), location.line(),);
     } else {
         println!("panic at unknown location");
     };
-    */
+
     loop {
         core::hint::spin_loop();
     }

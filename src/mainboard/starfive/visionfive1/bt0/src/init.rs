@@ -115,6 +115,55 @@ pub fn uart_init() {
     write_8(UART3_IER, 0); // disable the serial interrupt
 }
 
+#[derive(Debug)]
+pub struct Serial();
+
+/// Error types that may happen when serial transfer
+#[derive(Debug)]
+pub struct Error {
+    kind: embedded_hal::serial::ErrorKind,
+}
+
+impl embedded_hal::serial::Error for Error {
+    #[inline]
+    fn kind(&self) -> embedded_hal::serial::ErrorKind {
+        self.kind
+    }
+}
+
+impl Serial {
+    #[inline]
+    pub fn new() -> Self {
+        uart_init();
+        Self()
+    }
+}
+
+impl embedded_hal::serial::ErrorType for Serial {
+    type Error = Error;
+}
+
+impl embedded_hal::serial::nb::Write<u8> for Serial {
+    #[inline]
+    fn write(&mut self, c: u8) -> nb::Result<(), self::Error> {
+        if read_8(UART3_LSR) & LSR_THRE == 0 {
+            return Err(nb::Error::WouldBlock);
+        }
+        write_8(UART3_THR, c as u8);
+        Ok(())
+    }
+
+    #[inline]
+    fn flush(&mut self) -> nb::Result<(), self::Error> {
+        let TFE_EMPTY = true;
+        if TFE_EMPTY {
+            Ok(())
+        } else {
+            Err(nb::Error::WouldBlock)
+        }
+    }
+}
+
 pub const CLKGEN_BASE: u32 = 0x1180_0000;
 pub const CLK_CPUNDBUS_ROOT_CTRL: u32 = CLKGEN_BASE + 0x0;
 pub const CLK_DLA_ROOT_CTRL: u32 = CLKGEN_BASE + 0x4;
