@@ -90,8 +90,8 @@ _start:
 
 	# core 1 jumps to main_other_hart
 	# Set MSIE bit to receive IPI
-## li a2, (1 << 3) // MIP_MSIP
-## csrw mie, a2
+	li a2, (1 << 3) // MIP_MSIP
+	csrw mie, a2
 
 .LwaitOtherHart:
 	# Wait for an IPI to signal that its safe to boot
