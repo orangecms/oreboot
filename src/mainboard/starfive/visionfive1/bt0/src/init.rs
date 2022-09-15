@@ -3,18 +3,18 @@ use core::ptr::{read_volatile, write_volatile};
 
 const UART3_BASE: u32 = 0x1244_0000;
 
-const REG_THR: u32 = UART3_BASE + 0x00; /* Transmitter holding reg. */
-const REG_RDR: u32 = UART3_BASE + 0x00; /* Receiver data reg.       */
-const REG_BRDL: u32 = UART3_BASE + 0x00; /* Baud rate divisor (LSB)  */
-const REG_BRDH: u32 = UART3_BASE + 0x01; /* Baud rate divisor (MSB)  */
-const REG_IER: u32 = UART3_BASE + 0x01; /* Interrupt enable reg.    */
-const REG_IIR: u32 = UART3_BASE + 0x02; /* Interrupt ID reg.        */
-const REG_FCR: u32 = UART3_BASE + 0x02; /* FIFO control reg.        */
-const REG_LCR: u32 = UART3_BASE + 0x03; /* Line control reg.        */
-const REG_MDC: u32 = UART3_BASE + 0x04; /* Modem control reg.       */
-const REG_LSR: u32 = UART3_BASE + 0x05; /* Line status reg.         */
-const REG_MSR: u32 = UART3_BASE + 0x06; /* Modem status reg.        */
-const REG_DLF: u32 = UART3_BASE + 0xC0; /* Divisor Latch Fraction   */
+const UART3_THR: u32 = UART3_BASE + 0x0000; /* Transmitter holding reg. */
+const UART3_RDR: u32 = UART3_BASE + 0x0000; /* Receiver data reg.       */
+const UART3_BRDL: u32 = UART3_BASE + 0x0000; /* Baud rate divisor (LSB)  */
+const UART3_BRDH: u32 = UART3_BASE + 0x0004; /* Baud rate divisor (MSB)  */
+const UART3_IER: u32 = UART3_BASE + 0x0004; /* Interrupt enable reg.    */
+const UART3_IIR: u32 = UART3_BASE + 0x0008; /* Interrupt ID reg.        */
+const UART3_FCR: u32 = UART3_BASE + 0x0008; /* FIFO control reg.        */
+const UART3_LCR: u32 = UART3_BASE + 0x000c; /* Line control reg.        */
+const UART3_MDC: u32 = UART3_BASE + 0x0010; /* Modem control reg.       */
+const UART3_LSR: u32 = UART3_BASE + 0x0014; /* Line status reg.         */
+const UART3_MSR: u32 = UART3_BASE + 0x0018; /* Modem status reg.        */
+const UART3_DLF: u32 = UART3_BASE + 0x0300; /* Divisor Latch Fraction   */
 
 fn write_32(reg: u32, val: u32) {
     unsafe {
@@ -70,52 +70,54 @@ const FCR_FIFO_14: u8 = 0xC0; /* 14 bytes in RCVR FIFO */
 const UART_CLK: u32 = 100_000_000;
 const UART_BAUDRATE_32MCLK_115200: u32 = 115200;
 
-pub fn uart_write(c: char) {
-    unsafe {
-        /*
-        loop {
-            let lsr = read_32(REG_LSR) as u8 & LSR_THRE;
-            if lsr != 0 {
-                break;
-            }
-        }
-        */
-        write_volatile(UART3_BASE as *mut u32, c as u32);
-    }
+fn read_8(reg: u32) -> u8 {
+    unsafe { read_volatile(reg as *mut u8) }
 }
 
-fn write8(reg: u32, val: u8) {
+fn write_8(reg: u32, val: u8) {
     unsafe {
         write_volatile(reg as *mut u8, val);
     }
 }
 
+pub fn uart_write(c: char) {
+    loop {
+        let lsr = read_8(UART3_LSR) & LSR_THRE;
+        if lsr != 0 {
+            break;
+        }
+    }
+    write_32(UART3_THR, c as u32);
+}
+
 pub fn uart_init() {
     let divisor = (UART_CLK / UART_BAUDRATE_32MCLK_115200) >> 4;
 
-    let lcr_cache = read_32(REG_LCR);
-    write8(REG_LCR, LCR_DLAB | lcr_cache as u8);
-    write8(REG_BRDL, divisor as u8);
-    write8(REG_BRDH, (divisor >> 8) as u8);
-
+    let lcr_cache = read_8(UART3_LCR);
+    /* clear DLAB */
+    write_8(UART3_LCR, LCR_DLAB | lcr_cache);
+    write_8(UART3_BRDL, divisor as u8);
+    write_8(UART3_BRDH, (divisor >> 8) as u8);
     /* restore the DLAB to access the baud rate divisor registers */
-    write8(REG_LCR, lcr_cache as u8);
-    /* 8 data bits, 1 stop bit, no parity, clear DLAB */
-    write8(REG_LCR, (LCR_CS8 | LCR_1_STB | LCR_PDIS) as u8);
+    write_8(UART3_LCR, lcr_cache);
 
-    write8(REG_MDC, 0); /*disable flow control*/
+    /* 8 data bits, 1 stop bit, no parity */
+    write_8(UART3_LCR, LCR_CS8 | LCR_1_STB | LCR_PDIS);
+
+    /* disable flow control */
+    write_8(UART3_MDC, 0);
 
     /*
      * Program FIFO: enabled, mode 0 (set for compatibility with quark),
      * generate the interrupt at 8th byte
      * Clear TX and RX FIFO
      */
-    write8(
-        REG_FCR,
-        (FCR_FIFO | FCR_MODE1 | /*FCR_FIFO_1*/FCR_FIFO_8 | FCR_RCVRCLR | FCR_XMITCLR) as u8,
+    write_8(
+        UART3_FCR,
+        FCR_FIFO | FCR_MODE0 | FCR_FIFO_8 | FCR_RCVRCLR | FCR_XMITCLR,
     );
 
-    write8(REG_IER, 0); // disable the serial interrupt
+    write_8(UART3_IER, 0); // disable the serial interrupt
 }
 
 pub const CLKGEN_BASE: u32 = 0x1180_0000;
@@ -222,7 +224,9 @@ pub fn clock_init() {
     // stuff before they come out of reset. So wait.
     // TODO: Add a register to read the current reset states, or DDR Control
     // device?
-    for _ in 0..=255 { /* nop */ }
+    for _ in 0..=255 {
+        unsafe { asm!("nop") }
+    }
     // self.init_pll_ge();
     //        self.dev_reset
     //            .set(reset_mask(false, false, false, false, false));

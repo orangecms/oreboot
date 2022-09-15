@@ -79,7 +79,11 @@ fn main() {
         uart_write('o');
         uart_write('t');
         uart_write(' ');
-        uart_write('🦀');
+        // uart_write('🦀');
+        uart_write(0xf0 as char);
+        uart_write(0x9f as char);
+        uart_write(0xa6 as char);
+        uart_write(0x80 as char);
         uart_write('\r');
         uart_write('\n');
     }
