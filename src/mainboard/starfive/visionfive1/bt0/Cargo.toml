@@ -1,8 +1,22 @@
-[package]
-name = "bt0"
-version = "0.1.0"
-edition = "2021"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[package]
+name = "starfive-visionfive1-bt0"
+version = "0.1.0"
+edition = "2021"
+authors = [
+    "Daniel Maslowski <info@orangecms.org>",
+]
+
 [dependencies]
+embedded-hal = "1.0.0-alpha.8"
+nb = "1"
+spin = "0.9"
+# NOTE: until a newer release than 0.8.0 is tagged, use this to have the fix for
+# reading marchid/mimpid
+riscv = { git = "https://github.com/rust-embedded/riscv", commit = "e38a68d" }
+
+# TODO
+#[dependencies.oreboot-soc]
+#path = "../../../../soc"
+#features = ["starfive_jh7100"]

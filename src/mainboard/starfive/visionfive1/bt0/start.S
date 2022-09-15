@@ -51,8 +51,6 @@ _start:
 	// This has to be four byted aligned so make our own and call trap_entry
 	la t0, aligned_trap_entry
 	csrw mtvec, t0
-# csrwi mstatus, 0
-# csrwi mie, 0
 
 	// Allocate 4 KiB stack for each hart
 // csrr t0, mhartid
@@ -79,9 +77,6 @@ _start:
 # 	bltu t1, t2, 1b
 
 	/*only hart 0*/
-  li t5, 0x12440000
-  li t4, 0x53
-  sw t4, 0(t5)
 	call start
 
 .LbootOtherHart:
@@ -95,13 +90,14 @@ _start:
 
 	# core 1 jumps to main_other_hart
 	# Set MSIE bit to receive IPI
-##li a2, (1 << 3) // MIP_MSIP
-##csrw mie, a2
+## li a2, (1 << 3) // MIP_MSIP
+## csrw mie, a2
 
 .LwaitOtherHart:
 	# Wait for an IPI to signal that its safe to boot
 //	call second_hart
 	wfi
+	j .LwaitOtherHart
 	# Only start if MIP_MSIP is set
 	csrr a2, mip
 	andi a2, a2, (1 << 3) // MIP_MSIP

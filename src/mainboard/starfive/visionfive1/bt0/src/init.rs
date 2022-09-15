@@ -81,13 +81,8 @@ fn write_8(reg: u32, val: u8) {
 }
 
 pub fn uart_write(c: char) {
-    loop {
-        let lsr = read_8(UART3_LSR) & LSR_THRE;
-        if lsr != 0 {
-            break;
-        }
-    }
-    write_32(UART3_THR, c as u32);
+    while read_8(UART3_LSR) & LSR_THRE == 0 {}
+    write_8(UART3_THR, c as u8);
 }
 
 pub fn uart_init() {
@@ -235,10 +230,17 @@ pub fn clock_init() {
 }
 
 pub const SYSCON_SYSMAIN_CTRL_BASE: u32 = 0x00_1185_0000;
-pub const SYSCON_SYSMAIN_CTRL28: u32 = SYSCON_SYSMAIN_CTRL_BASE + 0x70;
+pub const SYSCON_SYSMAIN_CTRL28: u32 = SYSCON_SYSMAIN_CTRL_BASE + 0x0070;
+pub const SYSCON_SYSMAIN_CTRL69: u32 = SYSCON_SYSMAIN_CTRL_BASE + 0x0114;
+
 pub fn syscon_gmac_phy_intf_sel(v: u32) {
     let nv = read_32(SYSCON_SYSMAIN_CTRL28) & !(0x7);
     write_32(SYSCON_SYSMAIN_CTRL28, nv | (v & 0x7));
+}
+
+pub fn syscon_core1_en(v: u32) {
+    let nv = read_32(SYSCON_SYSMAIN_CTRL69) & !(0x1);
+    write_32(SYSCON_SYSMAIN_CTRL69, nv | (v & 0x1));
 }
 
 pub const SYSCON_IOPAD_CTRL_BASE: u32 = 0x00_1185_8000;
@@ -379,12 +381,12 @@ pub fn syscon_func_70(v: u32) {
 }
 
 pub fn iopad_init() {
-    syscon_func_0(0x00c00000);
-    syscon_func_1(0x00c000c0);
-    syscon_func_2(0x00c000c0);
-    syscon_func_3(0x00c000c0);
-    syscon_func_6(0x00c00000);
-    syscon_func_7(0x00c300c3);
+    syscon_func_0(0x00c0_0000);
+    syscon_func_1(0x00c0_00c0);
+    syscon_func_2(0x00c0_00c0);
+    syscon_func_3(0x00c0_00c0);
+    syscon_func_7(0x00c0_00c3);
+    syscon_func_6(0x00c0_0000);
     unsafe { asm!("fence") };
 }
 
