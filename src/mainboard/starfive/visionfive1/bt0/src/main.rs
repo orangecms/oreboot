@@ -70,7 +70,27 @@ fn main() {
     // can use both headers with the respective different baud rates.
     uart_init();
     gmac_init();
-    loop {
+
+    uart_write('V');
+    uart_write('i');
+    uart_write('s');
+    uart_write('i');
+    uart_write('o');
+    uart_write('n');
+    uart_write('F');
+    uart_write('i');
+    uart_write('v');
+    uart_write('e');
+    uart_write('1');
+    uart_write('\r');
+    uart_write('\n');
+
+    for _ in 0..22 {
+        for _ in 0..100_000_000 {
+            unsafe {
+                asm!("nop");
+            }
+        }
         uart_write('o');
         uart_write('r');
         uart_write('e');
@@ -87,6 +107,7 @@ fn main() {
         uart_write('\r');
         uart_write('\n');
     }
+    unsafe { asm!("wfi") }
 }
 
 #[cfg_attr(not(test), panic_handler)]
