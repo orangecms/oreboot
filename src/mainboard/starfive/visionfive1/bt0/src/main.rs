@@ -64,28 +64,6 @@ pub unsafe extern "C" fn start() -> ! {
     )
 }
 
-fn nop() {
-    unsafe { riscv::asm::nop() }
-}
-
-fn hello() {
-    uart_write('o');
-    uart_write('r');
-    uart_write('e');
-    uart_write('b');
-    uart_write('o');
-    uart_write('o');
-    uart_write('t');
-    uart_write(' ');
-    // uart_write('🦀');
-    uart_write(0xf0 as char);
-    uart_write(0x9f as char);
-    uart_write(0xa6 as char);
-    uart_write(0x80 as char);
-    uart_write('\r');
-    uart_write('\n');
-}
-
 // type `Serial` is declared outside this crate, avoid orphan rule
 struct Wrap<T>(core::cell::UnsafeCell<T>);
 
@@ -99,6 +77,15 @@ impl core::fmt::Write for S {
         }
         Ok(())
     }
+}
+
+const QSPI_CSR: usize = 0x1186_0000;
+const QSPI_READ_CMD: usize = QSPI_CSR + 0x0004;
+const SPI_FLASH_READ_CMD: u32 = 0x0003;
+
+use core::ptr::{read_volatile, write_volatile};
+fn spi_flash_init() {
+    unsafe { write_volatile(QSPI_READ_CMD as *mut u32, SPI_FLASH_READ_CMD) };
 }
 
 fn main() {
@@ -119,19 +106,13 @@ fn main() {
     let serial = init::Serial::new();
     gmac_init();
 
-    hello();
-
-    /*
-    let r = serial.write('c' as u8);
-    match r {
-        Ok(_) => hello(),
-        _ => bye(),
+    for _ in 0..0xffffff {
+        unsafe { riscv::asm::nop() }
     }
-     */
 
     use core::fmt::Write;
     let mut serial = Wrap(core::cell::UnsafeCell::new(serial));
-    serial.write_fmt(core::format_args!("worky?\n")).ok();
+    serial.write_fmt(core::format_args!("oreboot 🦀\n")).ok();
 
     // log::set_logger(serial);
     // log::_print(core::format_args!("worky?\n"));
@@ -149,7 +130,67 @@ fn main() {
     }
     */
 
+    use core::ptr::slice_from_raw_parts;
+    // Now, dump a bunch of memory ranges to check on
+    // NOTE: When run via mask ROM from SRAM, we do not see the SPI flash
+    // which would be mapped to memory on regular boot, only get ffffffffff.
+
+    // NOTE: First SRAM: We are here!
+    serial
+        .write_fmt(core::format_args!("\n\nRead from 0x1800_0000: \r\n"))
+        .ok();
+    let slice = slice_from_raw_parts(0x1800_0000 as *const u8, 32);
+    for i in 0..32 {
+        serial
+            .write_fmt(core::format_args!("{:x}", unsafe { &*slice }[i]))
+            .ok();
+    }
+
+    spi_flash_init();
+
+    // NOTE: Offset 64K in stock firmware is DRAM init
+    serial
+        .write_fmt(core::format_args!("\n\nRead from 0x2001_0000: \r\n"))
+        .ok();
+    let slice = slice_from_raw_parts(0x2001_0000 as *const u8, 32);
+    for i in 0..32 {
+        serial
+            .write_fmt(core::format_args!("{:x}", unsafe { &*slice }[i]))
+            .ok();
+    }
+
+    // Copy the actual DRAM init blob (starting at byte 4) to second SRAM
+    let dram_blob_size = peek32(0x2001_0000) as u32;
+    for addr in (0usize..dram_blob_size as usize).step_by(4) {
+        // uart.pwrite(b".", 0).unwrap();
+        let d = peek32(0x2001_0004 + addr as u32);
+        poke32(0x1808_0000 + addr as u32, d);
+    }
+
+    use core::intrinsics::transmute;
+    // call ddr
+    pub type EntryPoint = unsafe extern "C" fn(r0: usize, dtb: usize);
+
+    // this is SRAM space
+    unsafe {
+        let f = transmute::<usize, EntryPoint>(0x1808_0000);
+        // NOTE: first argument would be the hart ID, so why 1 and not 0?
+        f(1, 0x1804_0000);
+    }
+
     unsafe { riscv::asm::wfi() }
+}
+
+fn peek32(a: u32) -> u32 {
+    let y = a as *const u32;
+    unsafe { read_volatile(y) }
+}
+
+fn poke32(a: u32, v: u32) {
+    let y = a as *mut u32;
+    unsafe {
+        write_volatile(y, v);
+    }
 }
 
 fn bye() {

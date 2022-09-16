@@ -3,11 +3,13 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+// NOTE: We omit 4 bytes here so that the same binary can be used for flashing.
+// In flash, the first 4 bytes enode the size of the binary to load into SRAM.
 const FLASH: &[u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 MEMORY {
-    SRAM : ORIGIN = 0x18000000, LENGTH = 16K
+    SRAM : ORIGIN = 0x18000000, LENGTH = 16380
 }
 SECTIONS {
     .head : {

@@ -22,3 +22,6 @@ run: mainboard
 
 objdump: mainboard
 	riscv64-linux-gnu-objdump -D $(RELEASE_ELF)
+
+hexdump: mainboard
+	xxd $(RELEASE_BIN)
