@@ -6,6 +6,7 @@ use core::{
     arch::{asm, global_asm},
     panic::PanicInfo,
 };
+use embedded_hal::serial::nb::Write;
 use init::{clock_init, gmac_init, iopad_init, rstgen_init, uart_write};
 use riscv;
 
@@ -85,6 +86,21 @@ fn hello() {
     uart_write('\n');
 }
 
+// type `Serial` is declared outside this crate, avoid orphan rule
+struct Wrap<T>(core::cell::UnsafeCell<T>);
+
+type S = Wrap<init::Serial>;
+
+impl core::fmt::Write for S {
+    #[inline]
+    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+        for byte in s.as_bytes() {
+            while let Err(nb::Error::WouldBlock) = unsafe { (*self.0.get()).write(*byte) } {}
+        }
+        Ok(())
+    }
+}
+
 fn main() {
     clock_init();
     // for illegal instruction exception
@@ -113,8 +129,12 @@ fn main() {
     }
      */
 
-    log::set_logger(serial);
-    log::_print(core::format_args!("worky?\n"));
+    use core::fmt::Write;
+    let mut serial = Wrap(core::cell::UnsafeCell::new(serial));
+    serial.write_fmt(core::format_args!("worky?\n")).ok();
+
+    // log::set_logger(serial);
+    // log::_print(core::format_args!("worky?\n"));
     // print!("hello\n");
     // println!("oreboot 🦀");
 
