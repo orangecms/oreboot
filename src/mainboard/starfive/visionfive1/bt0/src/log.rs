@@ -1,7 +1,7 @@
 //! Log system for BT0
 // essentially copied from sunxi/nezha
 
-use crate::init::Serial;
+use crate::init::{Error, Serial};
 use core::fmt;
 use embedded_hal::serial::nb::Write;
 use nb::block;
@@ -35,12 +35,14 @@ impl fmt::Write for S {
 pub fn set_logger(serial: Serial) {
     crate::init::uart_write('L');
     // FIXME: this here seems broken...
-    LOGGER.call_once(|| {
-        crate::init::uart_write('X');
-        LockedLogger {
-            inner: Mutex::new(Wrap(serial)),
-        }
+    let l = LOGGER.try_call_once(|| -> Result<LockedLogger, u8> {
+        let m = Mutex::new(Wrap(serial));
+        Ok(LockedLogger { inner: m })
     });
+    match l {
+        Ok(_) => crate::init::uart_write('O'),
+        Err(_) => crate::init::uart_write('E'),
+    }
     crate::init::uart_write('L');
 }
 
