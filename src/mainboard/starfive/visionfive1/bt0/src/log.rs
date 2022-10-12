@@ -1,18 +1,14 @@
 //! Log system for BT0
 // essentially copied from sunxi/nezha
 
-use crate::init::{Error, Serial};
-use core::{fmt, ptr::replace};
+use crate::init::Serial;
+use core::fmt;
 use embedded_hal::serial::nb::Write;
 use nb::block;
-use spin::{Mutex, Once};
-
-use core::cell::Cell;
 
 type S = Wrap<Serial>;
 
 #[doc(hidden)]
-// pub(crate) static LOGGER: Once<LockedLogger> = Once::new();
 pub(crate) static mut LOGGER: Option<Logger> = None;
 
 // type `Serial` is declared outside this crate, avoid orphan rule
