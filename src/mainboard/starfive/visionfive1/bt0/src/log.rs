@@ -2,22 +2,25 @@
 // essentially copied from sunxi/nezha
 
 use crate::init::{Error, Serial};
-use core::fmt;
+use core::{fmt, ptr::replace};
 use embedded_hal::serial::nb::Write;
 use nb::block;
 use spin::{Mutex, Once};
 
-#[doc(hidden)]
-pub(crate) static LOGGER: Once<LockedLogger> = Once::new();
+use core::cell::Cell;
 
 type S = Wrap<Serial>;
+
+#[doc(hidden)]
+// pub(crate) static LOGGER: Once<LockedLogger> = Once::new();
+pub(crate) static mut LOGGER: Option<Logger> = None;
 
 // type `Serial` is declared outside this crate, avoid orphan rule
 pub(crate) struct Wrap<T>(T);
 
 #[doc(hidden)]
-pub(crate) struct LockedLogger {
-    pub(crate) inner: Mutex<S>,
+pub(crate) struct Logger {
+    pub(crate) inner: S,
 }
 
 impl fmt::Write for S {
@@ -34,23 +37,23 @@ impl fmt::Write for S {
 #[inline]
 pub fn set_logger(serial: Serial) {
     crate::init::uart_write('L');
-    // FIXME: this here seems broken...
-    let l = LOGGER.try_call_once(|| -> Result<LockedLogger, u8> {
-        let m = Mutex::new(Wrap(serial));
-        Ok(LockedLogger { inner: m })
-    });
-    match l {
-        Ok(_) => crate::init::uart_write('O'),
-        Err(_) => crate::init::uart_write('E'),
+    unsafe {
+        LOGGER = Some(Logger {
+            inner: Wrap(serial),
+        });
     }
-    crate::init::uart_write('L');
 }
 
 #[inline]
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;
-    LOGGER.wait().inner.lock().write_fmt(args).unwrap();
+    unsafe {
+        match &mut LOGGER {
+            Some(l) => l.inner.write_fmt(args).unwrap(),
+            _ => {}
+        }
+    }
 }
 
 #[macro_export]

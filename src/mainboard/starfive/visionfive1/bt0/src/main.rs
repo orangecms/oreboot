@@ -5,6 +5,7 @@
 use core::{
     arch::{asm, global_asm},
     panic::PanicInfo,
+    ptr::slice_from_raw_parts,
 };
 use embedded_hal::serial::nb::Write;
 use init::{clock_init, gmac_init, iopad_init, rstgen_init, uart_write};
@@ -88,6 +89,13 @@ fn spi_flash_init() {
     unsafe { write_volatile(QSPI_READ_CMD as *mut u32, SPI_FLASH_READ_CMD) };
 }
 
+fn dump(addr: usize, length: usize) {
+    let slice = slice_from_raw_parts(addr as *const u8, length);
+    for i in 0..length {
+        print!("{:x}", unsafe { &*slice }[i]);
+    }
+}
+
 fn main() {
     clock_init();
     // for illegal instruction exception
@@ -110,14 +118,8 @@ fn main() {
         unsafe { riscv::asm::nop() }
     }
 
-    use core::fmt::Write;
-    let mut serial = Wrap(core::cell::UnsafeCell::new(serial));
-    serial.write_fmt(core::format_args!("oreboot 🦀\n")).ok();
-
-    // log::set_logger(serial);
-    // log::_print(core::format_args!("worky?\n"));
-    // print!("hello\n");
-    // println!("oreboot 🦀");
+    log::set_logger(serial);
+    println!("oreboot 🦀");
 
     // TODO: continue with DRAM init
 
@@ -129,35 +131,19 @@ fn main() {
         write_volatile(0x0000_0001 as *mut u32, 0x0200_0004);
     }
     */
-
-    use core::ptr::slice_from_raw_parts;
     // Now, dump a bunch of memory ranges to check on
     // NOTE: When run via mask ROM from SRAM, we do not see the SPI flash
     // which would be mapped to memory on regular boot, only get ffffffffff.
 
     // NOTE: First SRAM: We are here!
-    serial
-        .write_fmt(core::format_args!("\n\nRead from 0x1800_0000: \r\n"))
-        .ok();
-    let slice = slice_from_raw_parts(0x1800_0000 as *const u8, 32);
-    for i in 0..32 {
-        serial
-            .write_fmt(core::format_args!("{:x}", unsafe { &*slice }[i]))
-            .ok();
-    }
+    println!("\n\nRead from 0x1800_0000:");
+    dump(0x1800_0000, 32);
 
     spi_flash_init();
 
     // NOTE: Offset 64K in stock firmware is DRAM init
-    serial
-        .write_fmt(core::format_args!("\n\nRead from 0x2001_0000: \r\n"))
-        .ok();
-    let slice = slice_from_raw_parts(0x2001_0000 as *const u8, 32);
-    for i in 0..32 {
-        serial
-            .write_fmt(core::format_args!("{:x}", unsafe { &*slice }[i]))
-            .ok();
-    }
+    println!("\n\nRead from 0x2001_0000:");
+    dump(0x2001_0000, 32);
 
     // Copy the actual DRAM init blob (starting at byte 4) to second SRAM
     let dram_blob_size = peek32(0x2001_0000) as u32;
@@ -177,7 +163,6 @@ fn main() {
         // NOTE: first argument would be the hart ID, so why 1 and not 0?
         f(1, 0x1804_0000);
     }
-
     unsafe { riscv::asm::wfi() }
 }
 

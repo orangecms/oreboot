@@ -1,6 +1,7 @@
 use core::arch::asm;
 use core::ptr::{read_volatile, write_volatile};
 
+// https://www.lammertbies.nl/comm/info/serial-uart
 const UART3_BASE: u32 = 0x1244_0000;
 
 const UART3_THR: u32 = UART3_BASE + 0x0000; /* Transmitter holding reg. */
@@ -317,11 +318,6 @@ pub const SYSCON_IOPAD_CTRL102: u32 = SYSCON_IOPAD_CTRL_BASE + 0x198;
 pub const SYSCON_IOPAD_CTRL103: u32 = SYSCON_IOPAD_CTRL_BASE + 0x19C;
 pub const SYSCON_IOPAD_CTRL104: u32 = SYSCON_IOPAD_CTRL_BASE + 0x1A0;
 
-pub fn syscon_io_padshare_sel(v: u32) {
-    let nv = read_32(SYSCON_IOPAD_CTRL104) & !(0x7);
-    write_32(SYSCON_IOPAD_CTRL104, nv | v & 0x7);
-}
-
 pub fn syscon_func_0(v: u32) {
     // NOTE: for whatever reason, it appears that writing only works after
     // reading i.e., if you remove the `read_32`, it breaks the code
@@ -427,6 +423,14 @@ pub fn syscon_func_69(v: u32) {
 pub fn syscon_func_70(v: u32) {
     read_32(SYSCON_IOPAD_CTRL102);
     write_32(SYSCON_IOPAD_CTRL102, v);
+}
+
+// syscon_func_72 ?
+// moves the UART pins
+// select the function n multiplexed signal group
+pub fn syscon_io_padshare_sel(v: u32) {
+    let nv = read_32(SYSCON_IOPAD_CTRL104) & !(0x7);
+    write_32(SYSCON_IOPAD_CTRL104, nv | v & 0x7);
 }
 
 pub fn iopad_init() {
