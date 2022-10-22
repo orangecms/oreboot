@@ -6,17 +6,17 @@ use core::fmt;
 use embedded_hal::serial::nb::Write;
 use nb::block;
 
-type S = Wrap<Serial>;
-
 #[doc(hidden)]
-pub(crate) static mut LOGGER: Option<Logger> = None;
+pub(crate) static LOGGER: Option<Logger> = None;
+
+type S = Wrap<Serial>;
 
 // type `Serial` is declared outside this crate, avoid orphan rule
 pub(crate) struct Wrap<T>(T);
 
 #[doc(hidden)]
 pub(crate) struct Logger {
-    pub(crate) inner: S,
+    pub(crate) inner: Option<S>,
 }
 
 impl fmt::Write for S {
@@ -33,23 +33,16 @@ impl fmt::Write for S {
 #[inline]
 pub fn set_logger(serial: Serial) {
     crate::init::uart_write('L');
-    unsafe {
-        LOGGER = Some(Logger {
-            inner: Wrap(serial),
-        });
-    }
+    LOGGER = Some(Logger {
+        inner: Some(Wrap(serial)),
+    });
 }
 
 #[inline]
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;
-    unsafe {
-        match &mut LOGGER {
-            Some(l) => l.inner.write_fmt(args).unwrap(),
-            _ => {}
-        }
-    }
+    LOGGER?.inner?.write_fmt(args).ok()
 }
 
 #[macro_export]
