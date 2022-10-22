@@ -23,9 +23,9 @@ impl fmt::Write for S {
     #[inline]
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
         for byte in s.as_bytes() {
-            block!(self.0.write(*byte)).unwrap();
+            block!(self.0.write(*byte)).ok();
         }
-        block!(self.0.flush()).unwrap();
+        block!(self.0.flush()).ok();
         Ok(())
     }
 }
