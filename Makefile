@@ -22,8 +22,9 @@ BINUTILS_VER := 0.3.4
 STACK_SIZES_VER := 0.4.0
 TARPAULIN_VER := 0.19.1
 DPRINT_VER := 0.32.2
+RUST_VER := 1.65
 
-CARGOINST := rustup run --install 1.65 cargo install
+CARGOINST := rustup run --install $(RUST_VER) cargo install
 
 .PHONY: $(MAINBOARDS)
 mainboards: $(MAINBOARDS)
@@ -83,6 +84,10 @@ format:
 .PHONY: checkformat
 checkformat:
 	dprint check
+
+.PHONY: doc
+doc:
+	rustup run --install $(RUST_VER) cargo doc $(OPEN)
 
 # There are a number of targets which can not test.
 # Once those are fixed, we can just use a test target.

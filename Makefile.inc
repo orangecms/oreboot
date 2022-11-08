@@ -9,6 +9,7 @@ TOOLS_DIR   = $(TOP)/tools
 # building tools
 TOOLS_TARGET = $(shell rustc -vV | sed -n -E 's/host: (.+)/\1/p')
 CARGO_FLAGS = --verbose
+RUST_VER := 1.65
 
 # Override variables depending on the build.
 include $(TOP)/Makefile.mode.$(MODE).inc
@@ -28,6 +29,10 @@ $(shell echo "**********" 1>&2)
 # There can be several of these; a mainboard might specify
 # "build something" with a default:: target
 default::
+
+.PHONY: doc
+doc:
+	rustup run --install $(RUST_VER) cargo doc $(OPEN)
 
 # format things
 format:

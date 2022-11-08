@@ -18,7 +18,7 @@ DD         ?= sudo dd
 
 # FIXME: Those included Makefiles do not support the xtask build setup.
 # Rework or remove them. We may not even need them at all anymore.
-#include $(OREBOOT)/Makefile.inc
+include $(OREBOOT)/Makefile.inc
 #include $(OREBOOT)/Makefile.mainboard.inc
 
 cibuild: mainboard
