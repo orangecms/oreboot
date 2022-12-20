@@ -436,15 +436,15 @@ fn smhc_init(smhc0: SMHC0) {
     ccu.smhc_bgr
         .write(|w| w.smhc0_rst().deassert().smhc0_gating().set_bit());
     // TODO: optimize based on speed; manual recommends 200MHz
-    // let factor_n = smhc0_clk::FACTOR_N_A::N1;
-    // let factor_m = 0;
+    let factor_n = smhc0_clk::FACTOR_N_A::N1;
+    let factor_m = 1;
     ccu.smhc0_clk.write(|w| {
         w.clk_src_sel()
             .pll_peri_1x()
-            //        .factor_n()
-            //        .variant(factor_n)
-            //        .factor_m()
-            //        .variant(factor_m)
+            .factor_n()
+            .variant(factor_n)
+            .factor_m()
+            .variant(factor_m)
             .clk_gating()
             .set_bit()
     });
