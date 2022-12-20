@@ -418,6 +418,36 @@ fn trim_bandgap_ref_voltage() {
 }
 
 fn smhc_init(smhc0: SMHC0) {
+    let ccu = unsafe { &*CCU::ptr() };
+
+    // set up PLL for peripherals
+    ccu.pll_peri_ctrl.write(|w| {
+        w.pll_n()
+            .variant(100)
+            // .pll_m().variant(1)
+            .pll_p0()
+            .variant(2)
+            .pll_p1()
+            .variant(3)
+    });
+    ccu.pll_peri_ctrl.write(|w| {
+        w.pll_en()
+            .set_bit()
+            .pll_ldo_en()
+            .set_bit()
+            .pll_output_gate()
+            .clear_bit()
+    });
+    ccu.pll_peri_ctrl.write(|w| {
+        w.lock_enable()
+            .set_bit()
+    });
+    // TODO: check lock status change to 1, delay 20 us
+    ccu.pll_peri_ctrl.write(|w| {
+        w.pll_output_gate()
+            .clear_bit()
+    });
+
     let div = smhc0.smhc_clkdiv.read().cclk_div().bits();
     println!("smhc0 clk div {:x}", div);
     // let ntsr = smhc0.smhc_ntsr.read();
@@ -432,7 +462,6 @@ fn smhc_init(smhc0: SMHC0) {
     smhc0.smhc_drv_dl.write(|w| unsafe { w.bits(0x8000) });
 
     // STEP 1: reset gating, set up clock
-    let ccu = unsafe { &*CCU::ptr() };
     ccu.smhc_bgr
         .write(|w| w.smhc0_rst().deassert().smhc0_gating().set_bit());
     // TODO: optimize based on speed; manual recommends 200MHz
@@ -447,6 +476,8 @@ fn smhc_init(smhc0: SMHC0) {
             .variant(factor_m)
             .clk_gating()
             .set_bit()
+            .clk_gating()
+            .clear_bit()
     });
 
     // STEP2: reset FIFO, enable interrupt; enable SDIO interrupt
