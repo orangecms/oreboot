@@ -489,7 +489,6 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
     // let ntsr = smhc0.smhc_ntsr.read();
     // println!("smhc0 ntsr {:x}", div);
 
-    /*
     // STEP 0: celebration of calibration
     // delay software enable
     const DSE: u32 = 1 << 7;
@@ -498,6 +497,7 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
     smhc0.smhc_drv_dl.write(|w| unsafe { w.bits(0) });
     // start calibration
     smhc0.smhc_drv_dl.write(|w| unsafe { w.bits(0x8000) });
+    /*
     */
 
     // STEP 1a: reset and gating
@@ -508,9 +508,6 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
             .set_bit()
     });
     
-    let busy = smhc0.smhc_status.read().fsm_busy().bit_is_set();
-    println!("SD FSM busy? {}", busy);
-
     // STEP 1b: set up clock
     ccu.smhc0_clk.write(|w| w.clk_src_sel().pll_peri_1x());
     // TODO: manual recommends 200MHz
@@ -523,7 +520,7 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
         8 => pac::ccu::smhc0_clk::FACTOR_N_A::N8,
         _ => unreachable!(),
     };
-    println!("smhc0 m {factor_m} n {factor_n:?}");
+    // println!("smhc0 m {factor_m} n {factor_n:?}");
     ccu.smhc0_clk.write(|w| {
         w.factor_n()
             .variant(factor_n)
@@ -531,10 +528,7 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
             .variant(factor_m)
     });
     ccu.smhc0_clk.write(|w| w.clk_gating().set_bit());
-
     println!("SMHC0 clocks set");
-    let busy = smhc0.smhc_status.read().fsm_busy().bit_is_set();
-    println!("SD FSM busy? {}", busy);
 
     // STEP 2a: reset FIFO, enable interrupt
     smhc0.smhc_ctrl.write(|w| {
@@ -542,15 +536,8 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
             .set_bit()
             .soft_rst()
             .set_bit()
-            .ine_enb()
-            .set_bit()
-            .dma_enb()
-            .set_bit()
-            .dma_rst()
-            .set_bit()
-            // .fifo_ac_mod()
-            // .variant(pac::smhc::smhc_ctrl::FIFO_AC_MOD_A::AHB)
     });
+    /*
     // STEP 2b: enable SDIO interrupt
     smhc0.smhc_intmask.write(|w| {
         w.sdio_int_en()
@@ -558,24 +545,18 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
             .re_int_en()
             .set_bit()
     });
-    wait();
-
-    println!("SMHC0 ctrl set");
-    let busy = smhc0.smhc_status.read().fsm_busy().bit_is_set();
-    println!("SD FSM busy? {}", busy);
+    */
+    println!("SMHC0 reset");
 
     // STEP 3a: enable clock and set divider for devices
-    smhc0.smhc_clkdiv.write(|w| w.cclk_enb().on().cclk_div().variant(8));
-    let clk_div = smhc0.smhc_clkdiv.read().cclk_div().bits();
-    println!("smhc0 clk div {:x}", clk_div);
-    let clk_reg = smhc0.smhc_clkdiv.read().bits();
-    println!("smhc0 clk reg {:x}", clk_reg);
-
-    let busy = smhc0.smhc_status.read().fsm_busy().bit_is_set();
-    println!("SD FSM busy? {}", busy);
+    smhc0.smhc_clkdiv.write(|w| w.cclk_enb().on().cclk_div().variant(0));
 
     // bus width: 4 data pins
-    // smhc0.smhc_ctype.write(|w| w.card_wid().b4());
+    smhc0.smhc_ctype.write(|w| w.card_wid().b4());
+    println!("SMHC0 bus width set");
+
+    let busy = smhc0.smhc_status.read().card_busy().bit_is_set();
+    println!("SD card busy? {}", busy);
 
     // STEP 3b: send "change clock" command
     // see boot0/sdhost.c l98 (cmd in host_update_clk); manual p615
@@ -593,13 +574,9 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
     }
 
     wait();
-    let busy = smhc0.smhc_status.read().fsm_busy().bit_is_set();
-    println!("SD FSM busy? {}", busy);
-
-    unsafe {
-        let r = smhc0.smhc_cmd.read().cmd_load().bit_is_set();
-        println!("cmd_load {r}");
-    }
+    // NOTE: Now, the SD card is busy...
+    let busy = smhc0.smhc_status.read().card_busy().bit_is_set();
+    println!("SD card busy? {}", busy);
 
     // turn clock back on
     smhc0.smhc_clkdiv.write(|w| w.cclk_enb().on());
@@ -607,8 +584,8 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
 
     let present = smhc0.smhc_status.read().card_present().is_present();
     println!("SD card present? {}", present);
-    let busy = smhc0.smhc_status.read().fsm_busy().bit_is_set();
-    println!("SD FSM busy? {}", busy);
+    let busy = smhc0.smhc_status.read().card_busy().bit_is_set();
+    println!("SD card busy? {}", busy);
 
     // identify card
     unsafe {
@@ -631,9 +608,7 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
 
     let stat = smhc0.smhc_status.read().bits();
     println!("SD status {stat:x}");
-
-    while smhc0.smhc_status.read().card_busy().is_busy() {}
-    // while smhc0.smhc_status.read().fsm_busy().bit_is_set() {}
+    // while smhc0.smhc_status.read().card_busy().is_busy() {}
     wait();
 
     let r0 = smhc0.smhc_resp0.read().bits();
@@ -711,16 +686,6 @@ extern "C" fn main() -> usize {
     cpu_pll |= PLL_EN | PLL_N;
     unsafe { write_volatile(PLL_CPU_CTRL as *mut u32, cpu_pll) };
 
-    // dma_bgr::RST_W::set_bit(dma_bgr::RST_A::ASSERT);
-    //  DMA_BGR::write(|w| w.reset().set_bit());
-    let dma_bgr = unsafe { read_volatile(CCMU_DMA_BGR_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_DMA_BGR_REG as *mut u32, dma_bgr | 1 << 16) };
-    let dma_bgr = unsafe { read_volatile(CCMU_DMA_BGR_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_DMA_BGR_REG as *mut u32, dma_bgr | 1 << 0) };
-
-    for _ in 0..1000 {
-        core::hint::spin_loop();
-    }
     let mut cpu_axi = unsafe { read_volatile(CCMU_CPUX_AXI_CFG_REG as *mut u32) };
     println!("cpu_axi {:x}", cpu_axi); // 0xFA00_1000
     cpu_axi &= 0x07 << 24 | 0x3 << 8 | 0xf << 0;
@@ -774,15 +739,12 @@ extern "C" fn main() -> usize {
     #[cfg(not(feature = "jtag"))]
     {
         // turn GPIOs into SD card mode; 1 for clock, 1 for cmd, 4 data pins
-        let cfg_gpios = false;
-        if cfg_gpios {
-            gpio.portf.pf0.into_function_2();
-            gpio.portf.pf1.into_function_2();
-            gpio.portf.pf2.into_function_2();
-            gpio.portf.pf3.into_function_2();
-            gpio.portf.pf4.into_function_2();
-            gpio.portf.pf5.into_function_2();
-        }
+        gpio.portf.pf0.into_function_2();
+        gpio.portf.pf1.into_function_2();
+        gpio.portf.pf2.into_function_2();
+        gpio.portf.pf3.into_function_2();
+        gpio.portf.pf4.into_function_2();
+        gpio.portf.pf5.into_function_2();
 
         // TODO: refactor
         // let smhc = Smhc::new(p.SMHC0);
