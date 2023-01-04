@@ -9,7 +9,7 @@ members = [
   "src/lib/consts",
   "src/lib/util",
 
-  "src/mainboard/sipeed/m1s-dock",
+  "src/mainboard/sipeed/m1s-dock/*",
   "src/mainboard/sunxi/nezha/*",
   "src/mainboard/emulation/*",
 
