@@ -1,63 +1,71 @@
 //! Log system for BT0
 // essentially copied from sunxi/nezha
 
-use crate::init::Serial;
 use core::fmt;
-use embedded_hal::serial::nb::Write;
+use embedded_hal::serial::{ErrorType,nb::Write};
 use nb::block;
 
-type S = Wrap<Serial<bl808_pac::UART0, bl808_pac::UART1>>;
-
-#[doc(hidden)]
-pub(crate) static mut LOGGER: Option<Logger> = None;
-
-// type `Serial` is declared outside this crate, avoid orphan rule
-pub(crate) struct Wrap<T>(T);
-
-#[doc(hidden)]
-pub(crate) struct Logger {
-    pub(crate) inner: S,
+pub trait Serial: ErrorType + Write {
 }
 
-impl fmt::Write for S {
+/// Error types that may happen when serial transfer
+#[derive(Debug)]
+pub struct Error {
+    pub kind: embedded_hal::serial::ErrorKind,
+}
+
+impl embedded_hal::serial::Error for Error {
+    #[inline]
+    fn kind(&self) -> embedded_hal::serial::ErrorKind {
+        self.kind
+    }
+}
+
+pub type SerialLogger = &'static mut dyn Serial<Error=Error>;
+
+#[doc(hidden)]
+pub(crate) static mut LOGGER: Option<SerialLogger> = None;
+
+impl<'a> fmt::Write for SerialLogger {
     #[inline]
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
         for byte in s.as_bytes() {
-            block!(self.0.write(*byte)).unwrap();
+            block!(self.write(*byte)).unwrap();
         }
-        block!(self.0.flush()).unwrap();
+        block!(self.flush()).unwrap();
         Ok(())
     }
 }
 
 #[inline]
-pub fn set_logger(serial: Serial<bl808_pac::UART0, bl808_pac::UART1>) {
+pub fn set_logger(serial: SerialLogger + 'static) {
     unsafe {
-        LOGGER = Some(Logger {
-            inner: Wrap(serial),
-        });
+        LOGGER = Some(serial);
     }
 }
 
-#[inline]
-#[doc(hidden)]
-pub fn _debug(num: u8) {
-    unsafe {
-        if let Some(l) = &mut LOGGER {
-            l.inner.0.debug(num);
-        }
-    }
-}
 #[inline]
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;
     unsafe {
         if let Some(l) = &mut LOGGER {
-            l.inner.write_fmt(args).unwrap();
+             l.write_fmt(args).unwrap();
         }
     }
 }
+
+/*
+#[inline]
+#[doc(hidden)]
+pub fn _debug(num: u8) {
+    unsafe {
+        if let Some(l) = &mut LOGGER {
+            l.inner.debug(num);
+        }
+    }
+}
+*/
 
 #[macro_export]
 macro_rules! print {
