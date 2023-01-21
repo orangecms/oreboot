@@ -1,3 +1,4 @@
+#![feature(default_alloc_error_handler)]
 #![feature(naked_functions, asm_const)]
 #![feature(associated_type_bounds)]
 #![no_std]
@@ -91,11 +92,11 @@ fn main() {
         let p = Peripherals::steal();
         let glb = p.GLB;
         init::gpio_uart_init(&glb);
-        let serial = &mut init::BSerial::new(p.UART0, p.UART1);
-        log::set_logger(*serial);
+        let serial = init::BSerial::new(p.UART0, p.UART1);
+        log::set_logger(serial);
 
         // print to UART0
-        // log::_debug(42);
+        log::_debug(42);
 
         // prints to UART1
         println!("oreboot 🦀");

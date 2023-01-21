@@ -66,17 +66,10 @@ pub struct BSerial<UART0: Instance0, UART1: Instance1> {
     u0: UART0,
     u1: UART1,
 }
-/*
-impl embedded_hal::serial::Error for Error {
-    #[inline]
-    fn kind(&self) -> embedded_hal::serial::ErrorKind {
-        self.kind
-    }
-}
-*/
+
 impl<UART0: Instance0, UART1: Instance1> BSerial<UART0, UART1> {
     #[inline]
-    pub fn new(u0: UART0, u1: UART1) -> &'static Self {
+    pub fn new(u0: UART0, u1: UART1) -> Self {
         // TX config
         u0.transmit_config.write(|w| {
             w.word_length().eight()
@@ -98,15 +91,15 @@ impl<UART0: Instance0, UART1: Instance1> BSerial<UART0, UART1> {
             w.transmit().variant(txp)
                 .receive().variant(rxp)
         });
-        &Self{u0, u1}
-    }
-
-    pub fn debug(&mut self, num: u8) {
-        self.u0.data_write.write(|w| w.value().variant(num));
+        Self{u0, u1}
     }
 }
 
-impl<UART0: Instance0, UART1: Instance1> Serial for BSerial<UART0, UART1> {}
+impl<UART0: Instance0, UART1: Instance1> Serial for BSerial<UART0, UART1> {
+    fn debug(&self, num: u8) {
+        self.u0.data_write.write(|w| w.value().variant(num));
+    }
+}
 
 impl<UART0: Instance0, UART1: Instance1> embedded_hal::serial::ErrorType for BSerial<UART0, UART1> {
     type Error = Error;
