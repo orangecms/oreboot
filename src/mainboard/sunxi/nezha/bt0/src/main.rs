@@ -420,6 +420,8 @@ fn trim_bandgap_ref_voltage() {
 fn smhc_init(smhc0: SMHC0) {
     let div = smhc0.smhc_clkdiv.read().cclk_div().bits();
     println!("smhc0 clk div {:x}", div);
+    // let ntsr = smhc0.smhc_ntsr.read();
+    // println!("smhc0 ntsr {:x}", div);
     // STEP 0: celebration of calibration
     // delay software enable
     const DSE: u32 = 1 << 7;
