@@ -537,7 +537,6 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
             .soft_rst()
             .set_bit()
     });
-    /*
     // STEP 2b: enable SDIO interrupt
     smhc0.smhc_intmask.write(|w| {
         w.sdio_int_en()
@@ -545,47 +544,43 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
             .re_int_en()
             .set_bit()
     });
-    */
     println!("SMHC0 reset");
 
     // STEP 3a: enable clock and set divider for devices
-    smhc0.smhc_clkdiv.write(|w| w.cclk_enb().on().cclk_div().variant(0));
+    smhc0.smhc_clkdiv.write(|w| w.cclk_enb().on().cclk_div().variant(10));
 
     // bus width: 4 data pins
     smhc0.smhc_ctype.write(|w| w.card_wid().b4());
     println!("SMHC0 bus width set");
 
-    let busy = smhc0.smhc_status.read().card_busy().bit_is_set();
-    println!("SD card busy? {}", busy);
-
     // STEP 3b: send "change clock" command
     // see boot0/sdhost.c l98 (cmd in host_update_clk); manual p615
-    unsafe {
-        smhc0.smhc_cmd.write(|w| {
-            w.cmd_load()
-                .set_bit()
-                .prg_clk()
-                .set_bit()
-                .wait_pre_over()
-                .set_bit()
-                .cmd_idx()
-                .bits(0)
-        });
-    }
+    smhc0.smhc_cmd.write(|w| {
+        w.cmd_load()
+            .set_bit()
+            .prg_clk()
+            .set_bit()
+            .wait_pre_over()
+            .set_bit()
+    });
 
+    println!("SD 'change clock' command sent");
     wait();
+
     // NOTE: Now, the SD card is busy...
     let busy = smhc0.smhc_status.read().card_busy().bit_is_set();
     println!("SD card busy? {}", busy);
-
-    // turn clock back on
-    smhc0.smhc_clkdiv.write(|w| w.cclk_enb().on());
-    wait();
-
     let present = smhc0.smhc_status.read().card_present().is_present();
     println!("SD card present? {}", present);
-    let busy = smhc0.smhc_status.read().card_busy().bit_is_set();
-    println!("SD card busy? {}", busy);
+    let stat = smhc0.smhc_status.read().bits();
+    println!("SD status 0x{stat:x}");
+
+    smhc0.smhc_ctrl.write(|w| {
+        w.fifo_rst()
+            .set_bit()
+            .soft_rst()
+            .set_bit()
+    });
 
     // identify card
     unsafe {
@@ -598,16 +593,15 @@ fn smhc_init(smhc0: SMHC0, clocks: &Clocks) {
                 .set_bit()
                 .cmd_load()
                 .set_bit()
-                .wait_pre_over()
-                .set_bit()
                 .cmd_idx()
                 .bits(SD_CMD_ALL_SEND_CID)
         });
     }
+    println!("SD 'send CID' command sent");
     wait();
 
     let stat = smhc0.smhc_status.read().bits();
-    println!("SD status {stat:x}");
+    println!("SD status 0x{stat:x}");
     // while smhc0.smhc_status.read().card_busy().is_busy() {}
     wait();
 
