@@ -16,12 +16,12 @@ use oreboot_soc::sunxi::d1::{
     pac::{Peripherals, SMHC0, SPI0},
     spi::{Spi, MODE_3},
     time::U32Ext,
-    uart::{Config, Parity, Serial, StopBits, WordLength},
+    uart::{Config, Parity, D1Serial, StopBits, WordLength},
 };
 use riscv as _;
 
 #[macro_use]
-mod logging;
+extern crate log;
 mod flash;
 mod mctl;
 
@@ -533,8 +533,8 @@ extern "C" fn main() -> usize {
         parity: Parity::None,
         stopbits: StopBits::One,
     };
-    let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
-    crate::logging::set_logger(serial);
+    let serial = D1Serial::new(p.UART0, (tx, rx), config, &clocks);
+    log::set_logger(serial);
 
     println!("oreboot 🦀");
 

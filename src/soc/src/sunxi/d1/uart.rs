@@ -14,13 +14,14 @@ use d1_pac::{
     },
     CCU,
 };
+use log::{Error, Serial};
 
 type PBUART = (PB8<Function<6>>, PB9<Function<6>>);
 type PGUART = (PG17<Function<7>>, PG18<Function<7>>);
 
 /// D1 serial peripheral
 #[derive(Debug)]
-pub struct Serial<UART: Instance, PINS> {
+pub struct D1Serial<UART: Instance, PINS> {
     pins: PINS,
     inner: UART,
 }
@@ -60,7 +61,7 @@ pub enum StopBits {
     Two,
 }
 
-impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
+impl<UART: Instance, PINS: Pins<UART>> D1Serial<UART, PINS> {
     /// Create instance of Uart
     #[inline]
     pub fn new(uart: UART, pins: PINS, config: impl Into<Config>, clock: &Clocks) -> Self {
@@ -143,7 +144,7 @@ impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
              .rt()    .two_less_than_full()
         });
         // 6. return the instance
-        Serial { pins, inner: uart }
+        D1Serial { pins, inner: uart }
     }
     // Close uart and release peripheral
     #[allow(unused)] // FIXME
@@ -159,7 +160,7 @@ impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
 
 // Disable UART when drop; either next bootloading stage will initialize again,
 // or we provide ownership of serial structure to next bootloading stage.
-impl<UART: Instance, PINS> Drop for Serial<UART, PINS> {
+impl<UART: Instance, PINS> Drop for D1Serial<UART, PINS> {
     #[inline]
     fn drop(&mut self) {
         let ccu = unsafe { &*CCU::ptr() };
@@ -174,37 +175,30 @@ impl Instance for d1_pac::UART0 {}
 
 // note: if we want to assert RTS and/or CTS, implement Pins<UARTi> for them
 // then users can use (tx, rx, rts, cts) in PINS type parameter
-// and Serial::new function should take care of it to enable rtc and cts for peripheral
+// and D1Serial::new function should take care of it to enable rtc and cts for peripheral
 
 pub trait Pins<UART> {}
 
 impl Pins<d1_pac::UART0> for PBUART {}
 
-/// Error types that may happen when serial transfer
-#[derive(Debug)]
-pub struct Error {
-    kind: embedded_hal::serial::ErrorKind,
-}
-
-impl embedded_hal::serial::Error for Error {
-    #[inline]
-    fn kind(&self) -> embedded_hal::serial::ErrorKind {
-        self.kind
+impl<UART: Instance, PINS> Serial for D1Serial<UART, PINS> {
+    fn debug(&self, num: u8) {
+        // TODO: drive TX high/low..?
     }
 }
 
-impl<UART: Instance, PINS> embedded_hal::serial::ErrorType for Serial<UART, PINS> {
+impl<UART: Instance, PINS> embedded_hal::serial::ErrorType for D1Serial<UART, PINS> {
     type Error = Error;
 }
 
 // NOTE: This is just a stub. We do not need to read from serial in oreboot.
-impl<UART: Instance, PINS> embedded_hal::serial::nb::Read<u8> for Serial<UART, PINS> {
+impl<UART: Instance, PINS> embedded_hal::serial::nb::Read<u8> for D1Serial<UART, PINS> {
     fn read(&mut self) -> nb::Result<u8, Self::Error> {
         Ok(0)
     }
 }
 
-impl<UART: Instance, PINS> embedded_hal::serial::nb::Write<u8> for Serial<UART, PINS> {
+impl<UART: Instance, PINS> embedded_hal::serial::nb::Write<u8> for D1Serial<UART, PINS> {
     #[inline]
     fn write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         if self.inner.usr.read().tfnf().is_full() {

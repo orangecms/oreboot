@@ -28,7 +28,7 @@ use oreboot_soc::sunxi::d1::{
     gpio::Gpio,
     pac::Peripherals,
     time::U32Ext,
-    uart::{Config, Parity, Serial, StopBits, WordLength},
+    uart::{Config, Parity, D1Serial, StopBits, WordLength},
 };
 use rustsbi::{legacy_stdio::LegacyStdio, print};
 
@@ -309,7 +309,7 @@ type PBUART = (PB8<Function<6>>, PB9<Function<6>>);
 type PGUART = (PG17<Function<7>>, PG18<Function<7>>);
 
 // Serial is a driver implementing embedded HAL; external
-struct Cereal(core::cell::UnsafeCell<Serial<UART0, PBUART>>);
+struct Cereal(core::cell::UnsafeCell<D1Serial<UART0, PBUART>>);
 
 // LegacyStdio from RustSBI
 impl LegacyStdio for Cereal {
@@ -354,7 +354,7 @@ extern "C" fn main() -> usize {
         stopbits: StopBits::One,
     };
 
-    let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
+    let serial = D1Serial::new(p.UART0, (tx, rx), config, &clocks);
     let cereal = Cereal(core::cell::UnsafeCell::new(serial));
 
     // logging::set_logger(serial);
