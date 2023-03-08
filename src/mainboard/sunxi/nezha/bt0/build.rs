@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+const LINKERSCRIPT_FILENAME: &str = "link-nezha-bt0.ld";
+
 const NEZHA_FLASH: &[u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(head_jump)
@@ -48,7 +50,7 @@ SECTIONS {
 
 fn main() {
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    File::create(out.join("link-nezha-bt0.ld"))
+    File::create(out.join(LINKERSCRIPT_FILENAME))
         .unwrap()
         .write_all(NEZHA_FLASH)
         .unwrap();
