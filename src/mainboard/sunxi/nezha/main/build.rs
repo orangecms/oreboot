@@ -40,6 +40,7 @@ SECTIONS {
     } > DDR
     /DISCARD/ : {
         *(.eh_frame)
+        *(.debug)
     }
 }";
 

@@ -45,6 +45,7 @@ SECTIONS {
     } > SRAM
     /DISCARD/ : {
         *(.eh_frame)
+        *(.debug)
     }
 }";
 
