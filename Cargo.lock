@@ -1301,8 +1301,10 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-nb",
+ "log 0.1.0",
  "nb 1.1.0",
  "riscv 0.10.1",
+ "rustsbi 0.3.2",
  "spin",
 ]
 
