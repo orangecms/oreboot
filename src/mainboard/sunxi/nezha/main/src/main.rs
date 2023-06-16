@@ -2,10 +2,12 @@
 #![no_main]
 
 use core::arch::{asm, naked_asm};
+use core::mem::transmute;
 use core::panic::PanicInfo;
 use core::ptr::read_volatile;
 use embedded_hal::digital::OutputPin;
 use log::{print, println};
+use oreboot_arch::riscv64::sbi;
 use oreboot_compression::decompress;
 use oreboot_soc::sunxi::d1::{
     ccu::Clocks,
@@ -343,7 +345,7 @@ extern "C" fn main() -> usize {
         }
         println!("Running payload at 0x{PAYLOAD_ADDR:x}");
         unsafe {
-            let f: unsafe extern "C" fn() = core::mem::transmute(PAYLOAD_ADDR);
+            let f: unsafe extern "C" fn() = transmute(PAYLOAD_ADDR);
             f();
         }
         println!("Unexpected return from payload");
@@ -356,12 +358,10 @@ extern "C" fn finish(reset_type: u32) -> ! {
     match reset_type {
         RESET_TYPE_SHUTDOWN => loop {
             println!("🦀");
-            // unsafe { asm!("wfi") }
+            unsafe { riscv::asm::wfi() }
         },
-        /*
         RESET_TYPE_COLD_REBOOT => todo!(),
         RESET_TYPE_WARM_REBOOT => todo!(),
-        */
         _ => unimplemented!(),
     }
 }
