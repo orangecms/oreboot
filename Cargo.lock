@@ -765,7 +765,7 @@ version = "0.1.0"
 dependencies = [
  "log 0.1.0",
  "riscv 0.12.1",
- "rustsbi",
+ "rustsbi 0.4.0",
  "sbi-rt",
  "sbi-spec 0.0.7",
  "util",
@@ -837,7 +837,7 @@ dependencies = [
  "oreboot-soc",
  "oreboot_compression",
  "riscv 0.12.1",
- "rustsbi",
+ "rustsbi 0.4.0",
  "sbi-spec 0.0.4",
  "spin",
  "util",
@@ -1119,6 +1119,16 @@ dependencies = [
 
 [[package]]
 name = "rustsbi"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c74c6df5cecd1ddc81f953d100cee1111acd981535526d3e89d2854015cf93b"
+dependencies = [
+ "riscv 0.10.1",
+ "sbi-spec 0.0.5",
+]
+
+[[package]]
+name = "rustsbi"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c13763120794ed11d64bac885fb31d384ae385c3287b0697711b97affbf8ab"
@@ -1159,6 +1169,15 @@ name = "sbi-spec"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d4027cf9bb591a9fd0fc0e283be6165c5abe96cb73e9f0e24738c227f425377"
+dependencies = [
+ "static_assertions",
+]
+
+[[package]]
+name = "sbi-spec"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a535b1f16d5517a020539569f7e37e61fad35ed0d5352f9fd7073304e2f2dc72"
 dependencies = [
  "static_assertions",
 ]
@@ -1321,6 +1340,14 @@ dependencies = [
  "oreboot-soc",
  "riscv 0.10.1",
  "spin",
+ "starfive-visionfive2-lib",
+]
+
+[[package]]
+name = "starfive-visionfive2-lib"
+version = "0.1.0"
+dependencies = [
+ "log 0.1.0",
 ]
 
 [[package]]
@@ -1329,10 +1356,16 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-nb",
+ "log 0.1.0",
  "nb 1.1.0",
+ "oreboot-arch",
  "oreboot-soc",
+ "oreboot_compression",
  "riscv 0.10.1",
+ "rustsbi 0.3.2",
+ "sbi-spec 0.0.4",
  "spin",
+ "starfive-visionfive2-lib",
 ]
 
 [[package]]
