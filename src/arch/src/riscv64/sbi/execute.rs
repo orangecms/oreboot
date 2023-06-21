@@ -20,6 +20,7 @@ const DEBUG_MTIMER: bool = false;
 const DEBUG_EBREAK: bool = true;
 const DEBUG_EMULATE: bool = false;
 const DEBUG_ILLEGAL: bool = true;
+const DEBUG_MISALIGNED: bool = true;
 
 const ECALL_OREBOOT: usize = 0x0A02_3B00;
 // dump CSR
@@ -186,7 +187,7 @@ pub fn execute_supervisor<S: RustSBI>(
                 if ins as u16 == EBREAK {
                     // dump context on breakpoints for debugging
                     // TODO: how would we allow for "real" debugging?
-                    if DEBUG_EBREAK {
+                    if DEBUG && DEBUG_EBREAK {
                         println!("[SBI] Take an EBREAK!");
                         dump_mstate();
                         panic!("{ctx:#04X?}");

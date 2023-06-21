@@ -5,39 +5,64 @@ use core::{
 };
 use log::println;
 use riscv::register::{
-    mcause, medeleg, mepc, mideleg, mie,
+    mcause, medeleg, mepc, mideleg, mie, mip,
     mstatus::{self, Mstatus, MPP},
     mtval,
     mtvec::{self, TrapMode},
 };
 
-fn delegate_interrupt_exception() {
-    unsafe {
-        mideleg::set_sext();
-        mideleg::set_stimer();
-        mideleg::set_ssoft();
-        // p 35, table 3.6
-        medeleg::set_instruction_misaligned();
-        medeleg::set_instruction_fault();
-        // Do not medeleg::set_illegal_instruction();
-        // We need to handle sfence.VMA and timer access in SBI, i.e., rdtime.
-        // medeleg::set_breakpoint();
-        medeleg::set_load_misaligned();
-        medeleg::set_load_fault(); // PMP violation, shouldn't be hit
-        medeleg::set_store_misaligned();
-        medeleg::set_store_fault();
-        medeleg::set_user_env_call();
-        // Do not delegate env call from S-mode nor M-mode; we handle it :)
-        medeleg::set_instruction_page_fault();
-        medeleg::set_load_page_fault();
-        medeleg::set_store_page_fault();
-        mie::set_mext();
-        mie::set_mtimer();
-        mie::set_msoft();
-        mie::set_sext();
-        mie::set_stimer();
-        mie::set_ssoft();
-    }
+const DEBUG: bool = true;
+const DEBUG_MTIMER: bool = false;
+const DEBUG_RESUME: bool = false;
+
+// mideleg: 0x222
+// medeleg: 0xb159
+// OpenSBI medeleg: 0xb109
+// NOTE: OpenSBI does not delegate store/load misaligned.
+// Config options for Linux allow for it to handle misaligned access itself.
+unsafe fn delegate_interrupt_exception() {
+    // clear all pending interrupts
+    mip::clear_stimer();
+    mip::clear_sext();
+    mip::clear_ssoft();
+
+    // delegate all interrupts
+    mideleg::set_sext();
+    mideleg::set_stimer();
+    mideleg::set_ssoft();
+
+    // p 35, table 3.6
+    medeleg::set_instruction_misaligned();
+    // NOTE: Delegating instruction fault is not effective,
+    // e.g. on SiFive U74 (U7).
+    medeleg::set_instruction_fault();
+    // Do not delegate illegal instruction handling.
+    // We need to handle sfence.VMA and privilged CSR access in
+    // SBI, emulate `rdtime`, etc.
+    medeleg::clear_illegal_instruction();
+    medeleg::set_breakpoint();
+
+    medeleg::set_load_misaligned();
+    medeleg::set_store_misaligned();
+    // A load or store fault means PMP violation, shouldn't be hit.
+    // NOTE: Delegating those is not effective, e.g. on SiFive U74 (U7).
+    medeleg::set_load_fault();
+    medeleg::set_store_fault();
+
+    medeleg::set_user_env_call();
+    // Do not delegate env calls from S-mode nor M-mode.
+    // The SBI needs to handle them.
+
+    medeleg::set_instruction_page_fault();
+    medeleg::set_load_page_fault();
+    medeleg::set_store_page_fault();
+
+    mie::clear_mext();
+    mie::set_mtimer();
+    mie::set_msoft();
+    mie::set_sext();
+    mie::set_stimer();
+    mie::set_ssoft();
 }
 
 // Set up the trap mode and entry point (vector) for the M-mode trap handler.
@@ -45,17 +70,21 @@ fn delegate_interrupt_exception() {
 pub fn init() {
     // NOTE: This must be aligned to 4 bytes, asserted via repr() directive.
     let addr = from_supervisor_save as usize;
+    println!("[SBI] set mtvec: {addr:x}");
     unsafe { mtvec::write(addr, TrapMode::Direct) };
-    delegate_interrupt_exception();
+    println!("[SBI] delegate interrupts and exceptions");
+    unsafe { delegate_interrupt_exception() };
 }
 
 pub struct Runtime {
     context: SupervisorContext,
 }
 
+use core::mem::MaybeUninit as MU;
+
 impl Runtime {
     pub fn new(supervisor_mepc: usize, a0: usize, a1: usize) -> Self {
-        let context: SupervisorContext = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
+        let context: SupervisorContext = unsafe { MU::zeroed().assume_init() };
         let mut rt = Runtime { context };
         rt.prepare_supervisor(supervisor_mepc);
         rt.context.a0 = a0;
@@ -90,7 +119,14 @@ impl Coroutine for Runtime {
     type Yield = Trap;
     type Return = ();
     fn resume(mut self: Pin<&mut Self>, _arg: ()) -> CoroutineState<Self::Yield, Self::Return> {
+        if DEBUG && DEBUG_RESUME {
+            let mst = mstatus::read();
+            println!("[SBI] to S-mode with {mst:#?}");
+        }
         unsafe { do_resume(&mut self.context as *mut _) };
+        if DEBUG && DEBUG_RESUME {
+            println!("[SBI] back to M-mode...");
+        }
         let mtval = mtval::read();
         let t: T<I, E> = mcause::read().cause().try_into().unwrap();
         let trap = match t {
@@ -229,6 +265,13 @@ pub unsafe extern "C" fn to_supervisor_restore(_supervisor_context: *mut Supervi
          ld     t1,  32*8(sp)
          csrw   mstatus, t0
          csrw   mepc, t1",
+        // Should we do this, like OpenSBI?
+        /*
+        "csrw   stvec, t1
+         csrw   sscratch, x0
+         csrw   sie, x0
+         csrw   satp, x0",
+        */
         "ld     ra,  0*8(sp)
          ld     gp,  2*8(sp)
          ld     tp,  3*8(sp)
