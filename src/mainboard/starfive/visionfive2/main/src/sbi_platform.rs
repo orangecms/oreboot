@@ -111,9 +111,9 @@ impl rustsbi::Fence for Rfence {
         }
         unsafe {
             asm!(
-                "sfence.vma",  // TLB flush
-                "fence.i",     // local hart
-                "fence   w,w", // whatever..?
+                "sfence.vma", // TLB flush
+                "fence.i",    // local hart
+                "fence  w,w", // whatever..?
             );
         }
         for i in 0..=4 {
@@ -122,9 +122,7 @@ impl rustsbi::Fence for Rfence {
                 clear_ipi(i);
             }
         }
-        // SbiRet::success(0)
-
-        SbiRet::failed()
+        SbiRet::success(0)
     }
 
     fn remote_sfence_vma_asid(

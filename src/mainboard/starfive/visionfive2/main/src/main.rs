@@ -19,6 +19,8 @@ const MEM: usize = 0x4000_0000;
 const SRAM0_BASE: usize = 0x0800_0000;
 const SPI_FLASH_BASE: usize = 0x2100_0000;
 
+const LOAD_BASE: usize = MEM + 0x4000_0000;
+
 // compressed image
 // TODO: do not hardcode
 const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000;
@@ -33,16 +35,16 @@ const DTB_SRC_ADDR: usize = SRAM0_BASE + DTB_SRC_OFFSET;
 const DTB_SIZE: usize = 0x8000;
 
 const LINUXBOOT_TMP_OFFSET: usize = 0x0400_0000;
-const LINUXBOOT_TMP_ADDR: usize = MEM + LINUXBOOT_TMP_OFFSET;
+const LINUXBOOT_TMP_ADDR: usize = LOAD_BASE + LINUXBOOT_TMP_OFFSET;
 
 // target location for decompressed image
 const LINUXBOOT_OFFSET: usize = 0x0020_0000;
-const LINUXBOOT_ADDR: usize = MEM + LINUXBOOT_OFFSET;
+const LINUXBOOT_ADDR: usize = LOAD_BASE + LINUXBOOT_OFFSET;
 const LINUXBOOT_SIZE: usize = 0x0180_0000;
 // DTB_OFFSET should be >=LINUXBOOT_OFFSET+LINUXBOOT_SIZE and match bt0
 // TODO: Should we just copy it to a higher address before decompressing Linux?
 const DTB_OFFSET: usize = LINUXBOOT_OFFSET + LINUXBOOT_SIZE;
-const DTB_ADDR: usize = MEM + DTB_OFFSET;
+const DTB_ADDR: usize = LOAD_BASE + DTB_OFFSET;
 
 // TODO: copy DTB from flash to DRAM
 
@@ -97,8 +99,6 @@ pub unsafe extern "C" fn start() -> ! {
         resume    =   sym resume
     )
 }
-
-const DEBUG: bool = true;
 
 /// Initialize RAM: Clear BSS and set up data.
 /// See https://docs.rust-embedded.org/embedonomicon/main.html
@@ -160,7 +160,8 @@ fn check_kernel(kernel_addr: usize) {
     if r == u32::from_le_bytes(*b"RISC") {
         println!("Payload looks like Linux Image, yay!");
     } else {
-        panic!("Payload does not look like Linux Image: {:x}", r);
+        dump_block(LINUXBOOT_ADDR, 0x40, 0x20);
+        panic!("Payload does not look like Linux Image: {r:x}");
     }
 }
 
@@ -178,11 +179,11 @@ fn init_logger(s: JH71XXSerial) {
 fn main() {
     udelay(200);
 
-    let mut s = JH71XXSerial::new();
+    let s = JH71XXSerial::new();
     init_logger(s);
     println!("oreboot 🦀 main");
 
-    if false {
+    if true {
         println!("lzss compressed Linux:");
         dump_block(LINUXBOOT_SRC_ADDR, 0x100, 0x20);
     }
