@@ -18,12 +18,13 @@ help:
 # Turn them all off. We'll turn them back on to try to get to working tests.
 MAINBOARDS := $(wildcard src/mainboard/*/*/Makefile)
 
-BINUTILS_VER := 0.3.4
-STACK_SIZES_VER := 0.4.0
-TARPAULIN_VER := 0.19.1
-DPRINT_VER := 0.36.1
+# NOTE: These are the host utilities, requiring their own recent Rust version.
+RUST_VER := 1.73
+BINUTILS_VER := 0.3.6
+TARPAULIN_VER := 0.27.1
+DPRINT_VER := 0.41.0
 
-CARGOINST := rustup run --install 1.67 cargo install
+CARGOINST := rustup run --install $(RUST_VER) cargo install
 
 .PHONY: $(MAINBOARDS)
 mainboards: $(MAINBOARDS)
@@ -32,19 +33,27 @@ $(MAINBOARDS):
 
 firsttime:
 	$(CARGOINST) $(if $(BINUTILS_VER),--version $(BINUTILS_VER),) cargo-binutils
-	$(CARGOINST) $(if $(STACK_SIZES_VER),--version $(STACK_SIZES_VER),) stack-sizes
 	$(CARGOINST) $(if $(TARPAULIN_VER),--version $(TARPAULIN_VER),) cargo-tarpaulin
 	$(CARGOINST) $(if $(DPRINT_VER),--version $(DPRINT_VER),) dprint
 
 nexttime:
 	$(CARGOINST) --force $(if $(BINUTILS_VER),--version $(BINUTILS_VER),) cargo-binutils
-	$(CARGOINST) --force $(if $(STACK_SIZES_VER),--version $(STACK_SIZES_VER),) stack-sizes
 	$(CARGOINST) --force $(if $(TARPAULIN_VER),--version $(TARPAULIN_VER),) cargo-tarpaulin
 	$(CARGOINST) --force $(if $(DPRINT_VER),--version $(DPRINT_VER),) dprint
 
 
 debiansysprepare:
-	sudo apt-get install device-tree-compiler pkg-config libssl-dev llvm-dev libclang-dev clang qemu-system-x86
+	sudo apt-get install \
+		device-tree-compiler \
+		pkg-config \
+		libssl-dev \
+		llvm-dev \
+		libclang-dev \
+		clang \
+		qemu-system-x86 \
+		binutils-riscv64-unknown-elf \
+		libudev-dev \
+
 	# -y makes it non-interactive.
 	curl https://sh.rustup.rs -sSf | sh -s -- -y
 

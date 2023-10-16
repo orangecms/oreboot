@@ -8,6 +8,7 @@ members = [
 
   "src/lib/consts",
   "src/lib/util",
+  "src/lib/layoutflash",
 
   "src/mainboard/sipeed/m1s-dock/*",
   "src/mainboard/starfive/visionfive1/*",
@@ -16,8 +17,6 @@ members = [
   "src/mainboard/emulation/*",
 
   "xtask",
-
-  "tools/layoutflash",
 ]
 default-members = ["xtask"]
 

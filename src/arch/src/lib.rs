@@ -1,7 +1,7 @@
 #![feature(asm_const)]
+#![feature(naked_functions)]
+#![feature(generator_trait)]
 #![no_std]
 
-#[cfg(feature = "powerpc64")]
-pub mod ppc64;
 #[cfg(feature = "riscv64")]
 pub mod riscv64;

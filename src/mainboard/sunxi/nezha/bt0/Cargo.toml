@@ -8,8 +8,6 @@ authors = [
 ]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 embedded-hal = "=1.0.0-alpha.9"
 embedded-hal-nb = "=1.0.0-alpha.1"
@@ -22,7 +20,7 @@ path = "../../../../soc"
 features = ["sunxi_d1"]
 
 [dependencies.riscv]
-version = "0.10.0"
+version = "0.10.1"
 features = ["critical-section-single-hart"]
 
 [features]
@@ -33,3 +31,4 @@ lichee = ["nor"]
 
 nand = []
 nor = []
+mmc = []
