@@ -21,8 +21,10 @@ oreboot-soc = { path = "../../../../soc", features = ["sunxi_d1"] }
 [features]
 default = ["nezha"]
 
+f133 = ["nor"]
 nezha = ["nand"]
 lichee = ["nor"]
+mqpro = ["lichee"]
 
 nand = []
 nor = []
