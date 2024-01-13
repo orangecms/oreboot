@@ -22,5 +22,11 @@ oreboot_compression = { path = "../../../../lib/compression" }
 util = { path = "../../../../lib/util" }
 
 [features]
-default = []
+default = ["nezha"]
 supervisor = []
+
+# board / SoC variants
+f133 = []
+lichee = []
+mqpro = []
+nezha = []

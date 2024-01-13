@@ -69,7 +69,7 @@ const _: () = assert!((size_of::<EgonHead>() + 4) % 0x20 == 0);
 
 const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
 
-// TODO: determine offets/sizes at build time
+// TODO: determine offets/sizes via dtfs
 // memory load addresses
 const LIN_ADDR: usize = RAM_BASE + 0x0400_0000; // Linux will be decompressed in payloader
 const DTB_ADDR: usize = RAM_BASE + 0x0220_0000; // dtb must be 2MB aligned and behind Linux
@@ -447,20 +447,22 @@ extern "C" fn main() {
 
     // prepare serial port logger
     #[cfg(feature = "f133")]
-    let tx = gpio.porte.pe2.into_function_6();
-    #[cfg(feature = "f133")]
-    let rx = gpio.porte.pe3.into_function_6();
+    let tx_rx = (
+        gpio.porte.pe2.into_function_6(),
+        gpio.porte.pe3.into_function_6(),
+    );
     #[cfg(any(feature = "lichee", feature = "nezha"))]
-    let tx = gpio.portb.pb8.into_function_6();
-    #[cfg(any(feature = "lichee", feature = "nezha"))]
-    let rx = gpio.portb.pb9.into_function_6();
+    let tx_rx = (
+        gpio.portb.pb8.into_function_6(),
+        gpio.portb.pb9.into_function_6(),
+    );
     let config = Config {
         baudrate: 115200.bps(),
         wordlength: WordLength::Eight,
         parity: Parity::None,
         stopbits: StopBits::One,
     };
-    init_logger(D1Serial::new(p.UART0, (tx, rx), config, &clocks));
+    init_logger(D1Serial::new(p.UART0, tx_rx, config, &clocks));
     println!();
     println!("oreboot 🦀 bt0");
 
@@ -545,8 +547,7 @@ extern "C" fn main() {
         println!("NOR flash: {:x}/{:x}{:x}", id[0], id[1], id[2],);
 
         // TODO: Either read sizes from dtfs at runtime or at build time
-
-        // println!("💾");
+        println!("Loading... 💾");
         let skip = 0x1 << 15; // 32K, the size of boot0
         load(skip, ORE_ADDR, ORE_SIZE, &mut flash);
 
@@ -567,7 +568,6 @@ extern "C" fn main() {
         println!("NAND flash: {:?}", flash.read_id());
 
         // TODO: Either read sizes from dtfs at runtime or at build time
-
         let mut main_stage_head = [0u8; 8];
         flash.copy_into(0x60, &mut main_stage_head);
         let main_stage_head: MainStageHead = unsafe { core::mem::transmute(main_stage_head) };
