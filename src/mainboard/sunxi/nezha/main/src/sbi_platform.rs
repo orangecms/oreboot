@@ -55,11 +55,12 @@ fn init_pmp() {
 struct Ipi;
 impl rustsbi::Ipi for Ipi {
     fn send_ipi(&self, hart_mask: HartMask) -> SbiRet {
-        // TODO: This was a member function in previous RustSBI
-        println!("[SBI] IPI {hart_mask:?}");
         // This needs to become a parameter
         fn max_hart_id() -> usize {
             0
+        }
+        if DEBUG && DEBUG_IPI {
+            println!("[SBI] IPI {hart_mask:?}");
         }
         for i in 0..=max_hart_id() {
             if hart_mask.has_bit(i) {
@@ -74,7 +75,9 @@ impl rustsbi::Ipi for Ipi {
 struct Rfence;
 impl rustsbi::Fence for Rfence {
     fn remote_fence_i(&self, hart_mask: HartMask) -> SbiRet {
-        println!("[SBI] remote_fence_i {hart_mask:?}");
+        if DEBUG && DEBUG_FENCE {
+            println!("[SBI] remote_fence_i {hart_mask:?}");
+        }
         unsafe {
             asm!(
                 "sfence.vma", // TLB flush
