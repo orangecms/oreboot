@@ -274,6 +274,9 @@ fn init_csrs() {
     dump_csrs();
 }
 
+#[cfg(feature = "f133")]
+type Serial = D1Serial<UART0, uart::Pins_E2_E3>;
+#[cfg(any(feature = "lichee", feature = "nezha"))]
 type Serial = D1Serial<UART0, uart::Pins_B8_B9>;
 
 fn init_logger(s: Serial) {

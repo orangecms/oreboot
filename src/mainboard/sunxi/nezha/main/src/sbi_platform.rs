@@ -9,19 +9,26 @@ use oreboot_arch::riscv64::xuantie;
 use oreboot_soc::sunxi::d1::clint::msip;
 use util::mmio::write64le;
 
+const DEBUG: bool = true;
+const DEBUG_IPI: bool = true;
+const DEBUG_FENCE: bool = true;
+
 #[derive(RustSBI)]
 pub struct PlatSbi {
     ipi: Ipi,
     reset: Reset,
+    rfence: Rfence,
     timer: Timer,
 }
 
 pub fn init() -> PlatSbi {
     init_pmp();
+    println!("[SBI] PLIC init");
     xuantie::init_plic();
     PlatSbi {
         ipi: Ipi,
         reset: Reset,
+        rfence: Rfence,
         timer: Timer,
     }
 }
@@ -45,10 +52,11 @@ fn init_pmp() {
     reg::pmpaddr3::write(0x80200000usize >> 2);
 }
 
-pub struct Ipi;
+struct Ipi;
 impl rustsbi::Ipi for Ipi {
     fn send_ipi(&self, hart_mask: HartMask) -> SbiRet {
         // TODO: This was a member function in previous RustSBI
+        println!("[SBI] IPI {hart_mask:?}");
         // This needs to become a parameter
         fn max_hart_id() -> usize {
             0
@@ -63,7 +71,50 @@ impl rustsbi::Ipi for Ipi {
     }
 }
 
-pub struct Timer;
+struct Rfence;
+impl rustsbi::Fence for Rfence {
+    fn remote_fence_i(&self, hart_mask: HartMask) -> SbiRet {
+        println!("[SBI] remote_fence_i {hart_mask:?}");
+        unsafe {
+            asm!(
+                "sfence.vma", // TLB flush
+                "fence.i",    // local hart
+                "fence  w,w", // whatever..?
+            );
+        }
+        if hart_mask.has_bit(0) {
+            msip::set_ipi(0);
+            msip::clear_ipi(0);
+        }
+        SbiRet::success(0)
+    }
+
+    fn remote_sfence_vma_asid(
+        &self,
+        hart_mask: HartMask,
+        start_addr: usize,
+        size: usize,
+        asid: usize,
+    ) -> SbiRet {
+        if DEBUG && DEBUG_FENCE {
+            println!("[SBI] remote_sfence_vma_asid {hart_mask:?}");
+        }
+        SbiRet::success(0)
+    }
+
+    fn remote_sfence_vma(&self, hart_mask: HartMask, start_addr: usize, size: usize) -> SbiRet {
+        if DEBUG && DEBUG_FENCE {
+            println!("[SBI] remote_sfence_vma {hart_mask:?} addr {start_addr:x} size {size}");
+        }
+        if hart_mask.has_bit(0) {
+            msip::set_ipi(0);
+            msip::clear_ipi(0);
+        }
+        SbiRet::success(0)
+    }
+}
+
+struct Timer;
 impl rustsbi::Timer for Timer {
     fn set_timer(&self, value: u64) {
         // Clear any pending timer
