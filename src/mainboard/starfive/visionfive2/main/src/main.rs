@@ -21,7 +21,8 @@ const SPI_FLASH_BASE: usize = 0x2100_0000;
 
 /// This is the compressed Linux image in boot storage (flash).
 // TODO: do not hardcode; this will be handled in xtask eventually
-const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000;
+// const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000; // VF2
+const LINUXBOOT_SRC_OFFSET: usize = 0x0046_0000; // Mars CM
 const LINUXBOOT_SRC_ADDR: usize = SPI_FLASH_BASE + LINUXBOOT_SRC_OFFSET;
 const LINUXBOOT_SRC_SIZE: usize = 0x00c0_0000;
 
