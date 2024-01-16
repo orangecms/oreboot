@@ -42,6 +42,15 @@ const COMPRESSED_SIZE: usize = 0x00fe_0000;
 // TODO: get from dtfs
 const DTB_ADDR: usize = MEM + 0x0220_0000;
 
+pub fn dump(addr: usize, length: usize) {
+    let s = unsafe { core::slice::from_raw_parts(addr as *const u8, length) };
+    println!("dump {length} bytes @{addr:x}");
+    for w in s.iter() {
+        log::print!("{w:02x}");
+    }
+    println!();
+}
+
 fn udelay(micros: usize) {
     unsafe {
         for _ in 0..micros {
@@ -324,7 +333,7 @@ extern "C" fn main() -> usize {
         stopbits: StopBits::One,
     };
     init_logger(D1Serial::new(p.UART0, tx_rx, config, &clocks));
-    udelay(5);
+    udelay(25);
     println!();
     println!("serial uart0 initialized");
     println!("oreboot 🦀 main");
@@ -349,6 +358,7 @@ extern "C" fn main() -> usize {
 
         decompress_lb();
         println!("Enter supervisor at {PAYLOAD_ADDR:08x} with DTB from {DTB_ADDR:08x}");
+        dump(PAYLOAD_ADDR, 0x20);
 
         let hart_id = riscv::register::mhartid::read();
         let (reset_type, reset_reason) = ore_sbi::execute::execute_supervisor(
