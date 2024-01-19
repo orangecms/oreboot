@@ -14,7 +14,7 @@ use crate::{Cli, Commands, Env};
 
 use super::visionfive2_hdr::{spl_create_hdr, HEADER_SIZE};
 
-const SRAM_SIZE: usize = 0x20_0000;
+const SRAM_SIZE: usize = 0x5_3000;
 
 const ARCH: &str = "riscv64";
 
