@@ -97,7 +97,7 @@ pub fn get_stage<'a>(fdt: &'a Fdt, stage: &'a str) -> Result<Area<'a>, AreaError
     Err(AreaError::NotFound)
 }
 
-pub fn find_fdt(data: &[u8]) -> Result<fdt::Fdt<'_>, FdtError> {
+pub fn find_fdt(data: &[u8]) -> Result<Fdt<'_>, FdtError> {
     // The informal standard is that the fdt must be on a 0x1000
     // boundary. It is a fine line between too coarse a boundary
     // and falling into an false positive.
@@ -123,7 +123,7 @@ pub const IMAGE_FIXTURE: &[u8] = include_bytes!("testdata/test.out");
 #[test]
 fn iterator() {
     let data = include_bytes!("testdata/test.dtb");
-    let fdt = fdt::Fdt::new(data).unwrap();
+    let fdt = Fdt::new(data).unwrap();
     let it = &mut fdt.find_all_nodes("/flash-info/areas");
     let areas = FdtIterator::new(it);
     let count = areas.map(|e| e.children().count()).sum::<usize>();

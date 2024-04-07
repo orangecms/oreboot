@@ -381,6 +381,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dtfs-test"
+version = "0.1.0"
+dependencies = [
+ "layoutflash",
+]
+
+[[package]]
 name = "embedded-hal"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -766,7 +773,6 @@ dependencies = [
  "log 0.1.0",
  "riscv 0.12.1",
  "rustsbi 0.4.0",
- "sbi-rt",
  "sbi-spec 0.0.7",
  "util",
  "xuantie",
@@ -1333,7 +1339,6 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-nb",
- "fdt",
  "jh71xx-hal",
  "jh71xx-pac",
  "layoutflash",
@@ -1358,6 +1363,9 @@ version = "0.1.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-nb",
+ "jh71xx-hal",
+ "jh71xx-pac",
+ "layoutflash",
  "log 0.1.0",
  "nb 1.1.0",
  "oreboot-arch",
