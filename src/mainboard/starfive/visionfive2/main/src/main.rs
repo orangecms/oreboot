@@ -194,6 +194,7 @@ const PAYLOAD_ADDR: usize = LINUXBOOT_ADDR;
 
 const QSPI_XIP_BASE: usize = 0x2100_0000;
 
+// FIXME: This is all hardcoded for now, just for testing. Use DTFS otherwise.
 fn load_uboot() {
     // Find and copy the main stage
     let uboot_offset = 0x0030_00d4;
@@ -297,6 +298,8 @@ fn dump_fdt_board_info(fdt: &Fdt) {
     }
 }
 
+// TODO: DTFS should tell us whether a payload expects/provides a DT.
+// Should we return (payload, fdt), where both are (addr, size), or slice?
 fn find_and_process_dtfs(slice: &[u8]) -> Result<(usize, usize), &str> {
     if let Ok(fdt) = find_fdt(slice) {
         dump_fdt_board_info(&fdt);
@@ -307,6 +310,15 @@ fn find_and_process_dtfs(slice: &[u8]) -> Result<(usize, usize), &str> {
         Ok((offset, size))
     } else {
         Err("DTFS blob not found")
+    }
+}
+
+/// Get a slice of memory. You need to ensure that it is a valid, aligned block.
+/// TODO: factor out to a library
+fn get_slice(addr: usize, size: usize) -> &[u8] {
+    unsafe {
+        let p = core::mem::transmute(base);
+        core::slice::from_raw_parts(p, size)
     }
 }
 
@@ -341,14 +353,12 @@ fn main() {
     init_logger(s);
     println!("oreboot 🦀 main");
 
-    let base = SRAM0_BASE;
-    let size = SRAM0_SIZE;
-    let slice = unsafe { slice_from(transmute(base), size) };
+    let slice = get_slice(SRAM0_BASE, SRAM0_SIZE);
     let (offset, size) = find_and_process_dtfs(slice).unwrap();
+    // let payload_addr = SRAM0_BASE + offset;
 
     let payload_addr = PAYLOAD_ADDR;
-
-    let payload_addr = SRAM0_BASE + offset;
+    load_uboot();
 
     if false {
         println!("[main] Copy DTB to DRAM... ⏳");
@@ -372,8 +382,6 @@ fn main() {
         dump_block(payload_addr, 0x40, 0x20);
     }
 
-    load_uboot();
-    let payload_addr = LINUXBOOT_ADDR;
     // Recheck on DTB, kernel should not run into it
     check_dtb(DTB_ADDR);
 
