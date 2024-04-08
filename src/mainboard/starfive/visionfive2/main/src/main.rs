@@ -253,7 +253,7 @@ fn dump_fdt_nodes(fdt: &Fdt, path: &str) {
     }
 }
 
-fn get_uboot_offset_and_size(fdt: &Fdt) -> (usize, usize) {
+fn get_payload_offset_and_size(fdt: &Fdt, name: &str) -> (usize, usize) {
     let mut offset = 0;
     let mut found = false;
     let mut size = 0;
@@ -264,7 +264,7 @@ fn get_uboot_offset_and_size(fdt: &Fdt) -> (usize, usize) {
             let cname = c.name;
             if let Some(p) = c.property("compatible") {
                 let str = p.as_str().unwrap_or("[empty]");
-                if str == "uboot-main" {
+                if str == name {
                     found = true;
                 }
             }
@@ -308,7 +308,7 @@ fn find_and_process_dtfs(slice: &[u8]) -> Result<(usize, usize), &str> {
         println!("💾 DTFS");
         dump_fdt_nodes(&fdt, "/flash-info/areas");
         dump_fdt_nodes(&fdt, "/load-info");
-        let (offset, size) = get_uboot_offset_and_size(&fdt);
+        let (offset, size) = get_payload_offset_and_size(&fdt, "uboot-main");
         Ok((offset, size))
     } else {
         Err("DTFS blob not found")
