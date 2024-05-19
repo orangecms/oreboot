@@ -4,6 +4,9 @@ SERIAL    := /dev/ttyUSB0
 RELEASE_ELF= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0
 RELEASE_BIN= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0.bin
 
+# SOC ?= CV1800B
+SOC ?= SG200X
+
 cibuild: mainboard
 # TODO
 nop:
@@ -17,7 +20,13 @@ mainboard: build
 
 build:
 	# TODO: cargo make
-	cargo build --release
+	cargo build --release \
+		--config \
+		target.riscv64imac-unknown-none-elf.rustflags=[\'--cfg=soc=\"$(SOC)\"\'] \
+		--config \
+		rustc-cfg=\'soc=\"$(SOC)\"\' \
+		--config \
+		build.rustflags=[\'--cfg=soc=\"$(SOC)\"\']
 	riscv64-unknown-elf-objcopy -O binary $(RELEASE_ELF) $(RELEASE_BIN)
 
 run: build
