@@ -50,6 +50,7 @@
             // To run via XMODEM in SRAM, we need to omit them.
 
             // Zephyr
+            /*
             area@4 {
                 description = "payload";
                 compatible = "ore-payload";
@@ -64,6 +65,7 @@
                 offset = <0x3000d4>;
                 size = <0x160000>;
             };
+            */
 
             // LK
             /*
@@ -82,24 +84,23 @@
             };
             */
 
-            // Linux
-            /*
             area@4 {
-                description = "LinuxBoot image";
-                compatible = "ore-payload";
-                // We put this here right after the vendor code.
-                // offset = <0x400000>;
-                offset = <0x460000>;
-                size = <0xb80000>; // 12.5 MB
-            };
-
-            area@5 {
                 description = "LinuxBoot device tree";
                 compatible = "linux-dtb";
-                // This occupies the remaining space.
-                size = <0x80000>; // 512K
+                file = "starfive-visionfive2-linux.dtb";
+                // In flash, we put this here right after the vendor code.
+                // offset = <0x400000>;
+                // offset = <0x460000>;
+                size = <0x20000>; // 128K
             };
-            */
+
+            // Linux
+            area@5 {
+                description = "LinuxBoot image";
+                compatible = "ore-payload";
+                // size = <0xbe0000>; // rest
+                size = <0xb80000>; // rest
+            };
         };
     };
 

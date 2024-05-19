@@ -32,12 +32,15 @@ const SPI_FLASH_BASE: usize = 0x2100_0000;
 
 /// This is the compressed Linux image in boot storage (flash).
 // TODO: do not hardcode; this will be handled in xtask eventually
-// const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000; // VF2
-const LINUXBOOT_SRC_OFFSET: usize = 0x0046_0000; // Mars CM
+// VF2
+const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000;
+// Mars CM
+// const LINUXBOOT_SRC_OFFSET: usize = 0x0046_0000;
 const LINUXBOOT_SRC_ADDR: usize = SPI_FLASH_BASE + LINUXBOOT_SRC_OFFSET;
 
 /// This is the Linux DTB in SRAM, copied over by the mask ROM loader.
-const DTB_SRC_OFFSET: usize = 0x5_1000;
+// const DTB_SRC_OFFSET: usize = 0x5_1000;
+const DTB_SRC_OFFSET: usize = 0x2_a000;
 const DTB_SRC_ADDR: usize = SRAM0_BASE + DTB_SRC_OFFSET;
 const DTB_SIZE: usize = 0xa000; // 40K, because 32K was not enough.
 
@@ -55,6 +58,14 @@ const LINUXBOOT_ADDR: usize = DRAM_BASE + LINUXBOOT_OFFSET;
 const LINUXBOOT_SIZE: usize = 0x0380_0000;
 const DTB_OFFSET: usize = LINUXBOOT_OFFSET + LINUXBOOT_SIZE;
 const DTB_ADDR: usize = DRAM_BASE + DTB_OFFSET;
+
+const PAYLOAD_SIZE: usize = 192 * 1024;
+const PAYLOAD_SRC_ADDR: usize = SRAM0_BASE + 0x2_1000;
+const PAYLOAD_ADDR: usize = LINUXBOOT_ADDR;
+
+const SMP: bool = false;
+
+const QSPI_XIP_BASE: usize = 0x2100_0000;
 
 static PLATFORM: &str = "StarFive VisionFive 2";
 static VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -182,14 +193,6 @@ fn init_logger(s: JH71XXSerial) {
         }
     }
 }
-
-const SMP: bool = false;
-
-const PAYLOAD_SIZE: usize = 192 * 1024;
-const PAYLOAD_SRC_ADDR: usize = SRAM0_BASE + 0x2_1000;
-const PAYLOAD_ADDR: usize = LINUXBOOT_ADDR;
-
-const QSPI_XIP_BASE: usize = 0x2100_0000;
 
 // FIXME: This is all hardcoded for now, just for testing. Use DTFS otherwise.
 fn load_uboot(uboot_addr: usize, uboot_size: usize) {
@@ -364,37 +367,43 @@ fn main() {
     init_logger(s);
     println!("oreboot 🦀 main");
 
-    let slice = get_slice(&SRAM0_BASE, &SRAM0_SIZE);
-    let (offset, size) = find_and_process_dtfs(slice).unwrap();
-    let addr = QSPI_XIP_BASE + offset;
-    println!("U-Boot @ {addr:08x} ({size} bytes)");
-    // should be: 213000d4
-    // was: 2103a000
-    // let payload_addr = SRAM0_BASE + offset;
-
     let payload_addr = PAYLOAD_ADDR;
-    load_uboot(addr, size);
 
-    if false {
-        println!("[main] Copy DTB to DRAM... ⏳");
-        copy(DTB_SRC_ADDR, DTB_ADDR, DTB_SIZE);
-        check_dtb(DTB_ADDR);
-    }
+    let load_this = "U-Boot";
+    let load_this = "LinuxBoot";
+    match load_this {
+        "U-Boot" => {
+            let slice = get_slice(&SRAM0_BASE, &SRAM0_SIZE);
+            let (offset, size) = find_and_process_dtfs(slice).unwrap();
+            // whatevs
+            let offset = 0x0030_00d4;
+            let size = 0x0016_0000;
+            let addr = QSPI_XIP_BASE + offset;
+            println!("U-Boot @ {addr:08x} ({size} bytes)");
+            // should be: 213000d4
+            // was: 2103a000
+            // let payload_addr = SRAM0_BASE + offset;
 
-    if false {
-        println!("[main] Decompress payload... ⏳");
-        unsafe {
-            decompress(LINUXBOOT_SRC_ADDR, LINUXBOOT_ADDR, LINUXBOOT_SIZE);
+            load_uboot(addr, size);
         }
-        println!("[main] Payload extracted.");
-        check_kernel(LINUXBOOT_ADDR);
-    }
+        "LinuxBoot" => {
+            println!("[main] Copy DTB to DRAM... ⏳");
+            copy(DTB_SRC_ADDR, DTB_ADDR, DTB_SIZE);
+            check_dtb(DTB_ADDR);
 
-    if false {
-        println!("[main] Copy payload to DRAM... ⏳");
-        dump_block(PAYLOAD_SRC_ADDR, 0x40, 0x20);
-        copy(PAYLOAD_SRC_ADDR, payload_addr, PAYLOAD_SIZE);
-        dump_block(payload_addr, 0x40, 0x20);
+            println!("[main] Decompress payload... ⏳");
+            unsafe {
+                decompress(LINUXBOOT_SRC_ADDR, LINUXBOOT_ADDR, LINUXBOOT_SIZE);
+            }
+            println!("[main] Payload extracted.");
+            check_kernel(LINUXBOOT_ADDR);
+        }
+        _ => {
+            println!("[main] Copy payload to DRAM... ⏳");
+            dump_block(PAYLOAD_SRC_ADDR, 0x40, 0x20);
+            copy(PAYLOAD_SRC_ADDR, payload_addr, PAYLOAD_SIZE);
+            dump_block(payload_addr, 0x40, 0x20);
+        }
     }
 
     // Recheck on DTB, payload should not run into it

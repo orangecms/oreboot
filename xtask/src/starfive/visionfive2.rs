@@ -15,7 +15,7 @@ use super::visionfive2_hdr::{spl_create_hdr, HEADER_SIZE};
 // The real SRAM size is stated to be 2M, but the mask ROM loader will take a
 // maximum of ???.
 // const SRAM_SIZE: usize = 0x20_0000;
-const SRAM_SIZE: usize = 0x3_b000;
+const SRAM_SIZE: usize = 0x4_a400;
 
 const ARCH: &str = "riscv64";
 const TARGET: &str = "riscv64imac-unknown-none-elf";
@@ -27,6 +27,7 @@ const MAIN_BIN: &str = "starfive-visionfive2-main.bin";
 const MAIN_ELF: &str = "starfive-visionfive2-main";
 
 const BOARD_DTFS: &str = "starfive-visionfive2-board.dtb";
+const PAYLOAD_DTB: &str = "starfive-visionfive2-linux.dtb";
 
 const DTFS_IMAGE: &str = "starfive-visionfive2-dtfs.bin";
 
@@ -44,14 +45,28 @@ pub(crate) fn execute_command(args: &Cli, features: Vec<String>) {
 
             objcopy(&args.env, binutils_prefix, TARGET, ARCH, BT0_ELF, BT0_BIN);
             objcopy(&args.env, binutils_prefix, TARGET, ARCH, MAIN_ELF, MAIN_BIN);
-            // dtfs
+            // dtbs
             compile_board_dt(&args.env, TARGET, &board_project_root(), BOARD_DTFS);
+            xtask_copy_dtb(&args.env, TARGET, &board_project_root(), PAYLOAD_DTB);
             // final image
             xtask_build_image(&args.env);
         }
         _ => {
             error!("command {:?} not implemented", args.command);
         }
+    }
+}
+
+use std::fs::copy;
+use std::fs::File;
+
+fn xtask_copy_dtb(env: &Env, target: &str, root: &Path, dtb: &str) {
+    // TODO
+    if env.supervisor {
+        let dtb = env.dtb.as_deref().expect("provide a DTB for LinuxBoot");
+        println!("DTB\n  File: {dtb}");
+        let dest = dist_dir(env, target).join(PAYLOAD_DTB);
+        copy(dtb, dest).expect("failed to copy payload dtb file");
     }
 }
 

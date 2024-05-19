@@ -8,7 +8,7 @@ use starfive_visionfive2_lib::{clear_ipi, get_mtime, set_ipi, set_mtimecmp};
 const DEBUG: bool = true;
 const DEBUG_IPI: bool = true;
 const DEBUG_FENCE: bool = true;
-const DEBUG_TIMER: bool = true;
+const DEBUG_TIMER: bool = false;
 
 pub fn init() {
     init_pmp();

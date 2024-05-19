@@ -21,7 +21,8 @@ citest: nop
 checkformat: nop
 
 mainboard:
-	cargo xtask make --release $(VERBOSE) --dram-size $(DRAM_SIZE)
+	cargo xtask make --release $(VERBOSE) --dram-size $(DRAM_SIZE) \
+		--supervisor --dtb $(DTB) # --payload $(PAYLOAD)
 
 objdump: mainboard
 	riscv64-linux-gnu-objdump -D "$(IMAGE_BT0)"
@@ -30,3 +31,5 @@ rerun:
 	$(VF2LOADER) -D ${PORT} $(IMAGE)
 
 run: mainboard rerun
+
+.PHONY: run

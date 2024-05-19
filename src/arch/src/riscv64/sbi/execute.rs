@@ -22,7 +22,7 @@ const EBREAK: u16 = 0x9002;
 
 const DEBUG: bool = true;
 const DEBUG_ECALL: bool = false;
-const DEBUG_MTIMER: bool = true;
+const DEBUG_MTIMER: bool = false;
 const DEBUG_EBREAK: bool = true;
 const DEBUG_EMULATE: bool = false;
 const DEBUG_ILLEGAL: bool = true;
@@ -153,7 +153,7 @@ pub fn execute_supervisor(
                     // dump context on breakpoints for debugging
                     // TODO: how would we allow for "real" debugging?
                     if DEBUG_EBREAK {
-                        println!("[SBI] Take an EBREAK! {ctx:#04X?}");
+                        panic!("[SBI] Take an EBREAK! {ctx:#04X?}");
                     }
                     // skip instruction; this will likely cause the OS to crash
                     // use DEBUG to get actual information
