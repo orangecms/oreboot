@@ -4,6 +4,8 @@
 
 We write the kernel to the SPI flash using U-Boot from the vendor firmware. It
 occupies only the first 4 megabytes, so we have 12 more for the kernel after it.
+**NOTE**: On Daniel's Milk-V Mars and Mars CM, `4.5` MB are used. YMMV though.
+These offsets are currently hardcoded in the `main/` stage. Adjust as needed.
 
 To boot from flash, flip both DIP switches to 1 (away from the board's edge).
 
@@ -11,9 +13,9 @@ To boot via UART, flip the DIP switches to 0, i.e., toward to edge of the board.
 
 ## Prerequisites
 
-- TFTP server
+- TFTP server (e.g. https://github.com/Harvey-OS/go/tree/main/cmd/centre)
 - [`lzss` tool](https://github.com/orangecms/compress-test-rs)
-- Daniel's [Linux fork with extra patches](https://github.com/orangecms/linux/tree/vf2-upstream-6.6.rc5-unaligned_fix-oreboot) (mind the branch!)
+- Daniel's [Linux fork with extra patches](https://github.com/orangecms/linux-starfive/tree/6.9-jh7110-cpu) (mind the branch!)
 - an initramfs; e.g. [u-root](https://u-root.org) core + boot, xz-compressed cpio;
   note that u-root needs to be built with at least Go 1.21 to have alignment fixes
 - `gcc-riscv64-linux-gnu` (the RISC-V Linux GCC toolchain)
