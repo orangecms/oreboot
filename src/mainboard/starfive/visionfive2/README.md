@@ -1,5 +1,7 @@
 # JH7110
 
+**NOTE**: Everything is here work in progress.
+
 The JH7110 SoC support booting from various sources: SPI flash, UART, eMMC, SD.
 
 To boot from flash, flip both DIP switches to 1 (away from the board's edge).
@@ -47,9 +49,18 @@ make run DRAM_SIZE=8G PORT=/dev/ttyUSB0 && picocom -b 115200 /dev/ttyUSB0
 
 ## Run with kernel
 
-See <kernel.md> for preparation. We now assume that your Linux kernel root
-directory is within this oreboot mainboard directory here.
-We take the DTB from it to pass it on at runtime.
-Add both kernel and dtb to the build system. Edit `board.dts`.
+See <kernel.md> for preparation.
+When building oreboot, point to your DTB, and it will be added to the image.
+It will then contain
+- oreboot `bt0`
+- oreboot DTFS
+- oreboot `main`
+- your DTB
 
-**TODO**
+The current build tool in `xtask` (see root dir) cuts the image to fit in SRAM.
+As we do not have a convenient tool for flashing at this point, that is the
+nicest approach for development so far.
+
+At runtime, oreboot will pass the DTB on to the kernel when executing the SBI.
+
+For convenience, use `run.sh` (adjust as needed).
