@@ -1,13 +1,13 @@
-// 64k mask ROM
-const MASK_ROM_BASE: usize = 0x0440_0000;
+// mask ROM: 64k (CV1800B) or 128k (SG200x)
+pub const MASK_ROM_BASE: usize = 0x0440_0000;
 // The mask ROM provides us with helper functions.
 // plat/cv180x/include/riscv/rom_api_refer.h
 // plat/cv181x/include/riscv/rom_api_refer.h
 #[cfg(soc = "CV1800B")]
-const MASK_ROM_FN_BASE: usize = MASK_ROM_BASE;
+pub const MASK_ROM_FN_BASE: usize = MASK_ROM_BASE;
 // On later SoCs, the mask ROM functions are off
 #[cfg(not(soc = "CV1800B"))]
-const MASK_ROM_FN_BASE: usize = MASK_ROM_BASE + 0x0001_8000;
+pub const MASK_ROM_FN_BASE: usize = MASK_ROM_BASE + 0x0001_8000;
 
 const ROM_GET_BOOT_SRC: usize = MASK_ROM_FN_BASE + 0x0020;
 const ROM_SET_BOOT_SRC: usize = MASK_ROM_FN_BASE + 0x0040;
@@ -19,6 +19,10 @@ const ROM_VERIFY_RSA: usize = MASK_ROM_FN_BASE + 0x00E0;
 const ROM_CRYPTODMA_AES_DECRYPT: usize = MASK_ROM_FN_BASE + 0x0100;
 
 const BOOT_SRC_TAG: u32 = 0xCE00;
+// mask ROM writes BootSrc to and reads it from here
+const BOOT_SRC: usize = 0x3c00_7500;
+// mask ROM read this on the CV1800B, passing it to load_image
+const BOOT_SRC_X: usize = 0x3c00_2000;
 
 #[derive(Debug)]
 #[repr(u32)]

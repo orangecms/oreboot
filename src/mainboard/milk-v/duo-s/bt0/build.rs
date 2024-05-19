@@ -3,6 +3,9 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
+#[cfg(soc = "CV1800B")]
+core::compile_error!("xx");
+
 // see https://github.com/sophgo/fsbl
 //
 // Earlier SoCs (CV1800B, Milk-V Duo)
@@ -64,6 +67,7 @@ SECTIONS {
         *(.comment*)
     }
 }";
+
 #[cfg(not(soc = "CV1800B"))]
 const LINKERSCRIPT: &[u8] = b"
 OUTPUT_ARCH(riscv)

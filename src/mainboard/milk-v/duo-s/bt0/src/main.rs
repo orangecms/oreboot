@@ -24,11 +24,13 @@ use layoutflash::areas::{find_fdt, FdtIterator};
 
 mod ddr_phy;
 mod dram;
+mod efuse;
 mod mem_map;
 mod rom;
 mod uart;
 mod util;
 
+use rom::MASK_ROM_BASE;
 use util::{read32, write32};
 
 pub type EntryPoint = unsafe extern "C" fn();
@@ -173,45 +175,78 @@ fn init_logger(s: uart::SGSerial) {
     }
 }
 
-const CONF: usize = mem_map::TOP_MISC + 0x0004;
+//// only for debugging
+///define ATF_DBG_REG (BOOT_LOG_LEN_ADDR + BOOT_LOG_LEN_SIZE)
+///define ATF_ERR_REG (ATF_DBG_REG + 0x04)
+///define ATF_ERR_INFO0 (ATF_DBG_REG + 0x08)
+///define CP_STATE_REG (ATF_DBG_REG + 0x0C)
+///
+///define ATF_ERR (((unsigned int __volatile__ *)ATF_ERR_REG)[0])
 
-// https://github.com/sophgo/cvi_alios_open
-//   components/chip_cv181x/src/drivers/efuse/wj/cvi/cvi_efuse.c
-const EFUSE: usize = mem_map::TOP_BASE + 0x0005_0000;
-// plat/cv181x/include/security/efuse.h
-const EFUSE_MODE: usize = EFUSE;
-const EFUSE_ADDR: usize = EFUSE + 0x0004;
-const EFUSE_STATUS: usize = EFUSE + 0x0010;
-const EFUSE_SHADOW: usize = EFUSE + 0x0100;
-const EFUSE_CUSTOMER: usize = EFUSE_SHADOW + 0x0004;
-const FTSN0: usize = EFUSE + 0x0100;
-const FTSN1: usize = EFUSE + 0x0104;
-// A bit of an odd name? Taken from vendor code, alias of FTSN2.
-// It is locked and contains the DRAM vendor and capacity.
-const EFUSE_LEAKAGE: usize = EFUSE + 0x0108;
-const FTSN2: usize = EFUSE + 0x0108;
-const FTSN3: usize = EFUSE + 0x010C;
-const FTSN4: usize = EFUSE + 0x0110;
-const SW_INFO: usize = EFUSE + 0x012c;
-const EFUSE_W_LOCK0: usize = EFUSE + 0x0198;
+const CONF: usize = mem_map::TOP_BASE + 0x0004;
+// used by mask ROM: _DAT_03000080 == 0x6526228c
+const GP_REG0: usize = mem_map::TOP_BASE + 0x0080;
+const GP_REG1: usize = mem_map::TOP_BASE + 0x0084;
+const ATF_STATE: usize = GP_REG1;
 
-const EFUSE_MODE_ON: u32 = 0x10;
-const EFUSE_MODE_SET_BIT: u32 = 0x14;
-const EFUSE_MODE_OFF: u32 = 0x18;
-const EFUSE_MODE_REFRESH_SHADOW: u32 = 0x30;
+const ATF_STATE_INIT: u32 = 0xb100_0000;
 
-const BIT_FTSN0_LOCK: u32 = 0;
-const BIT_FTSN1_LOCK: u32 = 1;
-const BIT_FTSN2_LOCK: u32 = 2;
-const BIT_FTSN3_LOCK: u32 = 3;
-const BIT_FTSN4_LOCK: u32 = 4;
+const ATF_STATE_SXX0: u32 = 0xb100_1020;
+const ATF_STATE_SXX1: u32 = 0xb100_1022;
 
-const AXI_SRAM_BASE: usize = 0x0E00_0000;
+// mask ROM writes this during bootup
+const ATF_STATE_MASK_ROM: u32 = 0xb100_f000;
+
+const ATF_STATE_TXX1: u32 = 0xb100_f001;
+const ATF_STATE_TXX2: u32 = 0xb100_f002;
+
+const ATF_STATE_FLASH_INIT_START: u32 = 0xb100_f005;
+const ATF_STATE_FLASH_INIT_END: u32 = 0xb100_f006;
+
+// CV1800B mask ROM
+const ATF_STATE_XX1: u32 = 0xb100_f00f;
+const ATF_STATE_XX2: u32 = 0xb100_f801;
+
+// NOTE: Vendor calls bt0 "bl2" (boot loader 2? after mask ROM...)
+// NOTE: ATF is probably meant to resemble Arm Trusted Firmware.
+const ATF_STATE_BL2_MAIN: u32 = 0xB200_F000;
+
+const ATF_STATE_RESET_WAIT: u32 = 0xBE00_3001;
+const ATF_STATE_BEFORE_ERROR_WAIT: u32 = 0xbe00_3002;
+const ATF_STATE_WD_XX: u32 = 0xc000_4004;
+
+// set in set_boot_src
+// NAND
+const ATF_STATE_BOOT_SRC_X1: u32 = 0xb300_0001;
+// NOR
+const ATF_STATE_BOOT_SRC_X2: u32 = 0xb300_0002;
+// EMMC
+const ATF_STATE_BOOT_SRC_X3: u32 = 0xb300_0003;
+// SD
+const ATF_STATE_BOOT_SRC_X4: u32 = 0xb300_0004;
+// USB
+const ATF_STATE_BOOT_SRC_X5: u32 = 0xb300_0005;
+
+// used in mask ROM
+const XXXXXX: usize = mem_map::TOP_BASE + 0x0294;
+const RST_GEN: usize = mem_map::TOP_BASE + 0x3000;
+const SOFT_CPU_RSTN: usize = RST_GEN + 0x0024;
+
+use mem_map::AXI_SRAM_BASE;
+// highest byte is compared vs 0x40 in mask ROM
+// lowest bit against 0, may be a status bit?
+const UNK1: usize = AXI_SRAM_BASE;
 const BOOT_SOURCE_FLAG: usize = AXI_SRAM_BASE + 0x0004;
-const BOOT_LOG_LEN: usize = AXI_SRAM_BASE + 0x0008;
+const BOOT_LOG_SIZE: usize = AXI_SRAM_BASE + 0x0008;
+// used in mask ROM
+const UNK2: usize = AXI_SRAM_BASE + 0x0010;
+// coprocessor state?
 const CP_STATE: usize = AXI_SRAM_BASE + 0x0018;
+const AXI_SRAM_RTOS_BASE: usize = AXI_SRAM_BASE + 0x007C;
+// mask ROM polls this for 0x6526_228c
+const AXI_STATUS_SMTH1: usize = AXI_SRAM_BASE + 0x0080;
 
-const TPU_SRAM_BASE: usize = 0x0C00_0000;
+const TPU_SRAM_BASE: usize = 0x0c00_0000;
 // Our code runs from TPU SRAM, +4k for the header.
 const HEADER_SIZE: usize = 0x1000;
 const CODE_SIZE_MAX: usize = 0x0003_6000;
@@ -219,10 +254,24 @@ const CODE_SIZE_MAX: usize = 0x0003_6000;
 // plat/cv181x/include/mmap.h
 //     #define BOOT_LOG_BUF_BASE (BL2_BASE + BL2_SIZE)
 const BOOT_LOG_BASE: usize = TPU_SRAM_BASE + HEADER_SIZE + CODE_SIZE_MAX;
+const MAX_LOG_SIZE: usize = 0x2000; // 8k
 
+// the mask ROM makes use of SRAM for special globals
+// 0x0c03_9000
+const AFTER_LOG: usize = BOOT_LOG_BASE + MAX_LOG_SIZE;
+const XX_SMTH1: usize = AFTER_LOG + 0x0010;
+const XX_SMTH2: usize = AFTER_LOG + 0x0080;
+const XX_SMTH3: usize = AFTER_LOG + 0x00bc;
+const XX_SMTH4: usize = AFTER_LOG + 0x00e8;
+
+// 0x0c09_e000
+const SPECIAL_BASE: usize = AFTER_LOG + 0x5000;
+const SG200X_BOOT_SRC: usize = SPECIAL_BASE + 0x0540;
+
+// TODO: Also dump log from Arm, see if we get anything
 // The mask ROM stores its own boot log in SRAM.
 fn print_boot_log() {
-    let boot_log_len = read32(BOOT_LOG_LEN) as usize;
+    let boot_log_len = read32(BOOT_LOG_SIZE) as usize;
     println!("boot_log_len: {boot_log_len}");
     println!();
     println!(">>> BEGIN OF BOOT LOG");
@@ -245,81 +294,26 @@ fn print_boot_log() {
     println!();
 }
 
-fn poll_efuse() {
-    while read32(EFUSE_STATUS) & 0x1 != 0 {}
-}
-
-fn efuse_program_bit(addr: u32, bit: u32) {
-    let v = 0xfff & ((bit << 7) | ((addr & 0x3f) << 1));
-    poll_efuse();
-    write32(EFUSE_ADDR, v);
-    write32(EFUSE_MODE, EFUSE_MODE_SET_BIT);
-    poll_efuse();
-    write32(EFUSE_ADDR, v | 1);
-    write32(EFUSE_MODE, EFUSE_MODE_SET_BIT);
-}
-
-// after lock_efuse_chipsn() in plat/cv181x/bl2/bl2_opt.c
-fn efuse_setup() -> u32 {
-    // let efuse_mode = read32(EFUSE_MODE);
-    // println!("efuse mode: {efuse_mode:08x}");
-    poll_efuse();
-    write32(EFUSE_MODE, EFUSE_MODE_ON);
-
-    let info = read32(SW_INFO);
-    println!("SW INFO:       {info:08x}");
-    let efuse_status = read32(EFUSE_STATUS);
-    println!("EFUSE_STATUS:  {efuse_status:08x}");
-
-    let w_lock0 = read32(EFUSE_W_LOCK0);
-    let v = read32(FTSN0);
-    println!("FTSN0:         {v:08x}");
-    if w_lock0 & (1 << BIT_FTSN0_LOCK) == 0 {
-        println!("efuse: FTSN0 is NOT locked");
-    } else {
-        println!("efuse: FTSN0 is locked");
-    }
-    let v = read32(FTSN1);
-    println!("FTSN1:         {v:08x}");
-    if w_lock0 & (1 << BIT_FTSN1_LOCK) == 0 {
-        println!("efuse: FTSN1 is NOT locked");
-    } else {
-        println!("efuse: FTSN1 is locked");
-    }
-    let efuse_leakage = read32(EFUSE_LEAKAGE);
-    println!("EFUSE_LEAKAGE: {efuse_leakage:08x}");
-    if w_lock0 & (1 << BIT_FTSN2_LOCK) != 0 {
-        println!("efuse: FTSN2 is NOT locked");
-    } else {
-        println!("efuse: FTSN2 is locked");
-    }
-    let v = read32(FTSN3);
-    println!("FTSN3:         {v:08x}");
-    if w_lock0 & (1 << BIT_FTSN3_LOCK) == 0 {
-        println!("efuse: FTSN3 is NOT locked");
-        // efuse_program_bit(0x26, BIT_FTSN3_LOCK);
-    } else {
-        println!("efuse: FTSN3 is locked");
-    }
-    let v = read32(FTSN4);
-    println!("FTSN4:         {v:08x}");
-    if w_lock0 & (1 << BIT_FTSN4_LOCK) == 0 {
-        println!("efuse: FTSN4 is NOT locked");
-        // efuse_program_bit(0x26, BIT_FTSN4_LOCK);
-    } else {
-        println!("efuse: FTSN4 is locked");
-    }
-
-    poll_efuse();
-    write32(EFUSE_MODE, EFUSE_MODE_REFRESH_SHADOW);
-
-    poll_efuse();
-    write32(EFUSE_MODE, EFUSE_MODE_OFF);
-
-    efuse_leakage
-}
+// more funz
+// Arm mask ROM runs in this other SRAM area
+// _clear_or_smth(&DAT_0453_e580,0xf30);
+// _fill_smth(0x0453_c000,&DAT_0441_3000,0x520);
+/*
+  _DAT_0453e540 = 0x00000605;
+  _DAT_0453e548 = 0x20000605;
+  _DAT_0453e550 = 0x40000701;
+  _DAT_0453e558 = 0x60000701;
+  _DAT_0453e560 = 0x80000701;
+  _DAT_0453e568 = 0xa0000701;
+  _DAT_0453e570 = 0xc0000701;
+  _DAT_0453e578 = 0xe0000701;
+*/
 
 const RTC_SYS_BASE: usize = 0x0500_0000;
+
+const RTC_SMTH_BASE: usize = RTC_SYS_BASE + 0x0002_0000;
+const RTC_SMTH_XX: usize = RTC_SMTH_BASE + 0x1050;
+
 const RTC_CTRL_BASE: usize = RTC_SYS_BASE + 0x0002_5000;
 const RTC_CTRL0_UNLOCKKEY: usize = RTC_CTRL_BASE + 0x0004;
 const RTC_CTRL0: usize = RTC_CTRL_BASE + 0x0008;
@@ -330,13 +324,13 @@ const RTC_BASE: usize = RTC_SYS_BASE + 0x0002_6000;
 const RTC_ST_ON_REASON: usize = RTC_BASE + 0x00f8;
 const RTC_ST_OFF_REASON: usize = RTC_BASE + 0x00fc;
 
-const RTC_MACRO_BASE: usize = RTC_SYS_BASE + 0x0002_6400;
-
 const RTC_EN_SHUTDOWN_REQUEST: usize = RTC_BASE + 0x00c0;
 const RTC_EN_POWER_CYCLE_REQUEST: usize = RTC_BASE + 0x00c8;
 const RTC_EN_WARM_RESET_REQUEST: usize = RTC_BASE + 0x00cc;
 const RTC_EN_PWR_VBAT_DET: usize = RTC_BASE + 0x00d0;
 const RTC_EN_WATCHDOG_TIMER_RESET_REQUEST: usize = RTC_BASE + 0x00e0;
+
+const RTC_MACRO_BASE: usize = RTC_SYS_BASE + 0x0002_6400;
 
 fn rtc_setup() {
     const CV181X_SUPPORT_SUSPEND_RESUME: bool = false;
@@ -417,16 +411,6 @@ fn rtc_en() {
     write32(RTC_EN_PWR_VBAT_DET, v & !(1 << 2));
 }
 
-const GP_REG1: usize = mem_map::TOP_BASE + 0x0084;
-const ATF_STATE: usize = GP_REG1;
-
-const ATF_STATE_MASK_ROM: u32 = 0xB100_F000;
-// NOTE: Vendor calls bt0 "bl2" (boot loader 2? after mask ROM...)
-// NOTE: ATF is probably meant to resemble Arm Trusted Firmware.
-const ATF_STATE_BL2_MAIN: u32 = 0xB200_F000;
-
-const ATF_STATE_RESET_WAIT: u32 = 0xBE00_3001;
-
 fn rdtime() -> usize {
     let mut time: usize = 0;
     unsafe { asm!("rdtime {time}", time = inout(reg) time) };
@@ -442,6 +426,13 @@ fn main() {
     println!();
     println!("oreboot 🦀 bt0");
     print_ids();
+
+    if false {
+        println!(">>> mask ROM dump");
+        util::dump_block(rom::MASK_ROM_FN_BASE, 96 * 1024, 32);
+        println!("<<< mask ROM dump");
+        panic!("DO NOT PANIC! EVERYTHING IS OKAY!");
+    }
 
     let boot_src = rom::get_boot_src();
     println!("boot src: {boot_src}");
@@ -468,7 +459,7 @@ fn main() {
     println!("TYPE:          {chip_type} ({chip_type_v})");
     println!();
 
-    let efuse_leakage = efuse_setup();
+    let efuse_leakage = efuse::setup();
     println!();
 
     if false {
@@ -546,7 +537,6 @@ fn main() {
     let time = rdtime() - start;
     println!("time: {time}");
 
-    const AXI_SRAM_RTOS_BASE: usize = AXI_SRAM_BASE + 0x7C;
     let v = read32(AXI_SRAM_RTOS_BASE);
     // 0x0c85e985
     // CVI_RTOS_MAGIC_CODE 0xABC0DEF
@@ -588,9 +578,23 @@ fn main() {
 }
 
 const SEC_SUBSYS_BASE: usize = 0x0200_0000;
+
+const SEC_XXY_BASE: usize = SEC_SUBSYS_BASE + 0x0009_0000;
+// mask ROM may set this to 0x0080_0800
+const SEC_SYS_SMTH: usize = SEC_XXY_BASE + 0x005c;
+
 const SEC_SYS_BASE: usize = SEC_SUBSYS_BASE + 0x000B_0000;
-const RST_GEN: usize = mem_map::TOP_BASE + 0x3000;
-const SOFT_CPU_RSTN: usize = RST_GEN + 0x0024;
+
+const SEC_SYS_CTRL: usize = SEC_SYS_BASE + 0x0004;
+
+const SEC_SYS_A_ADDR_L: usize = SEC_SYS_BASE + 0x0010;
+const SEC_SYS_A_ADDR_H: usize = SEC_SYS_BASE + 0x0014;
+
+const SEC_SYS_B_ADDR_L: usize = SEC_SYS_BASE + 0x0018;
+const SEC_SYS_B_ADDR_H: usize = SEC_SYS_BASE + 0x001c;
+
+const SEC_SYS_L_ADDR_L: usize = SEC_SYS_BASE + 0x0020;
+const SEC_SYS_L_ADDR_H: usize = SEC_SYS_BASE + 0x0024;
 
 // Bits Name
 // 0    reg_soft_reset_x_cpucore0
@@ -607,11 +611,11 @@ fn exec_hartl(addr: usize) {
     let v = read32(SOFT_CPU_RSTN);
     write32(SOFT_CPU_RSTN, v & !(1 << 6));
 
-    let v = read32(SEC_SYS_BASE + 0x04);
-    write32(SEC_SYS_BASE + 0x04, v | (1 << 13));
+    let v = read32(SEC_SYS_CTRL);
+    write32(SEC_SYS_CTRL, v | (1 << 13));
 
-    write32(SEC_SYS_BASE + 0x20, addr as u32);
-    write32(SEC_SYS_BASE + 0x24, (addr >> 32) as u32);
+    write32(SEC_SYS_L_ADDR_L, addr as u32);
+    write32(SEC_SYS_L_ADDR_H, (addr >> 32) as u32);
 
     // reset
     let v = read32(SOFT_CPU_RSTN);

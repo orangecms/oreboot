@@ -1,6 +1,7 @@
 use crate::ddr_phy::phy_init;
 use crate::mem_map::{
-    DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB, PHYD_BASE_ADDR, TOP_BASE,
+    CLK_GEN_PLL_CTRL_BASE, DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB,
+    PHYD_BASE_ADDR, TOP_BASE,
 };
 use crate::util::{read32, write32};
 
@@ -34,8 +35,6 @@ const TX_VREF_PD: usize = PHYD_APB + 0x0028;
 const ZQ_240_OPTION: usize = PHYD_APB + 0x0054;
 const GPO_SETTING: usize = PHYD_APB + 0x0058;
 
-// TRM alpha p62
-const CLK_GEN_PLL_CTRL_BASE: usize = 0x0300_2000;
 // TRM alpha p53
 const PLL_G6_BASE: usize = CLK_GEN_PLL_CTRL_BASE + 0x0900;
 const DPLL_SSC_SYN_CTRL: usize = PLL_G6_BASE + 0x0050;

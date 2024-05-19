@@ -291,7 +291,7 @@ extern "C" fn main() -> usize {
 
     print_sec_sys();
 
-    if false {
+    if true {
         println!(">>> mask ROM dump");
         util::dump_block(MASK_ROM_BASE, MASK_ROM_SIZE, 32);
         println!("<<< mask ROM dump");
