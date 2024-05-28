@@ -23,6 +23,9 @@ build:
 run: build
 	sg_boot run --main $(RELEASE_BIN)
 
+sbitest:
+	sg_boot run --main ~/firmware/RISC-V/sbitest/test.bin
+
 objdump: build
 	riscv64-unknown-elf-dump -D $(RELEASE_ELF)
 

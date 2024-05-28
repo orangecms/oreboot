@@ -7,7 +7,7 @@ use core::{
 };
 use log::{print, println};
 use riscv::register::{
-    mip,
+    mie, mip,
     scause::{Exception, Trap},
 };
 use rustsbi::spec::binary::SbiRet;
@@ -96,8 +96,10 @@ const CLINT_BASE_D1: usize = 0x0400_0000;
 
 // Machine Software Interrupt Pending registers are 32 bit (4 bytes)
 const HART0_MSIP_OFFSET: usize = 0x0000;
+const HART1_MSIP_OFFSET: usize = 0x0004;
 // Machine Timer Compoare registers are 64 bit (8 bytes)
 const HART0_MTIMECMP_OFFSET: usize = 0x4000;
+const HART1_MTIMECMP_OFFSET: usize = 0x4008;
 // Machine Time is a 64-bit register
 const MTIME_OFFSET: usize = 0xbff8;
 
@@ -118,8 +120,8 @@ pub fn execute_supervisor(
         CLINT_BASE_JH7110
     };
     let mtime: usize = clint_base + MTIME_OFFSET;
-    let mtimecmp: usize = clint_base + HART0_MTIMECMP_OFFSET + 8 * hartid;
-    let hart_msip: usize = clint_base + HART0_MSIP_OFFSET + 4 * hartid;
+    let mtimecmp: usize = clint_base + HART1_MTIMECMP_OFFSET + 8 * hartid;
+    let hart_msip: usize = clint_base + HART1_MSIP_OFFSET + 4 * hartid;
     println!("[SBI] Enter loop...");
     loop {
         // NOTE: `resume()` drops into S-mode by calling `mret` (asm) eventually
@@ -176,10 +178,12 @@ pub fn execute_supervisor(
                 }
             }
             CoroutineState::Yielded(MachineTrap::MachineTimer()) => {
+                unsafe { mie::clear_mtimer() }
                 // TODO: Check if this actually works
                 if DEBUG && DEBUG_MTIMER {
                     println!("[SBI] M-timer interrupt");
                 }
+                /*
                 // Clear the mtimer interrupt by increasing the respective
                 // hart's mtimecmp register.
                 // Note that the MTIP bit in the MIP register is read-only.
@@ -187,21 +191,18 @@ pub fn execute_supervisor(
                 let tl = read32(mtimecmp) as u64;
                 let th = read32(mtimecmp + 4) as u64;
                 let tv = th << 32 | tl;
-                println!("[SBI] M-time cmp{hartid}: {tv}");
+                if DEBUG && DEBUG_MTIMER {
+                    println!("[SBI] M-time cmp{hartid}: {tv}");
+                }
                 // Increase whole the value to include overflow and write back.
                 let tn = tv + TIME_INC;
                 write32(mtimecmp, tn as u32);
                 write32(mtimecmp + 4, (tn >> 32) as u32);
+                */
+                // write32(hart_msip, 0);
                 // Yeet software interrupt pending to signal interrupt to S-mode
                 // for this hart.
-                if false {
-                    write32(hart_msip, 1);
-                }
-                // TODO: There is also the Supervisor Timer Interrupt Pending
-                // bit in the MIP register... why anyway?
-                if false {
-                    unsafe { mip::set_stimer() }
-                }
+                unsafe { mip::set_stimer() }
             }
             CoroutineState::Yielded(MachineTrap::LoadMisaligned(_addr)) => {
                 if DEBUG && DEBUG_MISALIGNED {

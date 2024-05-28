@@ -33,9 +33,9 @@ const SPI_FLASH_BASE: usize = 0x2100_0000;
 /// This is the compressed Linux image in boot storage (flash).
 // TODO: do not hardcode; this will be handled in xtask eventually
 // VF2
-const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000;
+// const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000;
 // Mars CM
-// const LINUXBOOT_SRC_OFFSET: usize = 0x0046_0000;
+const LINUXBOOT_SRC_OFFSET: usize = 0x0046_0000;
 const LINUXBOOT_SRC_ADDR: usize = SPI_FLASH_BASE + LINUXBOOT_SRC_OFFSET;
 
 /// This is the Linux DTB in SRAM, copied over by the mask ROM loader.
@@ -70,6 +70,9 @@ const QSPI_XIP_BASE: usize = 0x2100_0000;
 static PLATFORM: &str = "StarFive VisionFive 2";
 static VERSION: &str = env!("CARGO_PKG_VERSION");
 
+// hart 0 is the S7 monitor core; 1-4 are U7 cores
+const BOOT_HART_ID: usize = 1;
+
 const STACK_SIZE: usize = 32 * 1024;
 
 #[link_section = ".bss.uninit"]
@@ -92,24 +95,24 @@ pub unsafe extern "C" fn start() -> ! {
         "csrw   mstatus, zero",
         "csrw   mtvec, zero",
         // 1. suspend non-boot hart
-        // hart 0 is the S7 monitor core; 1-4 are U7 cores
-        "li     t1, 1",
+        "li     t1, {boothart}",
         "csrr   t0, mhartid",
         "bne    t0, t1, .nonboothart",
         // 2. prepare stack
+        // FIXME: each hart needs its own stack
         "la     sp, {stack}",
         "li     t0, {stack_size}",
         "add    sp, sp, t0",
         "j      .boothart",
         // wait for multihart to get back into the game
         ".nonboothart:",
-        // "csrw   mie, 8", // 1 << 3
-        "csrw   mie, 0", // disable wakeup
+        // disable wakeup
+        "csrw   mie, 0",
         "wfi",
-        "csrw   mip, 0",
         "call   {resume}",
         ".boothart:",
         "call   {reset}",
+        boothart   = const BOOT_HART_ID,
         stack      = sym STACK,
         stack_size = const STACK_SIZE,
         reset      = sym boot_hart_reset,
@@ -370,7 +373,7 @@ fn main() {
     let payload_addr = PAYLOAD_ADDR;
 
     let load_this = "U-Boot";
-    let load_this = "LinuxBoot";
+    // let load_this = "LinuxBoot";
     match load_this {
         "U-Boot" => {
             let slice = get_slice(&SRAM0_BASE, &SRAM0_SIZE);
@@ -417,18 +420,17 @@ fn main() {
     payload(payload_addr);
 }
 
+// WHY DOES LINUX SEND IPIs WHEN SMP IS OFF ANYWAY?
 fn nonboot_hart_resume() {
-    unsafe {
-        init();
-    }
-    let payload_addr = PAYLOAD_ADDR;
     // TODO: What do we do with hart 0, the S7 monitor hart?
     let hartid = mhartid::read();
-    if hartid == 0 {
+    if hartid != BOOT_HART_ID {
         loop {
             unsafe { asm!("wfi") }
         }
     }
+    unsafe { init() }
+    let payload_addr = PAYLOAD_ADDR;
     payload(payload_addr);
 }
 

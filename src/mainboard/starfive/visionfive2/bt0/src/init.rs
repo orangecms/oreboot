@@ -144,6 +144,32 @@ pub fn clocks() {
         .modify(|_, w| w.clk_mux_sel().variant(CLK_QSPI_REF_MUX_SEL));
 }
 
+pub fn timers() {
+    let syscrg = pac::syscrg_reg();
+    let reset = syscrg.soft_rst_addr_sel_3();
+    let status = syscrg.syscrg_rst_status_3();
+
+    syscrg.clk_tim_apb().modify(|r, w| w.clk_icg().set_bit());
+    reset.modify(|r, w| w.u0_si5_timer_apb().clear_bit());
+    while status.read().u0_si5_timer_apb().bit_is_clear() {}
+
+    syscrg.clk_tim_0().modify(|r, w| w.clk_icg().set_bit());
+    reset.modify(|r, w| w.u0_si5_timer_0().clear_bit());
+    while status.read().u0_si5_timer_0().bit_is_clear() {}
+
+    syscrg.clk_tim_1().modify(|r, w| w.clk_icg().set_bit());
+    reset.modify(|r, w| w.u0_si5_timer_1().clear_bit());
+    while status.read().u0_si5_timer_1().bit_is_clear() {}
+
+    syscrg.clk_tim_2().modify(|r, w| w.clk_icg().set_bit());
+    reset.modify(|r, w| w.u0_si5_timer_2().clear_bit());
+    while status.read().u0_si5_timer_2().bit_is_clear() {}
+
+    syscrg.clk_tim_3().modify(|r, w| w.clk_icg().set_bit());
+    reset.modify(|r, w| w.u0_si5_timer_3().clear_bit());
+    while status.read().u0_si5_timer_3().bit_is_clear() {}
+}
+
 pub fn clk_apb0() {
     pac::syscrg_reg().clk_apb0().modify(|r, w| {
         let clk = r.bits();

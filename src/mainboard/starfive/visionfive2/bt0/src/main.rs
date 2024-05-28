@@ -18,8 +18,8 @@ use core::{
     slice::from_raw_parts as slice_from,
 };
 use jh71xx_hal as hal;
-use riscv::register::mhartid;
 use riscv::register::{marchid, mimpid, mvendorid};
+use riscv::register::{mhartid, mip};
 
 use layoutflash::areas::{find_fdt, FdtIterator};
 use soc::starfive::jh7110::{pac, uart};
@@ -59,6 +59,9 @@ const QSPI_XIP_BASE: usize = 0x2100_0000;
 const FLASH_SIZE: usize = 0x0100_0000;
 const LOAD_FROM_FLASH: bool = false;
 
+// hart 0 is the S7 monitor core; 1-4 are U7 cores
+const BOOT_HART_ID: usize = 1;
+
 const STACK_SIZE: usize = 8 * 1024;
 
 #[link_section = ".bss.uninit"]
@@ -83,24 +86,23 @@ pub unsafe extern "C" fn start() -> ! {
         "ld     t0, {start}",
         "csrw   mtvec, t0",
         // 1. suspend non-boot hart
-        // hart 0 is the S7 monitor core; 1-4 are U7 cores
-        "li     a1, 1",
-        "csrr   a0, mhartid",
-        "bne    a0, a1, .nonboothart",
+        "li     t1, {boothart}",
+        "csrr   t0, mhartid",
+        "bne    t0, t1, .nonboothart",
         // 2. prepare stack
-        // FIXME: each hart needs its own stack
+        // NOTE: non-boot harts need no stack here, they skip this
         "la     sp, {stack}",
         "li     t0, {stack_size}",
         "add    sp, sp, t0",
         "j      .boothart",
         // wait for multihart to get back into the game
         ".nonboothart:",
-        "csrw   mie, 8", // 1 << 3
+        "csrw   mie, (1 << 3)",
         "wfi",
-        "csrw   mip, 0",
         "call   {payload}",
         ".boothart:",
         "call   {reset}",
+        boothart   = const BOOT_HART_ID,
         stack      = sym BT0_STACK,
         stack_size = const STACK_SIZE,
         payload    = sym exec_payload,
@@ -301,6 +303,8 @@ const OTPC_SIZE: usize = 64 * 1024;
 
 const SEC_SUB_SYS_BASE: usize = 0x1600_0000;
 
+const CPU_VOL_BINNING: usize = OTPC_BASE + 0x07fc;
+
 fn dump_dtim_otpc_sec() {
     if false {
         dump_block(DTIM_BASE, DTIM_SIZE, 0x20);
@@ -388,6 +392,49 @@ fn copy(source: usize, target: usize, size: usize) {
     println!(" done.");
 }
 
+const DISP_SUBSYS: usize = 0x2940_0000;
+const VOUT_SYSCON: usize = DISP_SUBSYS + 0x001B_0000;
+const VOUT_CRG: usize = DISP_SUBSYS + 0x001C_0000;
+const DSI_TX: usize = DISP_SUBSYS + 0x001D_0000;
+
+const VOUT_CLK_AXI: usize = VOUT_CRG + 0x0010;
+const VOUT_CLK_CORE: usize = VOUT_CRG + 0x0014;
+const VOUT_CLK_AHB: usize = VOUT_CRG + 0x0018;
+const VOUT_RESET_CONTROL: usize = VOUT_CRG + 0x0038;
+const VOUT_RESET_STATUS: usize = VOUT_CRG + 0x004c;
+
+fn vout_init(syscrg: &pac::SYSCRG) {
+    //  dump_block(VOUT_CRG + 0x0010, 0x80, 0x20);
+    let v = read32(VOUT_CLK_AXI);
+    println!("vout clk axi: {v:#010x}");
+    let v = read32(VOUT_CLK_CORE);
+    println!("vout clk core: {v:#010x}");
+    let v = read32(VOUT_CLK_AHB);
+    println!("vout clk ahb: {v:#010x}");
+
+    let vout_reset_status = read32(VOUT_RESET_STATUS);
+    println!("vout_reset_status: {vout_reset_status:#010x}");
+
+    let vout_reset_control = read32(VOUT_RESET_CONTROL);
+    println!("vout_reset_control: {vout_reset_control:#010x}");
+    write32(VOUT_RESET_CONTROL, vout_reset_control | 0x0fff);
+
+    udelay(1000);
+
+    let vout_reset_status = read32(VOUT_RESET_STATUS);
+    println!("vout_reset_status: {vout_reset_status:#010x}");
+
+    // 0x1302_0000 + 0xe8
+    let vout_src = syscrg.clk_u0_vout_src();
+    let data = vout_src.read().bits();
+    println!("vout_src: {data:#010x}");
+    if false {
+        vout_src.write(|w| unsafe { w.bits(data | 0x0fff) });
+        let data = vout_src.read().bits();
+        println!("vout_src: {data:#010x}");
+    }
+}
+
 #[no_mangle]
 fn main() {
     // clock/PLL setup, see U-Boot board/starfive/visionfive2/spl.c
@@ -419,7 +466,7 @@ fn main() {
     // TX/RX are GPIOs 5 and 6
     pac::sys_pinctrl_reg().gpo_doen_1().modify(|_, w| {
         w.doen_5().variant(0);
-        w.doen_6().variant(0b1)
+        w.doen_6().variant(1)
     });
 
     pac::sys_pinctrl_reg()
@@ -443,52 +490,49 @@ fn main() {
             clk_hz: uart::UART_CLK_OSC,
         },
     );
-    // let s = JH71XXSerial::new();
 
     init_logger(s);
     println!("oreboot 🦀 bt0");
     print_boot_mode();
     print_ids();
 
-    const DISP_SUBSYS: usize = 0x2940_0000;
-    const VOUT_SYSCON: usize = DISP_SUBSYS + 0x001B_0000;
-    const VOUT_CRG: usize = DISP_SUBSYS + 0x001C_0000;
-    const DSI_TX: usize = DISP_SUBSYS + 0x001D_0000;
-    //  dump_block(VOUT_CRG + 0x0010, 0x80, 0x20);
+    let aoncrg_reg = dp.AONCRG;
+    aoncrg_reg.clk_gmac5_axi64_tx().write(|w| {
+        unsafe { w.bits(1 << 31 | 1 << 24) }
+        // w.clk_mux_sel().variant(0b1)
+    });
 
-    const VOUT_CLK_AXI: usize = VOUT_CRG + 0x0010;
-    const VOUT_CLK_CORE: usize = VOUT_CRG + 0x0014;
-    const VOUT_CLK_AHB: usize = VOUT_CRG + 0x0018;
-    let v = read32(VOUT_CLK_AXI);
-    println!("vout clk axi: {v:#010x}");
-    let v = read32(VOUT_CLK_CORE);
-    println!("vout clk core: {v:#010x}");
-    let v = read32(VOUT_CLK_AHB);
-    println!("vout clk ahb: {v:#010x}");
+    // Improved GMAC0 TX I/O PAD capability
+    let aon_pinctrl = dp.AON_PINCTRL;
+    aon_pinctrl.gmac0_txd0().write(|w| unsafe { w.bits(0b1) });
+    aon_pinctrl.gmac0_txd1().write(|w| unsafe { w.bits(0b1) });
+    aon_pinctrl.gmac0_txd2().write(|w| unsafe { w.bits(0b1) });
+    aon_pinctrl.gmac0_txd3().write(|w| unsafe { w.bits(0b1) });
+    aon_pinctrl.gmac0_txen().write(|w| unsafe { w.bits(0b1) });
 
-    const VOUT_RESET_CONTROL: usize = VOUT_CRG + 0x0038;
-    const VOUT_RESET_STATUS: usize = VOUT_CRG + 0x004c;
-    let vout_reset_status = read32(VOUT_RESET_STATUS);
-    println!("vout_reset_status: {vout_reset_status:#010x}");
+    let aon_syscon = &dp.AON_SYSCON;
+    aon_syscon
+        .aon_syscfg_3()
+        .write(|w| w.gmac5_axi64_phy_intf_sel_i().variant(0x2));
 
-    let vout_reset_control = read32(VOUT_RESET_CONTROL);
-    println!("vout_reset_control: {vout_reset_control:#010x}");
-    write32(VOUT_RESET_CONTROL, vout_reset_control | 0x0fff);
-
-    udelay(1000);
-
-    let vout_reset_status = read32(VOUT_RESET_STATUS);
-    println!("vout_reset_status: {vout_reset_status:#010x}");
-
-    // 0x1302_0000 + 0xe8
-    let vout_src = dp.SYSCRG.clk_u0_vout_src();
-    let data = vout_src.read().bits();
-    println!("vout_src: {data:#010x}");
-    if false {
-        vout_src.write(|w| unsafe { w.bits(data | 0x0fff) });
-        let data = vout_src.read().bits();
-        println!("vout_src: {data:#010x}");
+    // TODO: Does this help?
+    if true {
+        init::phy_cfg();
+        reset_phy();
     }
+
+    if true {
+        let noc_stg_axi = dp.SYSCRG.clk_noc_stg_axi().read().bits();
+        println!("noc_stg_axi {noc_stg_axi:08x}");
+        dp.SYSCRG.clk_noc_stg_axi().write(|w| w.clk_icg().set_bit());
+        let noc_stg_axi = dp.SYSCRG.clk_noc_stg_axi().read().bits();
+        println!("noc_stg_axi {noc_stg_axi:08x}");
+    }
+
+    vout_init(&dp.SYSCRG);
+
+    let vol_binning = read32(CPU_VOL_BINNING);
+    println!("CPU_VOL_BINNING: {vol_binning:08x}");
 
     if DUMP_OTP {
         print_otp_cfg(&dp.AON_SYSCON);
@@ -506,17 +550,9 @@ fn main() {
         dump_block(QSPI_XIP_BASE + 0x0010_0000, 0x100, 0x20);
         println!("Something:");
         dump_block(QSPI_XIP_BASE + 0x0020_0000, 0x100, 0x20);
-        // we put this here
-        println!("lzss compressed Linux");
-        dump_block(QSPI_XIP_BASE + 0x0040_0000, 0x100, 0x20);
     }
 
-    // TODO: Does this help?
-    if false {
-        reset_phy();
-        init::phy_cfg();
-    }
-
+    init::timers();
     // AXI cfg0, clk_apb_bus, clk_apb0, clk_apb12
     init::clk_apb0();
     dram::init();
@@ -531,7 +567,8 @@ fn main() {
 
     let mut load_addr = SRAM0_BASE + 0x1_1000;
 
-    if false {
+    const BOOT_ZEPHYR: bool = false;
+    if BOOT_ZEPHYR {
         // Find and copy the payload
         let (src_offset, src_size) = get_payload_offset_and_size(slice);
         let src_addr = base + src_offset;
@@ -542,9 +579,7 @@ fn main() {
             src_size / 1024
         );
         copy(src_addr, load_addr, src_size);
-    }
-
-    if true {
+    } else {
         // Find and copy the main stage
         let (main_offset, main_size) = get_main_offset_and_size(slice);
         let main_addr = base + main_offset;
@@ -582,11 +617,23 @@ fn main() {
     };
 }
 
+// jump to main stage or payload
 fn exec_payload(addr: usize) {
+    let clint = pac::clint_reg();
+    let hart_id = mhartid::read();
+    if hart_id != BOOT_HART_ID {
+        match hart_id {
+            0 => clint.msip_0().reset(),
+            2 => clint.msip_2().reset(),
+            3 => clint.msip_3().reset(),
+            4 => clint.msip_4().reset(),
+            // NOTE: This should never occur.
+            _ => {}
+        }
+    }
     unsafe {
-        // jump to main
         let f: EntryPoint = transmute(addr);
-        // asm!("fence.i");
+        asm!("fence.i");
         f();
     }
 }

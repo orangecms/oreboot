@@ -66,14 +66,15 @@ unsafe fn delegate_interrupt_exception() {
     medeleg::set_load_page_fault();
     medeleg::set_store_page_fault();
 
-    if false {
+    if true {
         mie::set_mext();
         mie::set_mtimer();
         mie::set_msoft();
+    } else {
+        mie::clear_mext();
+        mie::clear_mtimer();
+        mie::clear_msoft();
     }
-    mie::clear_mext();
-    mie::clear_mtimer();
-    mie::clear_msoft();
     mie::clear_sext();
     mie::clear_stimer();
     mie::clear_ssoft();
