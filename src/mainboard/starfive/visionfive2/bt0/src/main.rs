@@ -496,45 +496,6 @@ fn main() {
     print_boot_mode();
     print_ids();
 
-    /*
-    let aoncrg_reg = dp.AONCRG;
-    aoncrg_reg.clk_gmac5_axi64_tx().write(|w| {
-        unsafe { w.bits(1 << 31 | 1 << 24) }
-        // w.clk_mux_sel().variant(0b1)
-    });
-
-    // Improved GMAC0 TX I/O PAD capability
-    let aon_pinctrl = dp.AON_PINCTRL;
-    aon_pinctrl.gmac0_txd0().write(|w| unsafe { w.bits(0b1) });
-    aon_pinctrl.gmac0_txd1().write(|w| unsafe { w.bits(0b1) });
-    aon_pinctrl.gmac0_txd2().write(|w| unsafe { w.bits(0b1) });
-    aon_pinctrl.gmac0_txd3().write(|w| unsafe { w.bits(0b1) });
-    aon_pinctrl.gmac0_txen().write(|w| unsafe { w.bits(0b1) });
-
-    let aon_syscon = &dp.AON_SYSCON;
-    aon_syscon
-        .aon_syscfg_3()
-        .write(|w| w.gmac5_axi64_phy_intf_sel_i().variant(0x2));
-    */
-
-    // TODO: Does this help?
-    if false {
-        init::phy_cfg();
-        reset_phy();
-    }
-
-    if true {
-        let noc_stg_axi = dp.SYSCRG.clk_noc_stg_axi().read().bits();
-        println!("noc_stg_axi {noc_stg_axi:08x}");
-        dp.SYSCRG.clk_noc_stg_axi().write(|w| w.clk_icg().set_bit());
-        let noc_stg_axi = dp.SYSCRG.clk_noc_stg_axi().read().bits();
-        println!("noc_stg_axi {noc_stg_axi:08x}");
-    }
-
-    // vout_init(&dp.SYSCRG);
-    // let vol_binning = read32(CPU_VOL_BINNING);
-    // println!("CPU_VOL_BINNING: {vol_binning:08x}");
-
     if DUMP_OTP {
         print_otp_cfg(&dp.AON_SYSCON);
         dump_dtim_otpc_sec();
@@ -553,7 +514,6 @@ fn main() {
         dump_block(QSPI_XIP_BASE + 0x0020_0000, 0x100, 0x20);
     }
 
-    // init::timers();
     // AXI cfg0, clk_apb_bus, clk_apb0, clk_apb12
     init::clk_apb0();
     dram::init();
