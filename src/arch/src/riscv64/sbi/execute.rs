@@ -13,10 +13,6 @@ use riscv::register::{
 use rustsbi::spec::binary::SbiRet;
 use sbi_spec::legacy::LEGACY_CONSOLE_PUTCHAR;
 
-// This value is somewhat arbitrary. Taken from xv6:
-// https://github.com/michaelengel/xv6-d1/blob/b1ffbd8930a10dfd616e0aa5543b40dd91a72b28/kernel/kernelvec.S#L104
-const TIME_INC: u64 = 10_000_000;
-
 const ECALL_OREBOOT: usize = 0x0A023B00;
 const EBREAK: u16 = 0x9002;
 
