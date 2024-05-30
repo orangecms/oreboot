@@ -11,6 +11,7 @@ use oreboot_arch::riscv64::sbi;
 use oreboot_compression::decompress;
 use oreboot_soc::sunxi::d1::{
     ccu::Clocks,
+    clint::CLINT_BASE,
     gpio::{
         portb::{PB8, PB9},
         porte::{PE2, PE3},
@@ -366,7 +367,7 @@ extern "C" fn main() -> usize {
 
         let hartid = mhartid::read();
         let (reset_type, reset_reason) =
-            sbi::execute::execute_supervisor(LINUXBOOT_ADDR, hartid, DTB_ADDR);
+            sbi::execute::execute_supervisor(LINUXBOOT_ADDR, hartid, DTB_ADDR, CLINT_BASE);
         println!("oreboot: reset reason = {reset_reason}");
         reset_type
     } else {

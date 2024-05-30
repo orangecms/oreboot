@@ -66,14 +66,6 @@ fn ore_sbi(method: usize, args: [usize; 6]) -> SbiRet {
     }
 }
 
-pub fn read32(reg: usize) -> u32 {
-    unsafe { core::ptr::read_volatile(reg as *mut u32) }
-}
-
-pub fn write32(reg: usize, val: u32) {
-    unsafe { core::ptr::write_volatile(reg as *mut u32, val) }
-}
-
 // TODO: Check newer specs on out this should work
 fn putchar(_method: usize, args: [usize; 6]) -> SbiRet {
     let char = args[0] as u8 as char;
@@ -90,16 +82,6 @@ fn print_ecall_context(ctx: &mut SupervisorContext) {
     }
 }
 
-// FIXME: DO NOT HARDCODE; pass as parameter
-const CLINT_BASE_JH7110: usize = 0x0200_0000;
-const CLINT_BASE_D1: usize = 0x0400_0000;
-
-// Machine Software Interrupt Pending registers are 32 bit (4 bytes)
-const HART0_MSIP_OFFSET: usize = 0x0000;
-const HART1_MSIP_OFFSET: usize = 0x0004;
-// Machine Timer Compoare registers are 64 bit (8 bytes)
-const HART0_MTIMECMP_OFFSET: usize = 0x4000;
-const HART1_MTIMECMP_OFFSET: usize = 0x4008;
 // Machine Time is a 64-bit register
 const MTIME_OFFSET: usize = 0xbff8;
 
@@ -107,21 +89,14 @@ pub fn execute_supervisor(
     supervisor_mepc: usize,
     hartid: usize,
     dtb_addr: usize,
+    clint_base: usize,
 ) -> (usize, usize) {
     println!(
         "[SBI] Enter supervisor on hart {hartid} at {:x} with DTB from {:x}",
         supervisor_mepc, dtb_addr
     );
     let mut rt = Runtime::new_sbi_supervisor(supervisor_mepc, hartid, dtb_addr);
-    // TODO: make a param
-    let clint_base = if false {
-        CLINT_BASE_D1
-    } else {
-        CLINT_BASE_JH7110
-    };
     let mtime: usize = clint_base + MTIME_OFFSET;
-    let mtimecmp: usize = clint_base + HART1_MTIMECMP_OFFSET + 8 * hartid;
-    let hart_msip: usize = clint_base + HART1_MSIP_OFFSET + 4 * hartid;
     println!("[SBI] Enter loop...");
     loop {
         // NOTE: `resume()` drops into S-mode by calling `mret` (asm) eventually
@@ -178,49 +153,20 @@ pub fn execute_supervisor(
                 }
             }
             CoroutineState::Yielded(MachineTrap::MachineTimer()) => {
-                unsafe { mie::clear_mtimer() }
-                // TODO: Check if this actually works
                 if DEBUG && DEBUG_MTIMER {
                     println!("[SBI] M-timer interrupt");
                 }
-                /*
-                // Clear the mtimer interrupt by increasing the respective
-                // hart's mtimecmp register.
-                // Note that the MTIP bit in the MIP register is read-only.
-                // mtimecmp is 64-bit, so stitch together high and low parts.
-                let tl = read32(mtimecmp) as u64;
-                let th = read32(mtimecmp + 4) as u64;
-                let tv = th << 32 | tl;
-                if DEBUG && DEBUG_MTIMER {
-                    println!("[SBI] M-time cmp{hartid}: {tv}");
-                }
-                // Increase whole the value to include overflow and write back.
-                let tn = tv + TIME_INC;
-                write32(mtimecmp, tn as u32);
-                write32(mtimecmp + 4, (tn >> 32) as u32);
-                */
-                // write32(hart_msip, 0);
-                // Yeet software interrupt pending to signal interrupt to S-mode
+                // NOTE: The ECALL handler enables the interrupt.
+                unsafe { mie::clear_mtimer() }
+                // Yeet timer interrupt pending to signal interrupt to S-mode
                 // for this hart.
                 unsafe { mip::set_stimer() }
             }
-            CoroutineState::Yielded(MachineTrap::LoadMisaligned(_addr)) => {
-                if DEBUG && DEBUG_MISALIGNED {
-                    println!("[SBI] Load misaligned");
-                }
-            }
-            CoroutineState::Yielded(MachineTrap::StoreMisaligned(_addr)) => {
-                if DEBUG && DEBUG_MISALIGNED {
-                    println!("[SBI] Store misaligned");
-                }
-            }
             // NOTE: These are all delegated.
+            CoroutineState::Yielded(MachineTrap::LoadMisaligned(_addr)) => {}
+            CoroutineState::Yielded(MachineTrap::StoreMisaligned(_addr)) => {}
             CoroutineState::Yielded(MachineTrap::LoadFault(_addr)) => {}
-            CoroutineState::Yielded(MachineTrap::StoreFault(addr)) => {
-                if false {
-                    println!("[SBI]   Attemped to store to ${addr:16x}");
-                }
-            }
+            CoroutineState::Yielded(MachineTrap::StoreFault(addr)) => {}
             CoroutineState::Yielded(MachineTrap::ExternalInterrupt()) => {}
             CoroutineState::Yielded(MachineTrap::MachineSoft()) => {}
             CoroutineState::Yielded(MachineTrap::InstructionFault(_addr)) => {}

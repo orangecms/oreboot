@@ -22,10 +22,7 @@ const HANDLE_MISALIGNED: bool = false;
 // medeleg: 0xb151
 // OpenSBI medeleg: 0xb109
 // NOTE: OpenSBI does not delegate store/load misaligned.
-// Pending patches for Linux allow for it to handle misaligned access itself.
-// If delegated, Linux may send a SIGBUS to userspace and dump if unhandled:
-// `status: 8000000200006020 badaddr: 0000000000d608e6 cause: 0000000000000006`
-// Exception 6 on RISC-V means "Store/AMO address misaligned".
+// Config options for Linux allow for it to handle misaligned access itself.
 unsafe fn delegate_interrupt_exception() {
     // clear all pending interrupts
     mip::clear_stimer();
@@ -46,19 +43,10 @@ unsafe fn delegate_interrupt_exception() {
     // Do not medeleg::set_illegal_instruction();
     // We need to handle sfence.VMA and timer access in SBI, i.e., rdtime.
     medeleg::set_breakpoint();
-    // medeleg::clear_breakpoint();
-    if HANDLE_MISALIGNED {
-        medeleg::clear_load_misaligned();
-    } else {
-        medeleg::set_load_misaligned();
-    }
     // load fault means PMP violation, shouldn't be hit
     medeleg::set_load_fault();
-    if HANDLE_MISALIGNED {
-        medeleg::clear_store_misaligned();
-    } else {
-        medeleg::set_store_misaligned();
-    }
+    medeleg::clear_load_misaligned();
+    medeleg::clear_store_misaligned();
     medeleg::set_store_fault();
     medeleg::set_user_env_call();
     // Do not delegate env call from S-mode nor M-mode; we handle it :)
@@ -66,19 +54,18 @@ unsafe fn delegate_interrupt_exception() {
     medeleg::set_load_page_fault();
     medeleg::set_store_page_fault();
 
-    if true {
-        mie::set_mext();
-        mie::set_mtimer();
-        mie::set_msoft();
-    } else {
+    // Disable all interrupts
+    if false {
         mie::clear_mext();
         mie::clear_mtimer();
         mie::clear_msoft();
+        mie::clear_sext();
+        mie::clear_stimer();
+        mie::clear_ssoft();
+        mie::clear_uext();
+        mie::clear_utimer();
+        mie::clear_usoft();
     }
-    mie::clear_sext();
-    mie::clear_stimer();
-    mie::clear_ssoft();
-    mie::clear_uext();
 }
 
 pub fn init() {

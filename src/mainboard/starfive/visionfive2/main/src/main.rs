@@ -30,10 +30,10 @@ const SRAM0_BASE: usize = 0x0800_0000;
 const SRAM0_SIZE: usize = 2 * 1024 * 1024;
 const SPI_FLASH_BASE: usize = 0x2100_0000;
 
+const CLINT_BASE: usize = 0x0200_0000;
+
 /// This is the compressed Linux image in boot storage (flash).
 // TODO: do not hardcode; this will be handled in xtask eventually
-// VF2
-// const LINUXBOOT_SRC_OFFSET: usize = 0x0040_0000;
 // Mars CM
 const LINUXBOOT_SRC_OFFSET: usize = 0x0046_0000;
 const LINUXBOOT_SRC_ADDR: usize = SPI_FLASH_BASE + LINUXBOOT_SRC_OFFSET;
@@ -441,7 +441,7 @@ fn payload(payload_addr: usize) {
     if hartid == 1 {
         sbi::info::print_info(PLATFORM, VERSION);
     }
-    let (reset_type, reset_reason) = execute_supervisor(payload_addr, hartid, DTB_ADDR);
+    let (reset_type, reset_reason) = execute_supervisor(payload_addr, hartid, DTB_ADDR, CLINT_BASE);
     print!("[main] oreboot: reset, type = {reset_type}, reason = {reset_reason}");
 }
 

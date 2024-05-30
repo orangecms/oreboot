@@ -496,6 +496,7 @@ fn main() {
     print_boot_mode();
     print_ids();
 
+    /*
     let aoncrg_reg = dp.AONCRG;
     aoncrg_reg.clk_gmac5_axi64_tx().write(|w| {
         unsafe { w.bits(1 << 31 | 1 << 24) }
@@ -514,9 +515,10 @@ fn main() {
     aon_syscon
         .aon_syscfg_3()
         .write(|w| w.gmac5_axi64_phy_intf_sel_i().variant(0x2));
+    */
 
     // TODO: Does this help?
-    if true {
+    if false {
         init::phy_cfg();
         reset_phy();
     }
@@ -529,10 +531,9 @@ fn main() {
         println!("noc_stg_axi {noc_stg_axi:08x}");
     }
 
-    vout_init(&dp.SYSCRG);
-
-    let vol_binning = read32(CPU_VOL_BINNING);
-    println!("CPU_VOL_BINNING: {vol_binning:08x}");
+    // vout_init(&dp.SYSCRG);
+    // let vol_binning = read32(CPU_VOL_BINNING);
+    // println!("CPU_VOL_BINNING: {vol_binning:08x}");
 
     if DUMP_OTP {
         print_otp_cfg(&dp.AON_SYSCON);
@@ -552,7 +553,7 @@ fn main() {
         dump_block(QSPI_XIP_BASE + 0x0020_0000, 0x100, 0x20);
     }
 
-    init::timers();
+    // init::timers();
     // AXI cfg0, clk_apb_bus, clk_apb0, clk_apb12
     init::clk_apb0();
     dram::init();
