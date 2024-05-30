@@ -373,7 +373,7 @@ fn main() {
     let payload_addr = PAYLOAD_ADDR;
 
     let load_this = "U-Boot";
-    // let load_this = "LinuxBoot";
+    let load_this = "LinuxBoot";
     match load_this {
         "U-Boot" => {
             let slice = get_slice(&SRAM0_BASE, &SRAM0_SIZE);
