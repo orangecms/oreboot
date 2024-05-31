@@ -62,7 +62,7 @@ fn ore_sbi(method: usize, args: [usize; 6]) -> SbiRet {
     }
 }
 
-// TODO: Check newer specs on out this should work
+// TODO: Check newer specs on how this should work with method.
 fn putchar(_method: usize, args: [usize; 6]) -> SbiRet {
     let char = args[0] as u8 as char;
     print!("{char}");

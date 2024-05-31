@@ -515,7 +515,7 @@ fn main() {
     }
 
     // AXI cfg0, clk_apb_bus, clk_apb0, clk_apb12
-    init::clk_apb0();
+    // init::clk_apb0();
     dram::init();
 
     // Get slice to search for DTFS
