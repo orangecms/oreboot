@@ -236,105 +236,102 @@ fn get_pmu_exists() -> bool {
     return false;
 }
 
-fn memcpy_self(dst: &mut [u32; 22], src: &mut [u32; 22], len: usize) {
-    for i in 0..len {
-        dst[i] = src[i];
-    }
-}
-
-static mut PHY_CFG0: [u32; 22] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+#[rustfmt::skip]
+const PHY_CFG0: [u32; 22] = [
+     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 ];
-static mut PHY_CFG1: [u32; 22] = [
-    1, 9, 3, 7, 8, 18, 4, 13, 5, 6, 10, 2, 14, 12, 0, 0, 21, 17, 20, 19, 11, 22,
+#[rustfmt::skip]
+const PHY_CFG1: [u32; 22] = [
+     1,  9,  3,  7,  8, 18,  4, 13,  5,  6, 10,
+     2, 14, 12,  0,  0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG2: [u32; 22] = [
-    4, 9, 3, 7, 8, 18, 1, 13, 2, 6, 10, 5, 14, 12, 0, 0, 21, 17, 20, 19, 11, 22,
+#[rustfmt::skip]
+const PHY_CFG2: [u32; 22] = [
+     4,  9,  3,  7,  8, 18,  1, 13,  2,  6, 10,
+     5, 14, 12,  0,  0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG3: [u32; 22] = [
-    1, 7, 8, 12, 10, 18, 4, 13, 5, 6, 3, 2, 9, 0, 0, 0, 21, 17, 20, 19, 11, 22,
+#[rustfmt::skip]
+const PHY_CFG3: [u32; 22] = [
+     1,  7,  8, 12, 10, 18,  4, 13,  5,  6,  3,
+     2,  9,  0,  0,  0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG4: [u32; 22] = [
-    4, 12, 10, 7, 8, 18, 1, 13, 2, 6, 3, 5, 9, 0, 0, 0, 21, 17, 20, 19, 11, 22,
+#[rustfmt::skip]
+const PHY_CFG4: [u32; 22] = [
+     4, 12, 10,  7,  8, 18,  1, 13,  2,  6,  3,
+     5,  9,  0,  0,  0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG5: [u32; 22] = [
-    13, 2, 7, 9, 12, 19, 5, 1, 6, 3, 4, 8, 10, 0, 0, 0, 21, 22, 18, 17, 11, 20,
+#[rustfmt::skip]
+const PHY_CFG5: [u32; 22] = [
+    13,  2,  7,  9, 12, 19,  5,  1,  6,  3,  4,
+     8, 10,  0,  0,  0, 21, 22, 18, 17, 11, 20,
 ];
-static mut PHY_CFG6: [u32; 22] = [
-    3, 10, 7, 13, 9, 11, 1, 2, 4, 6, 8, 5, 12, 0, 0, 0, 20, 1, 0, 21, 22, 17,
+#[rustfmt::skip]
+const PHY_CFG6: [u32; 22] = [
+     3, 10,  7, 13,  9, 11,  1,  2,  4,  6,  8,
+     5, 12,  0,  0,  0, 20,  1,  0, 21, 22, 17,
 ];
-static mut PHY_CFG7: [u32; 22] = [
-    3, 2, 4, 7, 9, 1, 17, 12, 18, 14, 13, 8, 15, 6, 10, 5, 19, 22, 16, 21, 20, 11,
+#[rustfmt::skip]
+const PHY_CFG7: [u32; 22] = [
+     3,  2,  4,  7,  9,  1, 17, 12, 18, 14, 13,
+     8, 15,  6, 10,  5, 19, 22, 16, 21, 20, 11,
 ];
 
 // TODO: verify
 // This routine seems to have several remapping tables for 22 lines.
-// It is unclear which lines are being remapped. It seems to pick
-// table PHY_CFG7 for the Nezha board.
+// It is unclear which lines are being remapped.
+// It seems to pick table PHY_CFG7 for the Nezha board.
 unsafe fn mctl_phy_ac_remapping(para: &mut dram_parameters) {
-    // read SID info @ 0x228
-    let fuse = (readl(SID_INFO) >> 8) & 0x4;
-    // println!("ddr_efuse_type: 0x{:x}", fuse);
-    if (para.dram_tpr13 >> 18) & 0x3 > 0 {
-        // println!("phy cfg 7");
-        memcpy_self(&mut PHY_CFG0, &mut PHY_CFG7, 22);
+    /*
+     * It is unclear whether the LPDDRx types don't need any remapping,
+     * or whether the original code just didn't provide tables.
+     */
+    if para.dram_type != 2 && para.dram_type != 3 {
+        return;
+    }
+    let fuse = (readl(SID_INFO) & 0xf00) >> 8;
+    println!("DDR efuse: {fuse}");
+
+    if para.dram_type == 2 && fuse == 15 {
+        return;
+    }
+
+    let cfg = if para.dram_type == 2 {
+        println!("PHY cfg 6");
+        PHY_CFG6
+    } else if para.dram_tpr13 & 0xc0000 > 0 {
+        println!("PHY cfg 7");
+        PHY_CFG7
     } else {
         match fuse {
-            8 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG2, 22),
-            9 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG3, 22),
-            10 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG5, 22),
-            11 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG4, 22),
-            13 | 14 => {}
-            12 | _ => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG1, 22),
+            8 => PHY_CFG2,
+            9 => PHY_CFG3,
+            10 => PHY_CFG5,
+            11 => PHY_CFG4,
+            13 | 14 => PHY_CFG0,
+            12 | _ => PHY_CFG1,
         }
-    }
+    };
 
-    if para.dram_type == 2 {
-        if fuse == 15 {
-            return;
-        }
-        memcpy_self(&mut PHY_CFG0, &mut PHY_CFG6, 22);
-    }
+    let val = (cfg[4] << 25) | (cfg[3] << 20) | (cfg[2] << 15) // fmt comment
+        | (cfg[1] << 10) | (cfg[0] << 5);
+    writel(PHY_AC_MAP1, val as u32);
 
-    if para.dram_type == 2 || para.dram_type == 3 {
-        let val = (PHY_CFG0[4] << 25)
-            | (PHY_CFG0[3] << 20)
-            | (PHY_CFG0[2] << 15)
-            | (PHY_CFG0[1] << 10)
-            | (PHY_CFG0[0] << 5);
-        writel(PHY_AC_MAP1, val as u32);
+    let val = (cfg[10] << 25) | (cfg[9] << 20) | (cfg[8] << 15) // x
+        | (cfg[7] << 10) | (cfg[6] << 5) | cfg[5];
+    writel(PHY_AC_MAP2, val as u32);
 
-        let val = (PHY_CFG0[10] << 25)
-            | (PHY_CFG0[9] << 20)
-            | (PHY_CFG0[8] << 15)
-            | (PHY_CFG0[7] << 10)
-            | (PHY_CFG0[6] << 5)
-            | PHY_CFG0[5];
-        writel(PHY_AC_MAP2, val as u32);
+    let val = (cfg[15] << 20) | (cfg[14] << 15) | (cfg[13] << 10) // x
+        | (cfg[12] << 5) | cfg[11];
+    writel(PHY_AC_MAP3, val as u32);
 
-        let val = (PHY_CFG0[15] << 20)
-            | (PHY_CFG0[14] << 15)
-            | (PHY_CFG0[13] << 10)
-            | (PHY_CFG0[12] << 5)
-            | PHY_CFG0[11];
-        writel(PHY_AC_MAP3, val as u32);
+    let val = (cfg[21] << 25) | (cfg[20] << 20) | (cfg[19] << 15) // x
+        | (cfg[18] << 10) | (cfg[17] << 5) | cfg[16];
+    writel(PHY_AC_MAP4, val as u32);
 
-        let val = (PHY_CFG0[21] << 25)
-            | (PHY_CFG0[20] << 20)
-            | (PHY_CFG0[19] << 15)
-            | (PHY_CFG0[18] << 10)
-            | (PHY_CFG0[17] << 5)
-            | PHY_CFG0[16];
-        writel(PHY_AC_MAP4, val as u32);
-
-        let val = (PHY_CFG0[4] << 25)
-            | (PHY_CFG0[3] << 20)
-            | (PHY_CFG0[2] << 15)
-            | (PHY_CFG0[1] << 10)
-            | (PHY_CFG0[0] << 5)
-            | 1;
-        writel(PHY_AC_MAP1, val as u32);
-    }
+    let val = (cfg[4] << 25) | (cfg[3] << 20) | (cfg[2] << 15) // x
+        | (cfg[1] << 10) | (cfg[0] << 5) | 1;
+    writel(PHY_AC_MAP1, val as u32);
 }
 
 fn dram_vol_set(dram_para: &mut dram_parameters) {

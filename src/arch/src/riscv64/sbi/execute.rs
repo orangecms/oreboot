@@ -80,6 +80,7 @@ pub fn execute_supervisor(
     supervisor_mepc: usize,
     hartid: usize,
     dtb_addr: usize,
+    clint_base: usize,
 ) -> (usize, usize) {
     println!(
         "[rustsbi] Enter supervisor on hart {hartid} at {:x} with DTB from {:x}",
@@ -119,12 +120,12 @@ pub fn execute_supervisor(
                     // dump context on breakpoints for debugging
                     // TODO: how would we allow for "real" debugging?
                     if DEBUG_EBREAK {
-                        panic!("[rustsbi] Take an EBREAK!\r {:#04X?}", ctx);
+                        panic!("[rustsbi] Take an EBREAK! {ctx:#04X?}");
                     }
                     // skip instruction; this will likely cause the OS to crash
                     // use DEBUG to get actual information
                     ctx.mepc = ctx.mepc.wrapping_add(2);
-                } else if !emulate_instruction(ctx, ins) {
+                } else if !emulate_instruction(ctx, ins, clint_base) {
                     if DEBUG_ILLEGAL {
                         println!(
                             "[rustsbi] Illegal instruction {ins:08x} not emulated {ctx:#04X?}"
@@ -185,11 +186,11 @@ unsafe fn get_vaddr_u16(vaddr: usize) -> u16 {
     ans
 }
 
-fn emulate_instruction(ctx: &mut SupervisorContext, ins: usize) -> bool {
+fn emulate_instruction(ctx: &mut SupervisorContext, ins: usize, clint_base: usize) -> bool {
     if DEBUG && DEBUG_EMULATE {
         println!("[rustsbi] Emulating instruction {ins:08x}, {ctx:#04X?}");
     }
-    if feature::emulate_rdtime(ctx, ins) {
+    if feature::emulate_rdtime(ctx, ins, clint_base) {
         return true;
     }
     if feature::emulate_sfence_vma(ctx, ins) {
