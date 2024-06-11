@@ -15,11 +15,9 @@ use riscv::register::{
 const DEBUG: bool = true;
 const DEBUG_MTIMER: bool = false;
 const DEBUG_RESUME: bool = false;
-const DEBUG_INTERRUPTS: bool = false;
-const HANDLE_MISALIGNED: bool = false;
 
 // mideleg: 0x222
-// medeleg: 0xb151
+// medeleg: 0xb159
 // OpenSBI medeleg: 0xb109
 // NOTE: OpenSBI does not delegate store/load misaligned.
 // Config options for Linux allow for it to handle misaligned access itself.
@@ -54,19 +52,13 @@ unsafe fn delegate_interrupt_exception() {
     medeleg::set_load_page_fault();
     medeleg::set_store_page_fault();
 
-    if true {
-        mie::set_mext();
-        mie::set_mtimer();
-        mie::set_msoft();
-    } else {
-        mie::clear_mext();
-        mie::clear_mtimer();
-        mie::clear_msoft();
-    }
-    // Disable all other interrupts
-    mie::clear_sext();
-    mie::clear_stimer();
-    mie::clear_ssoft();
+    mie::clear_mext();
+    mie::set_mtimer();
+    mie::set_msoft();
+    // Disable all other interrupts?
+    mie::set_sext();
+    mie::set_stimer();
+    mie::set_ssoft();
     if false {
         mie::clear_utimer();
         mie::clear_usoft();
@@ -148,50 +140,21 @@ impl Coroutine for Runtime {
                 }
             }
             Trap::Exception(Exception::SupervisorEnvCall) => {}
+            Trap::Exception(Exception::InstructionFault) => {}
             Trap::Exception(Exception::IllegalInstruction) => {}
-            _ => {
-                if DEBUG_INTERRUPTS {
-                    print_exception_interrupt();
-                }
-            }
+            _ => print_exception_interrupt(),
         }
         let mtval = mtval::read();
-        let trap = match cause {
+        CoroutineState::Yielded(match cause {
             Trap::Exception(Exception::SupervisorEnvCall) => MachineTrap::SbiCall(),
+            Trap::Exception(Exception::InstructionFault) => MachineTrap::InstructionFault(),
             Trap::Exception(Exception::IllegalInstruction) => MachineTrap::IllegalInstruction(),
-            Trap::Interrupt(Interrupt::MachineExternal) => MachineTrap::ExternalInterrupt(),
             Trap::Interrupt(Interrupt::MachineTimer) => MachineTrap::MachineTimer(),
-            Trap::Interrupt(Interrupt::MachineSoft) => MachineTrap::MachineSoft(),
-            Trap::Exception(Exception::Breakpoint) => MachineTrap::IllegalInstruction(),
-            Trap::Exception(Exception::LoadFault) => MachineTrap::LoadFault(mtval),
-            Trap::Exception(Exception::StoreFault) => MachineTrap::StoreFault(mtval),
-            Trap::Exception(Exception::InstructionFault) => MachineTrap::InstructionFault(mtval),
-            Trap::Exception(Exception::LoadPageFault) => MachineTrap::LoadPageFault(mtval),
-            Trap::Exception(Exception::StorePageFault) => MachineTrap::StorePageFault(mtval),
-            Trap::Exception(Exception::InstructionPageFault) => {
-                MachineTrap::InstructionPageFault(mtval)
-            }
-            // NOTE: We intend to always delegate misaligned traps to S-mode.
-            // However, you may want to debug S-mode behavior and may wish to do
-            // a round-trip via M-mode. In that case, set `HANDLE_MISALIGNED`.
-            Trap::Exception(Exception::StoreMisaligned) => {
-                if HANDLE_MISALIGNED {
-                    println!("[SBI]: StoreMisaligned");
-                }
-                MachineTrap::StoreMisaligned(mtval)
-            }
-            Trap::Exception(Exception::LoadMisaligned) => {
-                if HANDLE_MISALIGNED {
-                    println!("[SBI]: LoadMisaligned");
-                }
-                MachineTrap::LoadMisaligned(mtval)
-            }
             e => panic!(
                 "[SBI] unhandled: {e:?}! mtval: {mtval:08x}, ctx: {:#x?}",
                 self.context
             ),
-        };
-        CoroutineState::Yielded(trap)
+        })
     }
 }
 
@@ -200,17 +163,8 @@ impl Coroutine for Runtime {
 pub enum MachineTrap {
     SbiCall(),
     IllegalInstruction(),
-    ExternalInterrupt(),
     MachineTimer(),
-    MachineSoft(),
-    InstructionFault(usize),
-    LoadFault(usize),
-    StoreFault(usize),
-    InstructionPageFault(usize),
-    LoadPageFault(usize),
-    StorePageFault(usize),
-    LoadMisaligned(usize),
-    StoreMisaligned(usize),
+    InstructionFault(),
 }
 
 #[derive(Debug)]

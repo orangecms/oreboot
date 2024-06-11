@@ -13,7 +13,12 @@ use riscv::register::{
 use rustsbi::spec::binary::SbiRet;
 use sbi_spec::legacy::LEGACY_CONSOLE_PUTCHAR;
 
-const ECALL_OREBOOT: usize = 0x0A023B00;
+const ECALL_OREBOOT: usize = 0x0A02_3B00;
+const ECALL_DCSR: usize = usize::from_be_bytes(*b"\0\0\0\0DCSR");
+const ECALL_DHEX: usize = usize::from_be_bytes(*b"\0\0\0\0DHEX");
+const ECALL_DUMP: usize = usize::from_be_bytes(*b"\0\0\0\0DUMP");
+const ECALL_STAT: usize = usize::from_be_bytes(*b"\0\0\0\0STAT");
+const ECALL_TRAP: usize = usize::from_be_bytes(*b"\0\0\0\0TRAP");
 const EBREAK: u16 = 0x9002;
 
 const DEBUG: bool = true;
@@ -24,12 +29,66 @@ const DEBUG_EMULATE: bool = false;
 const DEBUG_ILLEGAL: bool = true;
 const DEBUG_MISALIGNED: bool = true;
 
-fn ore_sbi(method: usize, args: [usize; 6]) -> SbiRet {
+// Machine Time is a 64-bit register
+const MTIME_OFFSET: usize = 0xbff8;
+
+pub fn dump(addr: usize, size: usize) {
+    let s = unsafe { core::slice::from_raw_parts(addr as *const u8, size) };
+    for w in s.iter() {
+        print!("{:02x}", w);
+    }
+    println!();
+}
+
+pub fn dump_block(addr: usize, size: usize, step_size: usize) {
+    println!("[SBI] dump {size} bytes @{addr:x}");
+    for b in (addr..addr + size).step_by(step_size) {
+        dump(b, step_size);
+    }
+}
+
+use riscv::register::medeleg;
+
+fn ore_sbi(ctx: &SupervisorContext) -> SbiRet {
+    let method = ctx.a6;
     match method {
-        0x023A_DC52 => {
+        ECALL_STAT => {
+            println!("[SBI] machine state: {ctx:#x?}");
+            SbiRet { value: 0, error: 0 }
+        }
+        ECALL_TRAP => {
+            println!("[SBI] undelegate traps; mepc: {:016x}", ctx.mepc);
+            unsafe {
+                medeleg::clear_instruction_misaligned();
+                // medeleg::clear_instruction_fault();
+                medeleg::clear_breakpoint();
+                medeleg::clear_load_fault();
+                medeleg::clear_load_misaligned();
+                medeleg::clear_store_misaligned();
+                medeleg::clear_store_fault();
+                medeleg::clear_user_env_call();
+                medeleg::clear_instruction_page_fault();
+                medeleg::clear_load_page_fault();
+                medeleg::clear_store_page_fault();
+            }
+            SbiRet { value: 0, error: 0 }
+        }
+        ECALL_DUMP => {
+            let base = ctx.a0;
+            let size = ctx.a1;
+            dump_block(base, size, 0x20);
+            println!("[SBI] mepc: {:016x}", ctx.mepc);
+            SbiRet { value: 0, error: 0 }
+        }
+        ECALL_DHEX => {
+            let val = ctx.a0;
+            println!("[SBI] dump hex: {val:016x}");
+            SbiRet { value: 0, error: 0 }
+        }
+        ECALL_DCSR => {
             let mut val = 0;
             let mut err = 0;
-            let csr = args[0];
+            let csr = ctx.a0;
             if DEBUG {
                 println!("[SBI] read CSR {:x}", csr);
             }
@@ -51,7 +110,7 @@ fn ore_sbi(method: usize, args: [usize; 6]) -> SbiRet {
                 }
             }
             if DEBUG {
-                println!("[SBI] CSR {:x} is {:08x}, err {:x}", csr, val, err);
+                println!("[SBI] CSR {csr:x} is {val:08x}, err {err:x}");
             }
             SbiRet {
                 value: val,
@@ -78,9 +137,6 @@ fn print_ecall_context(ctx: &mut SupervisorContext) {
     }
 }
 
-// Machine Time is a 64-bit register
-const MTIME_OFFSET: usize = 0xbff8;
-
 pub fn execute_supervisor(
     supervisor_mepc: usize,
     hartid: usize,
@@ -103,7 +159,7 @@ pub fn execute_supervisor(
                 feature::preprocess_supervisor_external(ctx);
                 let param = [ctx.a0, ctx.a1, ctx.a2, ctx.a3, ctx.a4, ctx.a5];
                 let ans = match ctx.a7 {
-                    ECALL_OREBOOT => ore_sbi(ctx.a6, param),
+                    ECALL_OREBOOT => ore_sbi(ctx),
                     LEGACY_CONSOLE_PUTCHAR => putchar(ctx.a6, param),
                     _ => {
                         print_ecall_context(ctx);
@@ -117,6 +173,16 @@ pub fn execute_supervisor(
                 ctx.a0 = ans.error;
                 ctx.a1 = ans.value;
                 ctx.mepc = ctx.mepc.wrapping_add(4);
+            }
+            CoroutineState::Yielded(MachineTrap::InstructionFault()) => {
+                let ctx = rt.context_mut();
+                unsafe {
+                    if feature::should_transfer_trap(ctx) {
+                        feature::do_transfer_trap(ctx, Trap::Exception(Exception::InstructionFault))
+                    } else {
+                        panic!("[SBI] Instruction fault {ctx:#04X?}")
+                    }
+                }
             }
             CoroutineState::Yielded(MachineTrap::IllegalInstruction()) => {
                 let ctx = rt.context_mut();
@@ -158,17 +224,6 @@ pub fn execute_supervisor(
                 // for this hart.
                 unsafe { mip::set_stimer() }
             }
-            // NOTE: These are all delegated.
-            CoroutineState::Yielded(MachineTrap::LoadMisaligned(_addr)) => {}
-            CoroutineState::Yielded(MachineTrap::StoreMisaligned(_addr)) => {}
-            CoroutineState::Yielded(MachineTrap::LoadFault(_addr)) => {}
-            CoroutineState::Yielded(MachineTrap::StoreFault(addr)) => {}
-            CoroutineState::Yielded(MachineTrap::ExternalInterrupt()) => {}
-            CoroutineState::Yielded(MachineTrap::MachineSoft()) => {}
-            CoroutineState::Yielded(MachineTrap::InstructionFault(_addr)) => {}
-            CoroutineState::Yielded(MachineTrap::LoadPageFault(_addr)) => {}
-            CoroutineState::Yielded(MachineTrap::StorePageFault(_addr)) => {}
-            CoroutineState::Yielded(MachineTrap::InstructionPageFault(_addr)) => {}
             CoroutineState::Complete(()) => unreachable!(),
         }
     }
