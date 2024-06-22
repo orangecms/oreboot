@@ -21,10 +21,7 @@ use core::{
 use riscv::register::{marchid, mhartid, mimpid, mtvec, mvendorid};
 
 use layoutflash::areas::{find_fdt, FdtIterator};
-use oreboot_arch::riscv64::sbi::{
-    self,
-    execute::{execute_supervisor, read32},
-};
+use oreboot_arch::riscv64::sbi;
 
 mod sbi_platform;
 mod uart;
@@ -235,8 +232,8 @@ fn main() {
         };
     }
 
-    let test = read32(LOAD_ADDR);
-    println!("test {test:08x}");
+    // let test = read32(LOAD_ADDR);
+    // println!("test {test:08x}");
 
     const SBI: bool = true;
     if SBI {
@@ -290,7 +287,8 @@ fn sbi_payload(payload_addr: usize) {
     let hartid = mhartid::read();
     println!("[main] .......");
 
-    let (reset_type, reset_reason) = execute_supervisor(payload_addr, hartid, DTB_ADDR);
+    let (reset_type, reset_reason) =
+        sbi::execute::execute_supervisor(payload_addr, hartid, DTB_ADDR, 0);
     print!("[main] oreboot: reset, type = {reset_type}, reason = {reset_reason}");
 }
 
