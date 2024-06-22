@@ -85,3 +85,7 @@ run: mainboard
 runnosbi: nosbi
 	$(XFEL) write $(SRAMADDR) $(BOOT0)
 	$(XFEL) exec $(SRAMADDR)
+
+rerun:
+	$(XFEL) write $(SRAMADDR) $(BOOT0)
+	$(XFEL) exec $(SRAMADDR)
