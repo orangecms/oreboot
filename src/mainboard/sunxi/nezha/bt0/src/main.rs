@@ -40,6 +40,8 @@ use mctl::RAM_BASE;
 // https://github.com/u-boot/u-boot/blob/fe2ce09a0753634543c32cafe85eb87a625f76ca/board/sunxi/README.sunxi64
 // https://linux-sunxi.org/EGON
 
+// Jump over head data to executable code.
+//
 // Use global assembly for a 4 byte jump instruction to _start.
 // The reason is that rust adds an extra `unimp` insn after the jump if inline assembly is used.
 // This messes up the location of the eGON header
@@ -49,6 +51,11 @@ core::arch::global_asm!(
     "_head_jump:",
     "    j start"
 );
+
+const STACK_SIZE: usize = 1 * 1024; // 1KiB
+
+#[link_section = ".bss.uninit"]
+static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
 // eGON.BT0 header. This header is identified by D1 ROM code
 // to copy BT0 stage bootloader into SRAM memory.
@@ -63,9 +70,12 @@ pub struct EgonHead {
     _padding: [u32; 19],
 }
 
-use core::mem::size_of;
-// Ugly but does the job to assert the alignment.
-const _: () = assert!((size_of::<EgonHead>() + 4) % 0x20 == 0);
+// NOTE: The "real" header includes the initial jump.
+// It must be 32-byte aligned. See also:
+// https://github.com/u-boot/u-boot/blob/fe2ce09a0753634543c32cafe85eb87a625f76ca/include/sunxi_image.h#L80
+const HEADER_SIZE: usize = core::mem::size_of::<EgonHead>() + 4;
+// Ugly but does the job.
+const _: () = assert!(HEADER_SIZE % 0x20 == 0);
 
 const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
 
@@ -569,10 +579,8 @@ extern "C" fn main() {
         println!("NAND flash: {:?}", flash.read_id());
 
         // TODO: Either read sizes from dtfs at runtime or at build time
-        let mut main_stage_head = [0u8; 8];
-        flash.copy_into(0x60, &mut main_stage_head);
-        let MainStageHead { offset, length }: MainStageHead =
-            unsafe { core::mem::transmute(main_stage_head) };
+        let offset = 0;
+        let length = 0;
         println!("flash offset: {offset}, length: {length}");
         let ddr_buffer =
             unsafe { core::slice::from_raw_parts_mut(RAM_BASE as *mut u8, length as usize) };
