@@ -178,9 +178,35 @@ pub fn execute_supervisor(
                 let ctx = rt.context_mut();
                 unsafe {
                     if feature::should_transfer_trap(ctx) {
-                        feature::do_transfer_trap(ctx, Trap::Exception(Exception::InstructionFault))
+                        let t = Trap::Exception(Exception::InstructionFault);
+                        feature::do_transfer_trap(ctx, t)
                     } else {
+                        // TODO: print address
                         panic!("[SBI] Instruction fault {ctx:#04X?}")
+                    }
+                }
+            }
+            CoroutineState::Yielded(MachineTrap::LoadFault()) => {
+                let ctx = rt.context_mut();
+                unsafe {
+                    if feature::should_transfer_trap(ctx) {
+                        let t = Trap::Exception(Exception::LoadFault);
+                        feature::do_transfer_trap(ctx, t)
+                    } else {
+                        // TODO: print address
+                        panic!("[SBI] Load fault {ctx:#04X?}")
+                    }
+                }
+            }
+            CoroutineState::Yielded(MachineTrap::StoreFault()) => {
+                let ctx = rt.context_mut();
+                unsafe {
+                    if feature::should_transfer_trap(ctx) {
+                        let t = Trap::Exception(Exception::StoreFault);
+                        feature::do_transfer_trap(ctx, t)
+                    } else {
+                        // TODO: print address
+                        panic!("[SBI] Store fault {ctx:#04X?}")
                     }
                 }
             }
@@ -203,10 +229,8 @@ pub fn execute_supervisor(
                     }
                     unsafe {
                         if feature::should_transfer_trap(ctx) {
-                            feature::do_transfer_trap(
-                                ctx,
-                                Trap::Exception(Exception::IllegalInstruction),
-                            )
+                            let t = Trap::Exception(Exception::IllegalInstruction);
+                            feature::do_transfer_trap(ctx, t)
                         } else {
                             println!("[SBI] Na na na! {ctx:#04X?}");
                             fail_illegal_instruction(ctx, ins)

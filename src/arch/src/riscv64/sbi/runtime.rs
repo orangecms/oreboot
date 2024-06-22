@@ -37,17 +37,26 @@ unsafe fn delegate_interrupt_exception() {
 
     // p 35, table 3.6
     medeleg::set_instruction_misaligned();
+    // NOTE: Delegating instruction fault is not effective,
+    // e.g. on SiFive U74 (U7).
     medeleg::set_instruction_fault();
-    // Do not medeleg::set_illegal_instruction();
-    // We need to handle sfence.VMA and timer access in SBI, i.e., rdtime.
+    // Do not delegate illegal instruction handling.
+    // We need to handle sfence.VMA and privilged CSR access in
+    // SBI, emulate `rdtime`, etc.
+    medeleg::clear_illegal_instruction();
     medeleg::set_breakpoint();
-    // load fault means PMP violation, shouldn't be hit
-    medeleg::set_load_fault();
+
     medeleg::set_load_misaligned();
     medeleg::set_store_misaligned();
+    // A load or store fault means PMP violation, shouldn't be hit.
+    // NOTE: Delegating those is not effective, e.g. on SiFive U74 (U7).
+    medeleg::set_load_fault();
     medeleg::set_store_fault();
+
     medeleg::set_user_env_call();
-    // Do not delegate env call from S-mode nor M-mode; we handle it :)
+    // Do not delegate env calls from S-mode nor M-mode.
+    // The SBI needs to handle them.
+
     medeleg::set_instruction_page_fault();
     medeleg::set_load_page_fault();
     medeleg::set_store_page_fault();
@@ -55,10 +64,10 @@ unsafe fn delegate_interrupt_exception() {
     mie::clear_mext();
     mie::set_mtimer();
     mie::set_msoft();
-    // Disable all other interrupts?
     mie::set_sext();
     mie::set_stimer();
     mie::set_ssoft();
+    // Disable all other interrupts?
     if false {
         mie::clear_utimer();
         mie::clear_usoft();
@@ -141,15 +150,19 @@ impl Coroutine for Runtime {
             }
             Trap::Exception(Exception::SupervisorEnvCall) => {}
             Trap::Exception(Exception::InstructionFault) => {}
+            Trap::Exception(Exception::LoadFault) => {}
+            Trap::Exception(Exception::StoreFault) => {}
             Trap::Exception(Exception::IllegalInstruction) => {}
             _ => print_exception_interrupt(),
         }
         let mtval = mtval::read();
         CoroutineState::Yielded(match cause {
             Trap::Exception(Exception::SupervisorEnvCall) => MachineTrap::SbiCall(),
-            Trap::Exception(Exception::InstructionFault) => MachineTrap::InstructionFault(),
             Trap::Exception(Exception::IllegalInstruction) => MachineTrap::IllegalInstruction(),
             Trap::Interrupt(Interrupt::MachineTimer) => MachineTrap::MachineTimer(),
+            Trap::Exception(Exception::InstructionFault) => MachineTrap::InstructionFault(),
+            Trap::Exception(Exception::LoadFault) => MachineTrap::LoadFault(),
+            Trap::Exception(Exception::StoreFault) => MachineTrap::StoreFault(),
             e => panic!(
                 "[SBI] unhandled: {e:?}! mtval: {mtval:08x}, ctx: {:#x?}",
                 self.context
@@ -165,6 +178,8 @@ pub enum MachineTrap {
     IllegalInstruction(),
     MachineTimer(),
     InstructionFault(),
+    LoadFault(),
+    StoreFault(),
 }
 
 #[derive(Debug)]
