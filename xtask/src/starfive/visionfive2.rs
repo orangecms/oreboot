@@ -10,14 +10,13 @@ use crate::util::{
     compile_platform_dt, find_binutils_prefix_or_fail, get_bin_for, get_cargo_cmd_in, objcopy,
     platform_dir, target_dir, Bin,
 };
-use crate::{Cli, Commands, Env};
+use crate::{Cli, Commands, Env, Memory};
 
 use super::visionfive2_hdr::{spl_create_hdr, HEADER_SIZE};
 
 // The real SRAM size is stated to be 2M, but the mask ROM loader will take a
 // maximum of ???.
-// const SRAM_SIZE: usize = 0x20_0000;
-const SRAM_SIZE: usize = 0x4_a400;
+const SRAM_SIZE: usize = 0x20_0000;
 
 const ARCH: &str = "riscv64";
 
@@ -101,6 +100,22 @@ fn xtask_build_image(env: &Env, dir: &PathBuf, stages: &Stages) {
 
     let dtb_path = compile_platform_dt(&plat_dir);
     let dtb = fs::read(dtb_path).expect("platform DTB");
+    /*
+    let dtfs_path = = match env.memory {
+        Some(Memory::Nor) => target_dir.join(BOARD_DTFS),
+        _ => {
+            info!("no memory provided, building SRAM image");
+            "sram.dts"
+        }
+    };
+    compile_board_dt(
+        env,
+        &stages.main.target,
+        &plat_dir,
+        dtfs_path.to_str().unwrap(),
+    );
+    let dtfs_file = fs::read(dtfs_path).expect("dtfs");
+    */
 
     let fdt = Fdt::new(&dtb).unwrap();
     let areas = create_areas(&fdt).unwrap();
@@ -134,7 +149,7 @@ fn xtask_build_image(env: &Env, dir: &PathBuf, stages: &Stages) {
 }
 
 fn xtask_copy_dtb(env: &Env, target: &str, root: &Path, dtb: &str) {
-    // TODO
+    // TODO: more flexibility; how about non-supervisor payloads, etc?
     if env.supervisor {
         let dtb = env.dtb.as_deref().expect("provide a DTB for LinuxBoot");
         println!("DTB\n  File: {dtb}");
