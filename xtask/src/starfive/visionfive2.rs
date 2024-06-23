@@ -2,10 +2,14 @@ use crate::util::{
     compile_board_dt, dist_dir, find_binutils_prefix_or_fail, get_cargo_cmd_in, objcopy,
     project_root,
 };
-use crate::{layout_flash, Cli, Commands, Env};
+use crate::{layout_flash, Cli, Commands, Env, Memory};
 use fdt::Fdt;
 use log::{error, info, trace, warn};
-use std::{fs, path::Path, process};
+use std::{
+    fs::{self, copy, File},
+    path::Path,
+    process,
+};
 
 extern crate layoutflash;
 use layoutflash::areas::{create_areas, Area};
@@ -14,8 +18,7 @@ use super::visionfive2_hdr::{spl_create_hdr, HEADER_SIZE};
 
 // The real SRAM size is stated to be 2M, but the mask ROM loader will take a
 // maximum of ???.
-// const SRAM_SIZE: usize = 0x20_0000;
-const SRAM_SIZE: usize = 0x4_a400;
+const SRAM_SIZE: usize = 0x20_0000;
 
 const ARCH: &str = "riscv64";
 const TARGET: &str = "riscv64imac-unknown-none-elf";
@@ -26,7 +29,10 @@ const BT0_ELF: &str = "starfive-visionfive2-bt0";
 const MAIN_BIN: &str = "starfive-visionfive2-main.bin";
 const MAIN_ELF: &str = "starfive-visionfive2-main";
 
-const BOARD_DTFS: &str = "starfive-visionfive2-board.dtb";
+const PAYLOAD_BIN: &str = "starfive-visionfive2-payload.bin";
+const PAYLOAD_ELF: &str = "starfive-visionfive2-payload";
+
+const DTFS_DTB: &str = "starfive-visionfive2-dtfs.dtb";
 const PAYLOAD_DTB: &str = "starfive-visionfive2-linux.dtb";
 
 const DTFS_IMAGE: &str = "starfive-visionfive2-dtfs.bin";
@@ -46,7 +52,14 @@ pub(crate) fn execute_command(args: &Cli, features: Vec<String>) {
             objcopy(&args.env, binutils_prefix, TARGET, ARCH, BT0_ELF, BT0_BIN);
             objcopy(&args.env, binutils_prefix, TARGET, ARCH, MAIN_ELF, MAIN_BIN);
             // dtbs
-            compile_board_dt(&args.env, TARGET, &board_project_root(), BOARD_DTFS);
+            let dtfs_dts = match env.memory {
+                Some(Memory::Nor) => "board.dts",
+                _ => {
+                    info!("no memory provided, building SRAM image");
+                    "sram.dts"
+                }
+            };
+            compile_board_dt(&args.env, TARGET, &board_project_root(), dtfs_dts, DTFS_DTB);
             xtask_copy_dtb(&args.env, TARGET, &board_project_root(), PAYLOAD_DTB);
             // final image
             xtask_build_image(&args.env);
@@ -57,11 +70,8 @@ pub(crate) fn execute_command(args: &Cli, features: Vec<String>) {
     }
 }
 
-use std::fs::copy;
-use std::fs::File;
-
 fn xtask_copy_dtb(env: &Env, target: &str, root: &Path, dtb: &str) {
-    // TODO
+    // TODO: more flexibility; how about non-supervisor payloads, etc?
     if env.supervisor {
         let dtb = env.dtb.as_deref().expect("provide a DTB for LinuxBoot");
         println!("DTB\n  File: {dtb}");
@@ -114,7 +124,7 @@ fn xtask_build_jh7110_main(env: &Env) {
 
 fn xtask_build_image(env: &Env) {
     let dir = dist_dir(env, TARGET);
-    let dtfs_path = dir.join(BOARD_DTFS);
+    let dtfs_path = dir.join(DTFS_DTB);
     let dtfs_file = fs::read(dtfs_path).expect("dtfs");
     let dtfs = Fdt::new(&dtfs_file).unwrap();
     let mut areas: Vec<Area> = vec![];
@@ -130,7 +140,7 @@ fn xtask_build_image(env: &Env) {
     let areas = create_areas(&dtfs, &mut areas);
 
     let dtfs_image_path = dir.join(DTFS_IMAGE);
-    if let Err(e) = layout_flash(Path::new(&dir), Path::new(&dtfs_image_path), areas.to_vec()) {
+    if let Err(e) = layout_flash(&dir, &dtfs_image_path, areas.to_vec()) {
         error!("layoutflash fail: {e}");
         process::exit(1);
     }
@@ -138,8 +148,10 @@ fn xtask_build_image(env: &Env) {
     // TODO: how else do we do layoutflash + header?
     trace!("add header to {dtfs_image_path:?}");
     let dat = fs::read(dtfs_image_path).expect("DTFS image");
-    // HACK: omit LinuxBoot etc so we fit in SRAM
-    let cut = core::cmp::min(SRAM_SIZE, dat.len());
+
+    // NOTE: the header is for what fits in SRAM
+    let cut_size = SRAM_SIZE;
+    let cut = core::cmp::min(cut_size, dat.len());
     trace!("image size {:08x} cut down to {cut:08x}", dat.len());
     let out = spl_create_hdr(dat[HEADER_SIZE as usize..cut].to_vec());
     trace!("final size {:08x}", out.len());
