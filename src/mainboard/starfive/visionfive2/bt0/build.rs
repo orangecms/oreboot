@@ -53,4 +53,5 @@ fn main() {
         .write_all(LINKERSCRIPT)
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
+    println!("cargo:rerun-if-changed=build.rs");
 }
