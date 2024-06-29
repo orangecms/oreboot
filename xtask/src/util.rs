@@ -24,16 +24,14 @@ pub fn get_cargo_cmd_in(env: &Env, root: PathBuf, dir: &str, command: &str) -> C
 }
 
 /// Compile the board device tree.
-/// The DTFS file is expected to be in the mainboard directory.
-/// `dtc -o path/to/target/foo.dtb path/to/mainboard/foo.dts`
-pub fn compile_board_dt(env: &Env, target: &str, root: &Path, dts: &str, dtb: &str) {
+pub fn compile_board_dt(env: &Env, target: &str, root: &Path, dtb: &str) {
     trace!("compile board device tree {dtb}");
     let cwd = dist_dir(env, target);
     let mut command = Command::new("dtc");
     command.current_dir(cwd);
     command.arg("-o");
     command.arg(dtb);
-    command.arg(root.join(dts));
+    command.arg(root.join("board.dts"));
     let status = command.status().unwrap();
     trace!("dtc returned {status}");
     if !status.success() {
