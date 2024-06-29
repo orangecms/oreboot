@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::{fs, path::PathBuf, process};
+use std::path::Path;
 
 use fdt::Fdt;
 use log::{error, info, trace, warn};
@@ -16,7 +17,8 @@ use super::visionfive2_hdr::{spl_create_hdr, HEADER_SIZE};
 
 // The real SRAM size is stated to be 2M, but the mask ROM loader will take a
 // maximum of ???.
-const SRAM_SIZE: usize = 0x20_0000;
+// const SRAM_SIZE: usize = 0x20_0000;
+const SRAM_SIZE: usize = 0x4_a400;
 
 const ARCH: &str = "riscv64";
 
@@ -153,7 +155,7 @@ fn xtask_copy_dtb(env: &Env, target: &str, root: &Path, dtb: &str) {
     if env.supervisor {
         let dtb = env.dtb.as_deref().expect("provide a DTB for LinuxBoot");
         println!("DTB\n  File: {dtb}");
-        let dest = dist_dir(env, target).join(PAYLOAD_DTB);
+        let dest = platform_dir(env, target).join(PAYLOAD_DTB);
         fs::copy(dtb, dest).expect("failed to copy payload dtb file");
     }
 }
