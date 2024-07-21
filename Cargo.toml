@@ -13,6 +13,7 @@ members = [
   "src/lib/layoutflash",
 
   "src/mainboard/milk-v/duo-s/*",
+  "src/mainboard/spacemit/k1x/*",
   "src/mainboard/starfive/visionfive1/*",
   "src/mainboard/starfive/visionfive2/*",
   "src/mainboard/sunxi/nezha/*",
