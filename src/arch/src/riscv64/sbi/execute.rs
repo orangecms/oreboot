@@ -188,27 +188,15 @@ pub fn execute_supervisor(
             }
             CoroutineState::Yielded(MachineTrap::LoadFault()) => {
                 let ctx = rt.context_mut();
-                unsafe {
-                    if feature::should_transfer_trap(ctx) {
-                        let t = Trap::Exception(Exception::LoadFault);
-                        feature::do_transfer_trap(ctx, t)
-                    } else {
-                        // TODO: print address
-                        panic!("[SBI] Load fault {ctx:#04X?}")
-                    }
-                }
+                let addr = unsafe { get_vaddr_u32(ctx.mepc) } as usize;
+                // TODO: print address
+                panic!("[SBI] Load fault {addr:016x} {ctx:#04X?}")
             }
             CoroutineState::Yielded(MachineTrap::StoreFault()) => {
                 let ctx = rt.context_mut();
-                unsafe {
-                    if feature::should_transfer_trap(ctx) {
-                        let t = Trap::Exception(Exception::StoreFault);
-                        feature::do_transfer_trap(ctx, t)
-                    } else {
-                        // TODO: print address
-                        panic!("[SBI] Store fault {ctx:#04X?}")
-                    }
-                }
+                let addr = unsafe { get_vaddr_u32(ctx.mepc) } as usize;
+                // TODO: print address
+                panic!("[SBI] Store fault {addr:016x} {ctx:#04X?}")
             }
             CoroutineState::Yielded(MachineTrap::IllegalInstruction()) => {
                 let ctx = rt.context_mut();
