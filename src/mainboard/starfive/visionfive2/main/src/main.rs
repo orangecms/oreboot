@@ -23,8 +23,6 @@ use uart::JH71XXSerial;
 mod sbi_platform;
 mod uart;
 
-const DEBUG: bool = true;
-
 const DRAM_BASE: usize = 0x4000_0000;
 const SRAM0_BASE: usize = 0x0800_0000;
 const SRAM0_SIZE: usize = 2 * 1024 * 1024;
@@ -178,6 +176,7 @@ fn check_dtb(dtb_addr: usize) {
 fn check_kernel(kernel_addr: usize) {
     let a = kernel_addr + 0x30;
     let r = read32(a);
+    // see Linux Documentation/arch/riscv/boot-image-header.rst
     if r == u32::from_le_bytes(*b"RISC") {
         println!("[main] Payload at 0x{kernel_addr:08x} looks like Linux Image, yay!");
     } else {
