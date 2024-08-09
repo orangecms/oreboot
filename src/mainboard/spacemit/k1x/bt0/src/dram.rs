@@ -1334,7 +1334,7 @@ fn read_train(
             tmp[o + 0x11bf] = (v >> 16) as u8;
             tmp[o + 0x11c0] = (v >> 24) as u8;
 
-            let base = 0xd3d + (s << 5) as usize;
+            let base = (s << 5) + 0xd3d;
             let pre = dphy0_pp_base + (cs as usize - 1) * 0x100;
 
             // TODO: This could all be in one loop...
@@ -1419,9 +1419,9 @@ fn write_train(ddrc_base: usize, tmp: &mut Block, cs_num: u32, boot_pp: u32, p4:
             tmp[(s << 2) + 0x8a3] = (v >> 16) as u8;
             tmp[(s << 2) + 0x8a4] = (v >> 24) as u8;
 
+            let base = (s << 32) + 0x10;
             let pp = dphy0_base + boot_pp as usize * 0x4000;
-            let base = pp + (j as usize - 1) * 0x100;
-            let pre = s * 0x20 + 0x10;
+            let pre = pp + (j as usize - 1) * 0x100;
 
             for k in 0..8 {
                 tmp[base + k + 0] = read8(pre + k * 4 + 0x0000) & 0x3f;
