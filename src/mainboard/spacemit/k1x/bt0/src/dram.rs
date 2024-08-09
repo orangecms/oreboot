@@ -9,8 +9,6 @@ const DDRC_BASE: usize = 0xc000_0000;
 const DFI_PHY_USER_COMMAND_0: usize = DDRC_BASE + 0x13D0;
 
 const DPHY0_BASE_OFFSET: usize = 0x0004_0000;
-const DDRC_X_BASE_OFFSET: usize = 0x0001_8000;
-
 const BAR_BASE_OFFSET: usize = 0x0005_0000;
 const FOO_BASE_OFFSET: usize = 0x0005_8000;
 
@@ -1480,6 +1478,7 @@ fn train(
     let bar_base = ddrc_base + BAR_BASE_OFFSET;
     let dphy0_base = ddrc_base + DPHY0_BASE_OFFSET;
     let xx_base = dphy0_base + boot_pp as usize * 0x4000;
+    let status_reg = ddrc_base + FOO_BASE_OFFSET;
 
     let mut tmp: &mut Block = &mut [0u8; 4672];
 
@@ -1505,10 +1504,8 @@ fn train(
     println!("write training");
     write_train(ddrc_base, &mut tmp, cs_num, boot_pp, 0x10, 0x60);
 
-    let base_x = ddrc_base + DDRC_X_BASE_OFFSET;
-
-    let status = read32(base_x);
-    println!("Training status [0x{base_x:08x}]=0x{status:08x}");
+    let status = read32(status_reg);
+    println!("Training status [0x{status_reg:08x}]=0x{status:08x}");
 
     if (status & STATUS_ERROR_WRITE_LEVELING) != 0 {
         println!("Write leveling error");
@@ -1522,7 +1519,6 @@ fn train(
     if (status & STATUS_ERROR_READ_GATE_TRAINING) != 0 {
         println!("Read gate training error");
     }
-    panic!("TODO");
 }
 
 fn top_training_fp_all(
@@ -1590,5 +1586,5 @@ pub fn init() {
             ddr_dfc(DDRC_BASE, 0);
         }
     }
-    // lpddr4_silicon_init(DDRC_BASE, DATA_RATE);
+    panic!("TODO");
 }
