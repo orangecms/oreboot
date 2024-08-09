@@ -1196,7 +1196,7 @@ fn adjust_rx_vref(tmp: &mut Block, cs_num: u32) -> u8 {
 
     println!("each RX Vref corresponding min margin");
     for i in 0..16 {
-        print!(" {i:02}: {},", tmp[min_margin_base_o + i]);
+        print!(" {i:02}: {:02},", tmp[min_margin_base_o + i]);
         if i % 4 == 3 {
             println!();
         }
@@ -1246,7 +1246,7 @@ fn adjust_tx_vref(tmp: &mut Block, cs_num: u32) -> u8 {
 
     println!("each TX Vref corresponding min margin");
     for i in 0..16 {
-        print!(" {i:02}: {},", tmp[min_margin_base_o + i]);
+        print!(" {i:02}: {:02},", tmp[min_margin_base_o + i]);
         if i % 4 == 3 {
             println!();
         }
@@ -1542,7 +1542,7 @@ pub fn init() {
     println!("{header_info:#08x?}");
 
     // TODO
-    let mut info_para = DDR_TRAINING_INFO + 64;
+    let mut info_para = DDR_TRAINING_INFO;
     dump_block(info_para, 1024, 32);
 
     // NOTE: This comes from the DT in U-Boot. Default is 1 otherwise.
@@ -1586,5 +1586,5 @@ pub fn init() {
             ddr_dfc(DDRC_BASE, 0);
         }
     }
-    panic!("TODO");
+    panic!("TODO: DRAM test");
 }
