@@ -759,6 +759,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "milkv-meles-bt0"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "embedded-hal-nb",
+ "layoutflash",
+ "log 0.1.0",
+ "nb 1.1.0",
+ "riscv 0.10.1",
+ "spin",
+]
+
+[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
