@@ -137,6 +137,7 @@ fn vendorid_to_name<'a>(vendorid: usize) -> &'a str {
     }
 }
 
+// FIXME: This really depends on the vendor first!
 fn impid_to_name<'a>(impid: usize) -> &'a str {
     match impid {
         0x0421_0427 => "21G1.02.00 / llama.02.00-general",
