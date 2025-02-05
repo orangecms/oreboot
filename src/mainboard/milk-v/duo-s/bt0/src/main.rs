@@ -1,5 +1,4 @@
-#![feature(naked_functions, asm_const)]
-#![feature(panic_info_message)]
+#![feature(naked_functions)]
 #![no_std]
 #![no_main]
 // TODO: remove when done debugging crap
@@ -11,7 +10,7 @@ use embedded_hal_nb::serial::Write;
 extern crate log;
 
 use core::{
-    arch::asm,
+    arch::{asm, naked_asm},
     mem::transmute,
     panic::PanicInfo,
     ptr::{self, addr_of, addr_of_mut},
@@ -53,7 +52,7 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 #[allow(named_asm_labels)]
 pub unsafe extern "C" fn start() -> ! {
     // starts with a 32 bytes header
-    asm!(
+    naked_asm!(
         "j      .forrealsiez", // 2 bytes with compact instruction
         ".byte 0",
         ".byte 0",
@@ -99,8 +98,7 @@ pub unsafe extern "C" fn start() -> ! {
         stack_size = const STACK_SIZE,
         payload    = sym exec_payload,
         reset      = sym reset,
-        start      = sym start,
-        options(noreturn)
+        start      = sym start
     )
 }
 
@@ -412,14 +410,10 @@ fn rtc_en() {
     write32(RTC_EN_PWR_VBAT_DET, v & !(1 << 2));
 }
 
-fn rdtime() -> usize {
-    let mut time: usize = 0;
-    unsafe { asm!("rdtime {time}", time = inout(reg) time) };
-    time
-}
-
 #[no_mangle]
 fn main() {
+    let start = riscv::register::time::read64();
+
     let s = uart::SGSerial::new();
     init_logger(s);
     println!();
@@ -481,6 +475,9 @@ fn main() {
 
     println!();
 
+    let time = riscv::register::time::read64() - start;
+    println!("time passed: {time} (started at {start})");
+
     let ddr_rate = match chip_type_v {
         1 => 1866,
         3 => 1333,
@@ -532,10 +529,10 @@ fn main() {
 
     // print_boot_log();
 
-    let start = rdtime();
-    dram::init(ddr_rate, dram_vendor);
+    let start = riscv::register::time::read64();
+    // dram::init(ddr_rate, dram_vendor);
     println!("DRAM init done");
-    let time = rdtime() - start;
+    let time = riscv::register::time::read64() - start;
     println!("time: {time}");
 
     let v = read32(AXI_SRAM_RTOS_BASE);
@@ -635,21 +632,16 @@ fn exec_payload(addr: usize) {
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
-        if DEBUG {
-            println!(
-                "[bt0] panic in '{}' line {}",
-                location.file(),
-                location.line(),
-            );
-        }
+        println!(
+            "[bt0] panic in '{}' line {}",
+            location.file(),
+            location.line(),
+        );
     } else {
-        if DEBUG {
-            println!("[bt0] panic at unknown location");
-        }
+        println!("[bt0] panic at unknown location");
     };
-    if let Some(msg) = info.message() {
-        println!("[bt0]   {msg}");
-    }
+    let msg = info.message();
+    println!("[bt0]   {msg}");
     loop {
         core::hint::spin_loop();
     }

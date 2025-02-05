@@ -3,6 +3,7 @@ TARGET     = riscv64imac-unknown-none-elf
 SERIAL    := /dev/ttyUSB0
 RELEASE_ELF= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0
 RELEASE_BIN= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0.bin
+SG_BOOT ?= sg_boot
 
 # SOC ?= CV1800B
 SOC ?= SG200X
@@ -30,7 +31,7 @@ build:
 	riscv64-unknown-elf-objcopy -O binary $(RELEASE_ELF) $(RELEASE_BIN)
 
 run: build
-	sg_boot run $(RELEASE_BIN)
+	$(SG_BOOT) run $(RELEASE_BIN)
 
 objdump: build
 	riscv64-unknown-elf-dump -D $(RELEASE_ELF)

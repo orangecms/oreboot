@@ -744,7 +744,7 @@ dependencies = [
  "nb 1.1.0",
  "oreboot-arch",
  "riscv 0.10.1",
- "rustsbi 0.3.2",
+ "rustsbi 0.4.0",
  "sbi-spec 0.0.4",
  "spin",
 ]

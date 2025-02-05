@@ -7,7 +7,6 @@ use core::panic::PanicInfo;
 use core::ptr::read_volatile;
 use embedded_hal::digital::OutputPin;
 use log::println;
-use oreboot_arch::riscv64::sbi;
 use oreboot_compression::decompress;
 use oreboot_soc::sunxi::d1::{
     ccu::Clocks,
@@ -352,7 +351,6 @@ extern "C" fn main() -> usize {
         use oreboot_arch::riscv64::sbi as ore_sbi;
         let sbi = sbi_platform::init();
         init_csrs();
-
         ore_sbi::runtime::init();
         ore_sbi::info::print_info(PLATFORM, VERSION);
 

@@ -1,21 +1,24 @@
 use core::arch::asm;
 use riscv::register::{self as reg, mie, mip};
 use rustsbi::spec::binary::SbiRet;
-use rustsbi::HartMask;
+use rustsbi::{HartMask, RustSBI};
 
-pub fn init() {
-    // TODO
+#[derive(RustSBI)]
+pub struct PlatSbi {
+    ipi: Ipi,
+    reset: Reset,
+    rfence: Rfence,
+    timer: Timer,
+}
+
+pub fn init() -> PlatSbi {
     init_pmp();
-    println!("[SBI] PLIC init");
-    init_plic();
-    println!("[SBI] ipi init");
-    rustsbi::init_ipi(&Ipi);
-    println!("[SBI] rfence init");
-    rustsbi::init_remote_fence(&Rfence);
-    println!("[SBI] timer init");
-    rustsbi::init_timer(&Timer);
-    println!("[SBI] reset init");
-    rustsbi::init_reset(&Reset);
+    PlatSbi {
+        ipi: Ipi,
+        reset: Reset,
+        rfence: Rfence,
+        timer: Timer,
+    }
 }
 
 /**
@@ -28,6 +31,7 @@ pub fn init() {
 // see privileged spec v1.10 p44 ff
 // https://riscv.org/wp-content/uploads/2017/05/riscv-privileged-v1.10.pdf
 fn init_pmp() {
+    // TODO
     if false {
         let cfg = 0x0f0f0f0f0fusize; // pmpaddr0-1 and pmpaddr2-3 are read-only
         reg::pmpcfg0::write(cfg);

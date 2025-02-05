@@ -1,4 +1,4 @@
-#![feature(naked_functions, asm_const)]
+#![feature(naked_functions)]
 #![feature(fn_align)]
 #![feature(panic_info_message)]
 #![no_std]
@@ -12,7 +12,7 @@ use embedded_hal_nb::serial::Write;
 extern crate log;
 
 use core::{
-    arch::asm,
+    arch::{asm, naked_asm},
     mem::transmute,
     panic::PanicInfo,
     ptr::{self, addr_of, addr_of_mut},
@@ -21,7 +21,6 @@ use core::{
 use riscv::register::{marchid, mhartid, mimpid, mtvec, mvendorid};
 
 use layoutflash::areas::{find_fdt, FdtIterator};
-use oreboot_arch::riscv64::sbi;
 
 mod sbi_platform;
 mod uart;
@@ -94,7 +93,7 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 #[allow(named_asm_labels)]
 pub unsafe extern "C" fn start() -> ! {
     // starts with a 32 bytes header
-    asm!(
+    naked_asm!(
         // 1. clear cache and processor states
         "csrw   mie, zero",
         "csrw   mip, 0",
@@ -122,8 +121,7 @@ pub unsafe extern "C" fn start() -> ! {
         stack      = sym BT0_STACK,
         stack_size = const STACK_SIZE,
         reset      = sym reset,
-        start      = sym start,
-        options(noreturn)
+        start      = sym start
     )
 }
 
@@ -220,6 +218,10 @@ fn main() {
     println!("oreboot 🦀 main");
 
     print_ids();
+    print_cpuid();
+    dump_csrs();
+    init_csrs();
+    dump_csrs();
 
     // test mtvec
     if false {
@@ -275,20 +277,17 @@ fn print_cpuid() {
 }
 
 fn sbi_payload(payload_addr: usize) {
-    sbi_platform::init();
-    dump_csrs();
+    use oreboot_arch::riscv64::sbi as ore_sbi;
+    let sbi = sbi_platform::init();
     init_csrs();
-    dump_csrs();
+    ore_sbi::runtime::init();
+    ore_sbi::info::print_info(PLATFORM, VERSION);
 
-    print_cpuid();
-
-    sbi::runtime::init();
-    sbi::info::print_info(PLATFORM, VERSION);
     let hartid = mhartid::read();
-    println!("[main] .......");
+    println!("[main] Launch SBI...");
 
     let (reset_type, reset_reason) =
-        sbi::execute::execute_supervisor(payload_addr, hartid, DTB_ADDR, 0);
+        ore_sbi::execute::execute_supervisor(sbi, payload_addr, hartid, DTB_ADDR, 0);
     print!("[main] oreboot: reset, type = {reset_type}, reason = {reset_reason}");
 }
 
@@ -304,21 +303,16 @@ fn exec_payload(addr: usize) {
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
-        if DEBUG {
-            println!(
-                "[main] panic in '{}' line {}",
-                location.file(),
-                location.line(),
-            );
-        }
+        println!(
+            "[main] panic in '{}' line {}",
+            location.file(),
+            location.line(),
+        );
     } else {
-        if DEBUG {
-            println!("[main] panic at unknown location");
-        }
+        println!("[main] panic at unknown location");
     };
-    if let Some(msg) = info.message() {
-        println!("[main]   {msg}");
-    }
+    let msg = info.message();
+    println!("[main]   {msg}");
     loop {
         core::hint::spin_loop();
     }
