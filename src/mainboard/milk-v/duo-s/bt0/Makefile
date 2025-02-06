@@ -1,12 +1,11 @@
 OREBOOT=$(abspath $(CURDIR)/../../../../../)
 TARGET     = riscv64imac-unknown-none-elf
-SERIAL    := /dev/ttyUSB0
 RELEASE_ELF= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0
 RELEASE_BIN= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0.bin
-SG_BOOT ?= sg_boot
 
-# SOC ?= CV1800B
-SOC ?= SG200X
+SG_BOOT ?= sg_boot
+SERIAL  ?= /dev/ttyUSB0
+SOC     ?= SG200X
 
 cibuild: mainboard
 # TODO
@@ -28,13 +27,13 @@ build:
 		rustc-cfg=\'soc=\"$(SOC)\"\' \
 		--config \
 		build.rustflags=[\'--cfg=soc=\"$(SOC)\"\']
-	riscv64-unknown-elf-objcopy -O binary $(RELEASE_ELF) $(RELEASE_BIN)
+	cargo objcopy -- -O binary $(RELEASE_BIN)
 
 run: build
 	$(SG_BOOT) run $(RELEASE_BIN)
 
 objdump: build
-	riscv64-unknown-elf-dump -D $(RELEASE_ELF)
+	cargo objdump -- -D
 
 hexdump: build
 	xxd $(RELEASE_BIN)

@@ -1,10 +1,8 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-
-#[cfg(soc = "CV1800B")]
-core::compile_error!("xx");
 
 // see https://github.com/sophgo/fsbl
 //
@@ -20,7 +18,7 @@ core::compile_error!("xx");
 //  289:    #define TPU_SRAM_SIZE 0x10000 // 64KiB
 //  296:    #define VC_RAM_BASE 0x3BC00000 // Shadow_vc_mem
 //
-// Latere SoCs (SG200x, Milk-V Duo 256M, Duo S)
+// Later SoCs (SG200x, Milk-V Duo 256M, Duo S)
 //
 //  plat/cv181x/include/platform_def.h
 //          #define TPU_SRAM_ORIGIN_BASE 0x0C000000
@@ -28,8 +26,7 @@ core::compile_error!("xx");
 
 const LINKERSCRIPT_FILENAME: &str = "link-duo_s-bt0.ld";
 
-#[cfg(soc = "CV1800B")]
-const LINKERSCRIPT: &[u8] = b"
+const LINKERSCRIPT_CV1800B: &[u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 MEMORY {
@@ -53,7 +50,7 @@ SECTIONS {
     # https://docs.rust-embedded.org/embedonomicon/main.html
     .rodata : {
         *(.rodata .rodata.*);
-    } > SRAM #FLASH
+    } > SRAM
     .data : {
         _sdata = .;
         *(.data .data.*);
@@ -68,8 +65,7 @@ SECTIONS {
     }
 }";
 
-#[cfg(not(soc = "CV1800B"))]
-const LINKERSCRIPT: &[u8] = b"
+const LINKERSCRIPT_SG200X: &[u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 MEMORY {
@@ -93,7 +89,7 @@ SECTIONS {
     # https://docs.rust-embedded.org/embedonomicon/main.html
     .rodata : {
         *(.rodata .rodata.*);
-    } > SRAM #FLASH
+    } > SRAM
     .data : {
         _sdata = .;
         *(.data .data.*);
@@ -109,10 +105,19 @@ SECTIONS {
 }";
 
 fn main() {
+    // NOTE: this is a workaround; `#[cfg(soc = "CV1800B")]` does not work here.
+    let soc = env::var_os("CARGO_CFG_SOC").unwrap_or(OsString::from("SG200X"));
+    let soc = soc.to_str().unwrap();
+    let linker_script = match soc {
+        "CV1800B" => LINKERSCRIPT_CV1800B,
+        "SG200X" => LINKERSCRIPT_SG200X,
+        other => panic!("SoC {other} not supported!"),
+    };
+
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
     File::create(out.join(LINKERSCRIPT_FILENAME))
         .unwrap()
-        .write_all(LINKERSCRIPT)
+        .write_all(linker_script)
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
 }
