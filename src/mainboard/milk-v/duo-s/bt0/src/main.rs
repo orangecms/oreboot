@@ -447,8 +447,9 @@ fn main() {
 
     let chip_type_v = (conf >> 28) & 0b111;
     let chip_type = match chip_type_v {
-        1 => "SG20000 / 512MB DDR3 RAM @1866",
+        1 => "SG2000 / 512MB DDR3 RAM @1866",
         3 => "CV1800B / 64MB DDR2 RAM @1333",
+        5 => "SG2002 / 256 DDR3 RAM @1866",
         _ => "unknown",
     };
     println!("TYPE:          {chip_type} ({chip_type_v})");
@@ -464,6 +465,7 @@ fn main() {
     // fsbl plat/cv181x/ddr/ddr_pkg_info.c
 
     // 1: NY 4Gbit DDR3
+    // 2: NY 2Gbit DDR3
     // 4: ESMT 512Mbit DDR2
     let dram_vendor = (efuse_leakage >> 21) & 0b11111;
     // 1: 512Mbit
@@ -481,6 +483,7 @@ fn main() {
     let ddr_rate = match chip_type_v {
         1 => 1866,
         3 => 1333,
+        5 => 1866,
         _ => panic!("DDR rate not supported"),
     };
 
@@ -530,7 +533,7 @@ fn main() {
     // print_boot_log();
 
     let start = riscv::register::time::read64();
-    // dram::init(ddr_rate, dram_vendor);
+    dram::init(ddr_rate, dram_vendor);
     println!("DRAM init done");
     let time = riscv::register::time::read64() - start;
     println!("time: {time}");
