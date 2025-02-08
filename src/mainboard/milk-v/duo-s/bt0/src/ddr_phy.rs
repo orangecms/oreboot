@@ -1,5 +1,5 @@
 use crate::mem_map::PHYD_BASE_ADDR;
-use crate::util::write32;
+use util::write32;
 
 // TODO: other DRAM types/sizes
 // plat/cv181x/include/ddr/ddr_config/ddr3_1866_x16/ddr_init.h

@@ -3,27 +3,9 @@ use crate::mem_map::{
     CLK_GEN_PLL_CTRL_BASE, DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB,
     PHYD_BASE_ADDR, TOP_BASE,
 };
-use crate::util::{read32, write32};
+use util::{read32, write32};
 
 // plat/cv181x/include/ddr/bitwise_ops.h
-/*
-// sets the bits of `orig` in the range of the last two args to `value`
-// i.e. `(orig & val_mask) | shifted_val`
-static inline uint32_t modified_bits_by_value(uint32_t orig, uint32_t value, uint32_t msb, uint32_t lsb)
-{
-        uint32_t bitmask = GENMASK(msb, lsb);
-
-        orig &= ~bitmask;
-        return (orig | ((value << lsb) & bitmask));
-}
-// extracts the bits in the range given by the two last args, shifted to last arg
-static inline uint32_t get_bits_from_value(uint32_t value, uint32_t msb, uint32_t lsb)
-{
-        // if (msb < lsb)
-        //     uartlog("%s: msb %u < lsb %u\n", __func__, msb, lsb);
-        return ((value & GENMASK(msb, lsb)) >> lsb);
-}
-*/
 
 // NOTE: SSC_EN is commented out in plat/cv18{0,1}x/ddr/ddr.mk
 const SSC_EN: bool = false;
@@ -216,6 +198,7 @@ fn get_pll_settings(ddr_data_rate: usize) -> (u32, u32, u32) {
 const DDR_INIT_SPEED_UP: bool = false;
 const DDR_DODT: bool = false;
 
+// plat/cv181x/ddr/ddr_config/ddr3_1866_x16/ddrc_init.c
 fn ddrc_init() {
     println!("DDRC init");
     let v = read32(DDR_CFG_BASE + 0xc);
@@ -503,16 +486,16 @@ fn ctrl_init_low_patch() {
 
 const PHY_REG_VERSION: usize = PHYD_BASE_ADDR + 0x3000;
 
+const DFITMG0: usize = DDR_CFG_BASE + 0x0190;
+const DFITMG1: usize = DDR_CFG_BASE + 0x0194;
+
 // plat/cv181x/ddr/ddr_sys.c
 fn cvx16_setting_check() {
     println!("/ cvx16_setting_check");
 
-    // NOTE: On Duo S, I get 20210920 - looking like year/month/day
+    // NOTE: On SG2002 and SG2000 (Duo S), I get 20210920 - looking like year/month/day
     let phy_reg_version = read32(PHY_REG_VERSION);
     println!("  phy_reg_version {phy_reg_version:08x}");
-
-    const DFITMG0: usize = DDR_CFG_BASE + 0x0190;
-    const DFITMG1: usize = DDR_CFG_BASE + 0x0194;
 
     // NOTE: Those were commented out in the vendor code as well.
     // write32(DDR_CFG_BASE + 0x190, 0x048a8305);
@@ -523,10 +506,10 @@ fn cvx16_setting_check() {
     let dfi_tphy_wrdata = (v >> 8) & 0b111111;
     let dfi_t_rddata_en = (v >> 16) & 0b1111111;
     let dfi_t_ctrl_delay = (v >> 24) & 0b111111;
-    println!("  dfi_t_ctrl_delay {dfi_t_ctrl_delay}");
-    println!("  dfi_t_rddata_en {dfi_t_rddata_en}");
-    println!("  dfi_tphy_wrlat {dfi_tphy_wrlat}");
-    println!("  dfi_tphy_wrdata {dfi_tphy_wrdata}");
+    println!("  dfi_t_ctrl_delay   {dfi_t_ctrl_delay}");
+    println!("  dfi_t_rddata_en    {dfi_t_rddata_en}");
+    println!("  dfi_tphy_wrlat     {dfi_tphy_wrlat}");
+    println!("  dfi_tphy_wrdata    {dfi_tphy_wrdata}");
 
     let v = read32(DFITMG1);
     let dfi_t_wrdata_delay = (v >> 16) & 0b11111;
@@ -534,17 +517,13 @@ fn cvx16_setting_check() {
 
     // TODO: other DRAM variants
     // 1866
-    if (dfi_tphy_wrlat != 0x5) {
-        println!("ERR !!! dfi_tphy_wrlat not 0x5");
-    }
-    if (dfi_tphy_wrdata != 0x3) {
-        println!("ERR !!! dfi_tphy_wrdata not 0x3");
-    }
+    assert_eq!(dfi_tphy_wrlat, 0x5, "dfi_tphy_wrlat, wanted 0x5");
+    assert_eq!(dfi_tphy_wrdata, 0x3, "dfi_tphy_wrdata, wanted 0x3");
     if (dfi_t_rddata_en != 0xa) {
-        println!("ERR !!! dfi_t_rddata_en not 0xa");
+        panic!("ERR !!! dfi_t_rddata_en not 0xa");
     }
     if (dfi_t_wrdata_delay != 0x7) {
-        println!("ERR !!! dfi_t_wrdata_delay not 0x7");
+        panic!("ERR !!! dfi_t_wrdata_delay not 0x7");
     }
     println!("\\ cvx16_setting_check finish");
 }
@@ -569,6 +548,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
         DramVendor::NY2GbitDDR3 => {
+            println!("pin mux for NY 2G DDR3");
             write32(0x0000 + PHYD_BASE_ADDR, 0x08070D09);
             write32(0x0004 + PHYD_BASE_ADDR, 0x0605020B);
             write32(0x0008 + PHYD_BASE_ADDR, 0x14040100);
@@ -916,53 +896,43 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
         KC_MSG("pin mux setting }\n");
     #endif
     */
-    /*
-    #ifdef DDR3_2G
-        KC_MSG("pin mux X16 mode DDR3_2G setting\n");
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x82135764;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x67513028;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000004;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x08070D09;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0605020B;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x14040100;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x15030E0C;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0A0F1213;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00111016;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
-    const DDR3_4G: bool = false;
-    if DDR3_4G {
-        println!("pin mux X16 mode DDR3_4G setting");
-        write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-        write32(0x0020 + PHYD_BASE_ADDR, 0x02136574);
-        write32(0x0024 + PHYD_BASE_ADDR, 0x00000008);
-        write32(0x0028 + PHYD_BASE_ADDR, 0x76512308);
-        write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
-        // TODO: is the order important? All the same as above (NY4G).
-        write32(0x0000 + PHYD_BASE_ADDR, 0x12141013);
-        write32(0x0004 + PHYD_BASE_ADDR, 0x0C041503);
-        write32(0x0008 + PHYD_BASE_ADDR, 0x06050001);
-        write32(0x000C + PHYD_BASE_ADDR, 0x08070B02);
-        write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F0E09);
-        write32(0x0014 + PHYD_BASE_ADDR, 0x0016110D);
-        write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-        println!("pin mux setting");
+    match ddr_vendor {
+        // ifdef DDR3_2G
+        DramVendor::NY2GbitDDR3 => {
+            println!("pin mux X16 mode DDR3_2G setting\n");
+            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
+            write32(0x0020 + PHYD_BASE_ADDR, 0x82135764);
+            write32(0x0024 + PHYD_BASE_ADDR, 0x00000000);
+            write32(0x0028 + PHYD_BASE_ADDR, 0x67513028);
+            write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
+            write32(0x0000 + PHYD_BASE_ADDR, 0x08070D09);
+            write32(0x0004 + PHYD_BASE_ADDR, 0x0605020B);
+            write32(0x0008 + PHYD_BASE_ADDR, 0x14040100);
+            write32(0x000C + PHYD_BASE_ADDR, 0x15030E0C);
+            write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F1213);
+            write32(0x0014 + PHYD_BASE_ADDR, 0x00111016);
+            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
+        }
+        DramVendor::NY4GbitDDR3 => {
+            // TODO: try this out!
+            // TODO: is the order important? All the same as above (NY4G).
+            if false {
+                println!("pin mux X16 mode DDR3_4G setting");
+                write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
+                write32(0x0020 + PHYD_BASE_ADDR, 0x02136574);
+                write32(0x0024 + PHYD_BASE_ADDR, 0x00000008);
+                write32(0x0028 + PHYD_BASE_ADDR, 0x76512308);
+                write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
+                write32(0x0000 + PHYD_BASE_ADDR, 0x12141013);
+                write32(0x0004 + PHYD_BASE_ADDR, 0x0C041503);
+                write32(0x0008 + PHYD_BASE_ADDR, 0x06050001);
+                write32(0x000C + PHYD_BASE_ADDR, 0x08070B02);
+                write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F0E09);
+                write32(0x0014 + PHYD_BASE_ADDR, 0x0016110D);
+                write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
+            }
+        }
+        _ => {}
     }
     /*
     #ifdef DDR3_DBG
@@ -1009,7 +979,6 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
         write32(0x0010 + PHYD_BASE_ADDR, 0x100A0413);
         write32(0x0014 + PHYD_BASE_ADDR, 0x00160F11);
         write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-        println!("pin mux setting");
     }
     /*
     #ifdef DDR2_512
@@ -1611,6 +1580,25 @@ pub enum DramVendor {
     PM1G = 8,
     ETRON512MbitDDR2 = 9,
     ESMTN251GbitDDR3 = 10,
+}
+
+impl From<u8> for DramVendor {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => panic!(),
+            1 => Self::NY4GbitDDR3,
+            2 => Self::NY2GbitDDR3,
+            3 => Self::ESMT1GbitDDR2,
+            4 => Self::ESMTN25512MbitDDR2,
+            5 => Self::ETRON1Gbit,
+            6 => Self::ESMT2GbitDDR3,
+            7 => Self::PM2G,
+            8 => Self::PM1G,
+            9 => Self::ETRON512MbitDDR2,
+            10 => Self::ESMTN251GbitDDR3,
+            _ => panic!(),
+        }
+    }
 }
 
 fn pwrctl_init() -> (u32, u32, u32, u32) {
@@ -2403,12 +2391,26 @@ fn ctrl_init_update_by_dram_size(size: u32) {
     let dram_cap_in_mbyte = dram_cap_in_mbyte >> (1 - s1);
     // change x16 cap to device cap
     let dram_cap_in_mbyte = dram_cap_in_mbyte >> (2 - s2);
-    /*
-    dram_cap_in_mbyte_per_dev >>= (1 - get_bits_from_value(rddata, 13, 12));
-    dram_cap_in_mbyte_per_dev >>= (2 - get_bits_from_value(rddata, 31, 30));
-    */
     println!("   DRAM cap in MB per dev: {dram_cap_in_mbyte}");
     match dram_cap_in_mbyte {
+        5 => {
+            write32(0x08004000 + 0x64, 0x00510019);
+            write32(0x08004000 + 0x100, 0x0B011610);
+            write32(0x08004000 + 0x120, 0x00000502);
+
+            write32(0x08004000 + 0x200, 0x00001F1F);
+            write32(0x08004000 + 0x204, 0x003F0606);
+            write32(0x08004000 + 0x208, 0x00000000);
+            write32(0x08004000 + 0x20c, 0x1F1F0000);
+            write32(0x08004000 + 0x210, 0x00001F1F);
+            write32(0x08004000 + 0x214, 0x040F0404);
+            write32(0x08004000 + 0x218, 0x04040404);
+            write32(0x08004000 + 0x21c, 0x00000404);
+            write32(0x08004000 + 0x220, 0x00003F3F);
+            write32(0x08004000 + 0x224, 0x04040404);
+            write32(0x08004000 + 0x228, 0x04040404);
+            write32(0x08004000 + 0x22c, 0x001F1F04);
+        }
         6 => {
             write32(0x08004000 + 0x64, 0x0071002A);
             write32(0x08004000 + 0x120, 0x00000903);
@@ -2431,7 +2433,7 @@ fn ctrl_init_update_by_dram_size(size: u32) {
         }
         _ => {
             // not supposed to happen, but you never know...
-            println!("  WARNING: unsupported DRAM cap in MB per dev");
+            println!("  WARNING: unsupported DRAM cap: {dram_cap_in_mbyte} MB per dev");
         }
     }
     // toggle refresh_update_level
@@ -2560,7 +2562,7 @@ fn axi_mon_start_all() {
 }
 
 // fsbl plat/cv181x/ddr/ddr_sys_bring_up.c ddr_sys_bring_up
-pub fn init(ddr_data_rate: usize, dram_vendor: u32) {
+pub fn init(ddr_data_rate: usize, dram_vendor: DramVendor) {
     let (reg_set, reg_span, reg_step) = get_pll_settings(ddr_data_rate);
     cvx16_pll_init(reg_set, reg_span, reg_step);
     ddrc_init();
@@ -2581,7 +2583,7 @@ pub fn init(ddr_data_rate: usize, dram_vendor: u32) {
 
     phy_init();
     cvx16_setting_check();
-    cvx16_pinmux(unsafe { core::mem::transmute(dram_vendor) });
+    cvx16_pinmux(dram_vendor);
     ddr_patch_set();
     cvx16_en_rec_vol_mode();
     cvx16_set_dfi_init_start();

@@ -18,7 +18,7 @@ mainboard: build
 build:
 	# TODO: cargo make
 	cargo build --release
-	riscv64-unknown-elf-objcopy -O binary $(RELEASE_ELF) $(RELEASE_BIN)
+	cargo objcopy -- -O binary $(RELEASE_BIN)
 
 run: build
 	sg_boot run --main $(RELEASE_BIN)
@@ -27,7 +27,7 @@ sbitest:
 	sg_boot run --main ~/firmware/RISC-V/sbitest/test.bin
 
 objdump: build
-	riscv64-unknown-elf-dump -D $(RELEASE_ELF)
+	cargo objdump -- -D
 
 hexdump: build
 	xxd $(RELEASE_BIN)

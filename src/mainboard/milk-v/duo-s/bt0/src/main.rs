@@ -27,7 +27,7 @@ mod efuse;
 mod mem_map;
 mod rom;
 mod uart;
-mod util;
+// mod util;
 
 use rom::MASK_ROM_BASE;
 use util::{read32, write32};
@@ -231,7 +231,7 @@ const XXXXXX: usize = mem_map::TOP_BASE + 0x0294;
 const RST_GEN: usize = mem_map::TOP_BASE + 0x3000;
 const SOFT_CPU_RSTN: usize = RST_GEN + 0x0024;
 
-use mem_map::AXI_SRAM_BASE;
+use mem_map::{AXI_SRAM_BASE, DRAM_BASE};
 // highest byte is compared vs 0x40 in mask ROM
 // lowest bit against 0, may be a status bit?
 const UNK1: usize = AXI_SRAM_BASE;
@@ -410,6 +410,20 @@ fn rtc_en() {
     write32(RTC_EN_PWR_VBAT_DET, v & !(1 << 2));
 }
 
+const BOOT_SRC_USB: [u8; 4] = *b"MGN1";
+fn print_boot_info() {
+    let src = rom::get_boot_src();
+    println!("boot from {src}");
+
+    let flag = read32(BOOT_SOURCE_FLAG);
+    println!("boot flag {flag:08x}");
+
+    let v = u32::from_be_bytes(BOOT_SRC_USB);
+    write32(BOOT_SOURCE_FLAG, v);
+
+    let flag = read32(BOOT_SOURCE_FLAG);
+}
+
 #[no_mangle]
 fn main() {
     let start = riscv::register::time::read64();
@@ -463,18 +477,26 @@ fn main() {
     }
 
     // fsbl plat/cv181x/ddr/ddr_pkg_info.c
-
-    // 1: NY 4Gbit DDR3
-    // 2: NY 2Gbit DDR3
-    // 4: ESMT 512Mbit DDR2
     let dram_vendor = (efuse_leakage >> 21) & 0b11111;
-    // 1: 512Mbit
-    // 4: 4Gbit
     let dram_capacity = (efuse_leakage >> 26) & 0b111;
+    let package_type = (efuse_leakage >> 29) & 0b111;
 
-    println!("dram_vendor {dram_vendor}, dram_capacity {dram_capacity}");
-    println!();
+    let dram_type = match (dram_vendor, dram_capacity) {
+        (1, 5) => "NY 4Gbit DDR3",
+        (2, 3) => "NY 2Gbit DDR3",
+        (4, 1) => "ESMT 512Mbit DDR2",
+        (_, _) => "unknown",
+    };
 
+    let package = match package_type {
+        1 => "QFN88",
+        2 => "BGA",
+        3 => "QFN68",
+        _ => "unknown",
+    };
+
+    println!("DRAM: {dram_type}, (vendor: {dram_vendor}, capacity: {dram_capacity})");
+    println!("Package: {package}");
     println!();
 
     let time = riscv::register::time::read64() - start;
@@ -484,7 +506,7 @@ fn main() {
         1 => 1866,
         3 => 1333,
         5 => 1866,
-        _ => panic!("DDR rate not supported"),
+        _ => panic!("DDR rate for chip type {chip_type_v} not supported"),
     };
 
     /*
@@ -512,31 +534,20 @@ fn main() {
        [bt0] Jump to main stage @80200000
     */
 
-    {
-        let src = rom::get_boot_src();
-        println!("boot from {src}");
-
-        let flag = read32(BOOT_SOURCE_FLAG);
-        println!("boot flag {flag:08x}");
-
-        const BOOT_SRC_USB: [u8; 4] = *b"MGN1";
-        let v = u32::from_be_bytes(BOOT_SRC_USB);
-        write32(BOOT_SOURCE_FLAG, v);
-
-        let flag = read32(BOOT_SOURCE_FLAG);
-        println!("boot flag {flag:08x}");
-    }
+    print_boot_info();
 
     rtc_setup();
     rtc_en();
 
-    // print_boot_log();
+    print_boot_log();
 
     let start = riscv::register::time::read64();
-    dram::init(ddr_rate, dram_vendor);
+    dram::init(ddr_rate, dram::DramVendor::from(dram_vendor as u8));
     println!("DRAM init done");
     let time = riscv::register::time::read64() - start;
     println!("time: {time}");
+
+    util::memtest::mem_test(DRAM_BASE, 0x2_0000);
 
     let v = read32(AXI_SRAM_RTOS_BASE);
     // 0x0c85e985

@@ -1,5 +1,5 @@
 use crate::mem_map::EFUSE;
-use crate::util::{read32, write32};
+use util::{read32, write32};
 
 // https://github.com/sophgo/cvi_alios_open
 //   components/chip_cv181x/src/drivers/efuse/wj/cvi/cvi_efuse.c

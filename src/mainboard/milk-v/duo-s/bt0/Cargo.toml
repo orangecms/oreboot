@@ -1,9 +1,7 @@
 [package]
 name = "milk_v-duo_s-bt0"
 version = "0.1.0"
-authors = [
-  "Daniel Maslowski <info@orangecms.org>",
-]
+authors = ["Daniel Maslowski <info@orangecms.org>"]
 edition = "2021"
 
 [dependencies]
@@ -15,7 +13,9 @@ spin = "0.9"
 
 layoutflash = { path = "../../../../lib/layoutflash" }
 log = { path = "../../../../lib/log" }
+util = { path = "../../../../lib/util" }
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(soc, values("CV1800B"))'] }
-
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(soc, values("CV1800B"))',
+] }
