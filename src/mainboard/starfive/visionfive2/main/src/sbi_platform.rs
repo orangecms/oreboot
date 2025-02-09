@@ -10,6 +10,7 @@ pub struct PlatSbi {
     ipi: Ipi,
     reset: Reset,
     timer: Timer,
+    rfence: Rfence,
 }
 
 pub fn init() -> RustSBI {
@@ -18,6 +19,7 @@ pub fn init() -> RustSBI {
         ipi: Ipi,
         reset: Reset,
         timer: Timer,
+        rfence: Rfence,
     }
 }
 
@@ -36,10 +38,53 @@ fn init_pmp() {
     reg::pmpcfg2::write(0); // nothing active here
 }
 
+struct Rfence;
+impl rustsbi::Fence for Rfence {
+    fn remote_fence_i(&self, hart_mask: HartMask) -> SbiRet {
+        let hartid = mhartid::read();
+        if hartid == 1 {
+            println!("[SBI] remote_fence_i {hart_mask:?}");
+        }
+        // NOTE: Hart 0 is the monitor core, cannot implement SBI
+        for i in 1..=4 {
+            if hart_mask.has_bit(i) {
+                // set_rfence(i);
+                // clear_ipi(i);
+            }
+        }
+        SbiRet::success(0)
+    }
+
+    fn remote_sfence_vma_asid(
+        &self,
+        hart_mask: HartMask,
+        start_addr: usize,
+        size: usize,
+        asid: usize,
+    ) -> SbiRet {
+        let hartid = mhartid::read();
+        if hartid == 1 {
+            println!("[SBI] remote_sfence_vma_asid {hart_mask:?}");
+        }
+        SbiRet::success(0)
+    }
+
+    fn remote_sfence_vma(&self, hart_mask: HartMask, start_addr: usize, size: usize) -> SbiRet {
+        let hartid = mhartid::read();
+        if hartid == 1 {
+            println!("[SBI] remote_sfence_vma {hart_mask:?}");
+        }
+        SbiRet::success(0)
+    }
+}
+
 struct Ipi;
 impl rustsbi::Ipi for Ipi {
     fn send_ipi(&self, hart_mask: HartMask) -> SbiRet {
-        println!("[SBI] IPI {hart_mask:?}");
+        let hartid = mhartid::read();
+        if hartid == 1 {
+            println!("[SBI] IPI {hart_mask:?}");
+        }
         // NOTE: Hart 0 is the monitor core, cannot implement SBI
         for i in 1..=4 {
             if hart_mask.has_bit(i) {
