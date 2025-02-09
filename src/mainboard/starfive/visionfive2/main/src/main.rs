@@ -206,8 +206,8 @@ fn main() {
 
     // Recheck on DTB, kernel should not run into it
     check_dtb(DTB_ADDR);
-    println!("Release non-boot harts =====");
-    resume_nonboot_harts();
+    // println!("Release non-boot harts =====");
+    // resume_nonboot_harts();
     payload();
 }
 
