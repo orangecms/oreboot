@@ -750,15 +750,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "miniz_oxide"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e3e04debbb59698c15bacbb6d93584a8c0ca9cc3213cb423d31f760d8843ce5"
-dependencies = [
- "adler2",
-]
-
-[[package]]
 name = "milkv-meles-bt0"
 version = "0.1.0"
 dependencies = [
@@ -769,6 +760,15 @@ dependencies = [
  "nb 1.1.0",
  "riscv 0.10.1",
  "spin",
+]
+
+[[package]]
+name = "miniz_oxide"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e3e04debbb59698c15bacbb6d93584a8c0ca9cc3213cb423d31f760d8843ce5"
+dependencies = [
+ "adler2",
 ]
 
 [[package]]
