@@ -17,10 +17,11 @@ use super::visionfive2_hdr::{spl_create_hdr, HEADER_SIZE};
 // The real SRAM size is stated to be 2M, but the mask ROM loader will take a
 // maximum of ???.
 // const SRAM_SIZE: usize = 0x20_0000;
-const SRAM_SIZE: usize = 0x3_b000;
+const SRAM_SIZE: usize = 0x4_a400;
 
 const ARCH: &str = "riscv64";
 
+const PAYLOAD_DTB: &str = "starfive-visionfive2-linux.dtb";
 const IMAGE: &str = "starfive-visionfive2.bin";
 
 const BT0_STAGE: &str = "bt0";
@@ -132,10 +133,21 @@ fn xtask_build_image(env: &Env, dir: &PathBuf, stages: &Stages) {
     println!("Output file: {:?}", &out_path.into_os_string());
 }
 
+fn xtask_copy_dtb(env: &Env, target: &str, root: &Path, dtb: &str) {
+    // TODO
+    if env.supervisor {
+        let dtb = env.dtb.as_deref().expect("provide a DTB for LinuxBoot");
+        println!("DTB\n  File: {dtb}");
+        let dest = dist_dir(env, target).join(PAYLOAD_DTB);
+        fs::copy(dtb, dest).expect("failed to copy payload dtb file");
+    }
+}
+
 fn build_image(env: &Env, dir: &PathBuf, stages: &Stages, features: &[String]) {
     // Build the stages - should we parallelize this?
     xtask_build_jh7110_bt0(env, dir, &stages.bt0, features);
     xtask_build_jh7110_main(env, dir, &stages.main);
 
+    xtask_copy_dtb(&args.env, TARGET, &board_project_root(), PAYLOAD_DTB);
     xtask_build_image(env, dir, stages);
 }

@@ -30,6 +30,8 @@ mod ddrphy;
 mod dram;
 mod init;
 mod pll;
+// mod uart;
+// use uart::JH71XXSerial;
 
 pub type EntryPoint = unsafe extern "C" fn();
 
@@ -438,6 +440,7 @@ fn main() {
             clk_hz: uart::UART_CLK_OSC,
         },
     );
+    // let s = JH71XXSerial::new();
 
     init_logger(s);
     println!("oreboot 🦀 bt0");
