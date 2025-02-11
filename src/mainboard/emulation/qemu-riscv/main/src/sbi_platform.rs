@@ -1,3 +1,5 @@
+// FIXME: does not work just like that when removing rustsbi from Cargo.toml
+// use oreboot_arch::riscv64::rustsbi::{self, HartMask, RustSBI, SbiRet};
 use rustsbi::{HartMask, RustSBI, SbiRet};
 
 use oreboot_arch::riscv64::riscv::register::{self as reg, mhartid, mie, mip};
