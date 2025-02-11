@@ -1,6 +1,8 @@
-use riscv::register::{self as reg, mhartid, mie, mip};
-use rustsbi::spec::binary::SbiRet;
-use rustsbi::{HartMask, RustSBI};
+use rustsbi::{HartMask, RustSBI, SbiRet};
+
+use oreboot_arch::riscv64::riscv::register::{self as reg, mhartid, mie, mip};
+
+use crate::util::write64;
 
 const DEBUG: bool = false;
 const DEBUG_TIMER: bool = true;
@@ -21,19 +23,6 @@ fn init_pmp() {
     reg::pmpcfg2::write(0); // nothing active here
     reg::pmpaddr0::write(0x80000000usize >> 2);
     reg::pmpaddr1::write(0x80200000usize >> 2);
-}
-
-use core::ptr::{read_volatile, write_volatile};
-
-pub fn write32(reg: usize, val: u32) {
-    unsafe {
-        write_volatile(reg as *mut u32, val);
-    }
-}
-
-pub fn write64(reg: usize, val: u64) {
-    write32(reg, val as u32);
-    write32(reg + 4, (val >> 32) as u32);
 }
 
 struct Timer;

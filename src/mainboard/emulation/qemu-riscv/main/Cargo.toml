@@ -5,11 +5,10 @@ authors = ["Oreboot Authors"]
 edition = "2021"
 
 [dependencies]
-embedded-hal = "1.0.0"
-embedded-hal-nb = "1.0.0"
+embedded-hal = { workspace = true }
+embedded-hal-nb = { workspace = true }
 nb = "1"
 ns16550a = "0.1.0"
-riscv = "=0.12.1"
 rustsbi = { version = "=0.4.0", features = ["machine"] }
 
 layoutflash = { path = "../../../../lib/layoutflash" }

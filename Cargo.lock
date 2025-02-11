@@ -442,7 +442,6 @@ dependencies = [
  "ns16550a",
  "oreboot-arch",
  "oreboot_compression",
- "riscv 0.12.1",
  "rustsbi 0.4.0",
 ]
 

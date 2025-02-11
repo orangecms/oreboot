@@ -7,7 +7,7 @@ use core::panic::PanicInfo;
 global_asm!(include_str!("bootblock.S"));
 global_asm!(include_str!("init.S"));
 
-use riscv::register::mhartid;
+use oreboot_arch::riscv64::riscv::register::mhartid;
 
 static PLATFORM: &str = "QEMU RISC-V";
 static VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -18,6 +18,7 @@ extern crate log;
 mod mem_map;
 mod sbi_platform;
 mod uart;
+mod util;
 
 static mut SERIAL: Option<uart::QEMUSerial> = None;
 
@@ -27,21 +28,6 @@ fn init_logger(s: uart::QEMUSerial) {
         if let Some(m) = SERIAL.as_mut() {
             log::init(m);
         }
-    }
-}
-
-pub fn dump(addr: usize, size: usize) {
-    let s = unsafe { core::slice::from_raw_parts(addr as *const u8, size) };
-    for w in s.iter() {
-        print!("{:02x}", w);
-    }
-    println!();
-}
-
-pub fn dump_block(addr: usize, size: usize, step_size: usize) {
-    println!("[SBI] dump {size} bytes @{addr:x}");
-    for b in (addr..addr + size).step_by(step_size) {
-        dump(b, step_size);
     }
 }
 
@@ -57,7 +43,7 @@ pub extern "C" fn _start(dtb_address: usize) -> ! {
     ore_sbi::info::print_info(PLATFORM, VERSION);
 
     if false {
-        dump_block(mem_map::PAYLOAD_ADDR, 0x80, 0x20);
+        util::dump_block(mem_map::PAYLOAD_ADDR, 0x80, 0x20);
     }
 
     let hart_id = mhartid::read();
@@ -71,7 +57,7 @@ pub extern "C" fn _start(dtb_address: usize) -> ! {
     println!("[oreboot] reset; reason: {reset_reason}, type: {reset_type}");
 
     loop {
-        riscv::asm::wfi();
+        oreboot_arch::riscv64::riscv::asm::wfi();
     }
 }
 
