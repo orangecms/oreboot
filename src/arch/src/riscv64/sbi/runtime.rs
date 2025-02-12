@@ -5,7 +5,7 @@ use core::{
 };
 use log::println;
 use riscv::register::{
-    mcause, medeleg, mepc, mideleg, mie,
+    mcause, mcounteren, medeleg, mepc, mideleg, mie, mip,
     mstatus::{self, Mstatus, MPP},
     mtval,
     mtvec::{self, TrapMode},
@@ -13,6 +13,11 @@ use riscv::register::{
 
 fn delegate_interrupt_exception() {
     unsafe {
+        // clear all pending interrupts
+        mip::clear_sext();
+        mip::clear_stimer();
+        mip::clear_ssoft();
+        // delegate interrupts
         mideleg::set_sext();
         mideleg::set_stimer();
         mideleg::set_ssoft();
@@ -31,12 +36,18 @@ fn delegate_interrupt_exception() {
         medeleg::set_instruction_page_fault();
         medeleg::set_load_page_fault();
         medeleg::set_store_page_fault();
+        // enable interrupts
         mie::set_mext();
         mie::set_mtimer();
         mie::set_msoft();
         mie::set_sext();
         mie::set_stimer();
         mie::set_ssoft();
+        mstatus::set_mie();
+        mstatus::set_sie();
+        // allow counter and timer access in S-mode
+        mcounteren::set_cy();
+        mcounteren::set_tm();
     }
 }
 

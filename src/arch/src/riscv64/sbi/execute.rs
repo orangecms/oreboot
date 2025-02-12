@@ -12,13 +12,15 @@ use super::feature;
 use super::runtime::{Runtime, SupervisorContext, Trap, ILLEGAL_INSTRUCTION, INSTRUCTION_FAULT};
 use log::{print, println};
 
+use util::mmio::write32;
+
 const EBREAK: u16 = 0x9002;
 
 const DEBUG: bool = false;
-const DEBUG_ECALL: bool = false;
-const DEBUG_MTIMER: bool = false;
+const DEBUG_ECALL: bool = true;
+const DEBUG_MTIMER: bool = true;
 const DEBUG_EBREAK: bool = true;
-const DEBUG_EMULATE: bool = false;
+const DEBUG_EMULATE: bool = true;
 const DEBUG_ILLEGAL: bool = true;
 
 const ECALL_OREBOOT: usize = 0x0A02_3B00;
@@ -139,16 +141,17 @@ pub fn execute_supervisor<S: RustSBI>(
     hartid: usize,
     dtb_addr: usize,
     clint_base: Option<usize>,
+    mtime_reg: Option<usize>,
 ) -> (usize, usize) {
     println!(
         "[SBI] Prepare supervisor on hart {hartid} at {:x} with DTB from {:x}",
         supervisor_mepc, dtb_addr
     );
     let mut rt = Runtime::new(supervisor_mepc, hartid, dtb_addr);
-    let mtime: Option<usize> = if let Some(b) = clint_base {
-        Some(b + MTIME_OFFSET)
-    } else {
-        None
+    if let Some(mtime) = mtime_reg {
+        if DEBUG_MTIMER {
+            println!("[SBI] MMIO-based MTIME @ {mtime:016x?}");
+        }
     };
     println!("[SBI] Enter loop...");
     loop {
@@ -194,7 +197,7 @@ pub fn execute_supervisor<S: RustSBI>(
                     // skip instruction; this will likely cause the OS to crash
                     // use DEBUG to get actual information
                     ctx.mepc = ctx.mepc.wrapping_add(2);
-                } else if !emulate_instruction(ctx, ins, mtime) {
+                } else if !emulate_instruction(ctx, ins, mtime_reg) {
                     if DEBUG_ILLEGAL {
                         println!("[SBI] Illegal instruction {ins:08x} not emulated");
                         dump_mstate();
@@ -225,7 +228,11 @@ pub fn execute_supervisor<S: RustSBI>(
                 // TODO
             }
             CoroutineState::Yielded(Trap::MachineSoft) => {
-                // TODO
+                // TODO: verify
+                if let Some(b) = clint_base {
+                    write32(b + 4 * hartid, 0);
+                }
+                unsafe { mip::set_ssoft() }
             }
             CoroutineState::Yielded(Trap::MachineTimer) => {
                 if DEBUG && DEBUG_MTIMER {
@@ -260,11 +267,11 @@ unsafe fn get_vaddr_u16(vaddr: usize) -> u16 {
     ans
 }
 
-fn emulate_instruction(ctx: &mut SupervisorContext, ins: usize, mtime: Option<usize>) -> bool {
+fn emulate_instruction(ctx: &mut SupervisorContext, ins: usize, mtime_reg: Option<usize>) -> bool {
     if DEBUG && DEBUG_EMULATE {
         println!("[SBI] Emulating instruction {ins:08x}, {ctx:#04X?}");
     }
-    if feature::emulate_rdtime(ctx, ins, mtime) {
+    if feature::emulate_rdtime(ctx, ins, mtime_reg) {
         return true;
     }
     if feature::emulate_sfence_vma(ctx, ins) {

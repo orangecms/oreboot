@@ -38,7 +38,7 @@ fn print_misa() {
             misa::XLEN::XLEN64 => "RV64",
             misa::XLEN::XLEN128 => "RV128",
         };
-        print!("[rustsbi] misa: {mxl_str}");
+        print!("[SBI] misa: {mxl_str}");
         for ext in 'A'..='Z' {
             if isa.has_extension(ext) {
                 print!("{}", ext);
@@ -50,7 +50,7 @@ fn print_misa() {
 
 #[inline]
 fn print_mideleg() {
-    print!("[rustsbi] mideleg: ");
+    print!("[SBI] mideleg: ");
     let mideleg = mideleg::read();
     if mideleg.ssoft() {
         print!("ssoft ")
@@ -66,7 +66,7 @@ fn print_mideleg() {
 
 #[inline]
 fn print_mie() {
-    print!("[rustsbi] mie: ");
+    print!("[SBI] mie: ");
     let mie = mie::read();
     if mie.msoft() {
         print!("msoft ")
@@ -91,7 +91,7 @@ fn print_mie() {
 
 #[inline]
 fn print_medeleg() {
-    print!("[rustsbi] medeleg: ");
+    print!("[SBI] medeleg: ");
     let medeleg = medeleg::read();
     if medeleg.instruction_misaligned() {
         print!("ima ")
@@ -200,11 +200,11 @@ fn print_pmp() {
             if (port & PMP_A_TOR) == PMP_A_TOR {
                 let start = read_pmp(i - 1) << PMP_SHIFT;
                 let end = addr;
-                print!("[rustsbi] PMP{i}: 0x{start:>08x} - 0x{end:>08x} (A",);
+                print!("[SBI] PMP{i}: 0x{start:>08x} - 0x{end:>08x} (A",);
             } else {
                 let start = addr;
                 let end = addr + size - 1;
-                print!("[rustsbi] PMP{i}: 0x{start:>08x} - 0x{end:>08x} (A",);
+                print!("[SBI] PMP{i}: 0x{start:>08x} - 0x{end:>08x} (A",);
             }
 
             if (port & PMP_L) != 0 {
