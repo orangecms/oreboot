@@ -19,7 +19,7 @@ mainboard: build
 build:
 	# TODO: cargo make
 	cargo build --release
-	riscv64-unknown-elf-objcopy -O binary $(RELEASE_ELF) $(RELEASE_BIN)
+	cargo objcopy -- -O binary $(RELEASE_BIN)
 	cd $(OREBOOT) && ./tools/spacemit/build.py -c tools/spacemit/oreboot.json -o $(FINAL_BIN)
 
 run: build
@@ -27,7 +27,7 @@ run: build
 	fastboot continue
 
 objdump: build
-	riscv64-unknown-elf-objdump -D $(RELEASE_ELF)
+	cargo objdump -- -D
 
 hexdump: build
 	xxd $(RELEASE_BIN)

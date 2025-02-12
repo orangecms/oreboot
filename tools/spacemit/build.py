@@ -392,7 +392,7 @@ class ImageBinary(object):
             else:
                 self.LOG.error(f"NOT support config {info_str}")
 
-        self.LOG.debug(f"Has {len(binary_data)}Bytes in structure {name}")
+        self.LOG.debug(f"Has {len(binary_data)} bytes in structure {name}")
         self.build_info_dict[name] = (binary_data, )
         return name, binary_data
 
@@ -613,7 +613,7 @@ class ImageBinary(object):
                     for data_type, info in data_info_dict.items():
                         if data_type in self.data_type_op_dict:
                             data_name, data = self.data_type_op_dict[data_type](info)
-                            self.LOG.debug(f"Build {len(data)}Bytes data of image {data_name}")
+                            self.LOG.debug(f"Build {len(data)} bytes data of image {data_name}")
                             f.write(data)
 
         self.release_temp_file()

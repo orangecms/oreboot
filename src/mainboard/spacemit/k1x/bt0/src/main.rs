@@ -1,5 +1,4 @@
-#![feature(naked_functions, asm_const)]
-#![feature(panic_info_message)]
+#![feature(naked_functions)]
 #![no_std]
 #![no_main]
 // TODO: remove when done debugging crap
@@ -11,7 +10,7 @@ use embedded_hal_nb::serial::Write;
 extern crate log;
 
 use core::{
-    arch::asm,
+    arch::{asm, naked_asm},
     intrinsics::transmute,
     panic::PanicInfo,
     ptr::{self, addr_of, addr_of_mut},
@@ -69,36 +68,8 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 #[link_section = ".text.entry"]
 #[allow(named_asm_labels)]
 pub unsafe extern "C" fn start() -> ! {
-    asm!(
+    naked_asm!(
         "csrw   mstatus, zero",
-
-        // U-Boot does this
-        //"csrr   a0, mstatus",
-        //"lui    t0, 0x6",
-        //"xor    a0, a0, t0",
-        //"csrw   mstatus, a0",
-
-        // cache stuff
-        // dcache enable
-        // "csrsi 0x7c0, 0x1",
-        // icache enable
-        // "csrsi 0x7c0, 0x2",
-        // branch predict enable
-        // csr_set(0x7c0, 0x10);
-        // prefetch enable
-        // csr_set(0x7c0, 0x20);
-
-        // dcache disable
-        //"csrci 0x7c0, 0x1",
-        // icache disable
-        //"csrci 0x7c0, 0x2",
-        // branch predict disable
-        //"csrci 0x7c0, 0x10",
-        // prefetch disable
-        //"csrci 0x7c0, 0x20",
-
-        // TODO
-        // "csrwi  0x7c1, 0", // ?
         "csrw   mie, zero",
         "ld     t0, {start}",
         "csrw   mtvec, t0",
@@ -125,8 +96,7 @@ pub unsafe extern "C" fn start() -> ! {
         stack_size = const STACK_SIZE,
         payload    = sym exec_payload,
         reset      = sym reset,
-        start      = sym start,
-        options(noreturn)
+        start      = sym start
     )
 }
 
@@ -272,9 +242,7 @@ fn main() {
 
     dram_test();
 
-    unsafe {
-        asm!("wfi");
-    }
+    unsafe { riscv::asm::wfi() }
 
     // GO!
     let load_addr = 0x0; // TODO
@@ -308,9 +276,8 @@ fn panic(info: &PanicInfo) -> ! {
     } else {
         println!("[bt0] panic at unknown location");
     };
-    if let Some(msg) = info.message() {
-        println!("[bt0]   {msg}");
-    }
+    let msg = info.message();
+    println!("[bt0]   {msg}");
     loop {
         core::hint::spin_loop();
     }
