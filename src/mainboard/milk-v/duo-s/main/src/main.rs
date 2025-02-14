@@ -94,6 +94,9 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 pub unsafe extern "C" fn start() -> ! {
     // starts with a 32 bytes header
     naked_asm!(
+        "li t0, 0x04140000",
+        "li t1, 0x41",
+        "sw t1, 0(t0)",
         // 1. clear cache and processor states
         "csrw   mie, zero",
         "csrw   mip, 0",
@@ -194,13 +197,11 @@ fn print_ids() {
     println!("RISC-V hart ID {hart_id}");
 }
 
-fn rdtime() -> usize {
-    let mut time: usize;
-    unsafe { asm!("rdtime {time}", time = out(reg) time) };
-    time
+fn rdtime() -> u64 {
+    riscv::register::time::read64()
 }
 
-fn delay(t: usize) {
+fn delay(t: u64) {
     let later = rdtime() + t;
     while rdtime() < later {}
 }

@@ -30,7 +30,7 @@ mod uart;
 // mod util;
 
 use rom::MASK_ROM_BASE;
-use util::{read32, write32};
+use util::{dump, dump_block, read32, write32};
 
 pub type EntryPoint = unsafe extern "C" fn();
 
@@ -573,7 +573,7 @@ fn main() {
     let time = riscv::register::time::read64() - start;
     println!("time: {time}");
 
-    util::memtest::mem_test(DRAM_BASE, 0x20_0000);
+    // util::memtest::mem_test(DRAM_BASE, 0x20_0000);
 
     let v = read32(AXI_SRAM_RTOS_BASE);
     // 0x0c85e985
@@ -595,8 +595,9 @@ fn main() {
     rom::load_image(test_addr, 0x0, 0x1000, 0);
 
     println!("[bt0] Jump to main stage @{load_addr:08x}");
+    dump_block(load_addr, 0x60, 0x20);
 
-    const BOOT_MAIN: bool = false;
+    const BOOT_MAIN: bool = true;
     if BOOT_MAIN {
         // RV64ACDFIMSUVX
         exec_payload(load_addr);
@@ -664,7 +665,7 @@ fn exec_payload(addr: usize) {
     unsafe {
         // jump to main
         let f: EntryPoint = transmute(addr);
-        // asm!("fence.i");
+        asm!("fence.i");
         f();
     }
 }

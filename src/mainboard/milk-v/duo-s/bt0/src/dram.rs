@@ -1585,7 +1585,8 @@ fn cvx16_wait_for_dfi_init_complete() {
     while read32(DDR_CFG_BASE + 0x01bc) & 0x1 == 0 {}
     write32(DDR_CFG_BASE + 0x00000320, 0x0);
     let v = read32(DDR_CFG_BASE + 0x000001b0);
-    write32(DDR_CFG_BASE + 0x000001b0, (v & !(0b111111)) | 5);
+    let m = !(0b111111);
+    write32(DDR_CFG_BASE + 0x000001b0, (v & m) | 5);
     write32(DDR_CFG_BASE + 0x00000320, 0x1);
     println!("\\ wait_for_dfi_init_complete finish");
 }
@@ -2638,8 +2639,10 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
 
     // change_pll_freq(reg_set, reg_span, reg_step);
     cvx16_ddr_phy_power_on_seq3();
-    // CHECK
+
     cvx16_wait_for_dfi_init_complete();
+    // CHECK
+
     cvx16_polling_synp_normal_mode();
 
     // a very simple write+read check

@@ -24,51 +24,11 @@ use std::path::PathBuf;
 
 const LINKERSCRIPT_FILENAME: &str = "link-duo_s-main.ld";
 
-#[cfg(soc = "CV1800B")]
 const LINKERSCRIPT: &[u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 MEMORY {
-    SRAM : ORIGIN = 0x80000000, LENGTH = 64M
-}
-SECTIONS {
-    .head : {
-        *(.head.text)
-    } > SRAM
-    .text : {
-        KEEP(*(.text.entry))
-        *(.text .text.*)
-        . = ALIGN(8);
-    } > SRAM
-    .bss : {
-        _sbss = .;
-        *(.bss .bss.*);
-        _ebss = .;
-    } > SRAM
-
-    # https://docs.rust-embedded.org/embedonomicon/main.html
-    .rodata : {
-        *(.rodata .rodata.*);
-    } > SRAM #FLASH
-    .data : {
-        _sdata = .;
-        *(.data .data.*);
-        _edata = .;
-    } > SRAM
-    _sidata = LOADADDR(.data);
-
-    /DISCARD/ : {
-        *(.eh_frame)
-        *(.debug_*)
-        *(.comment*)
-    }
-}";
-#[cfg(not(soc = "CV1800B"))]
-const LINKERSCRIPT: &[u8] = b"
-OUTPUT_ARCH(riscv)
-ENTRY(_start)
-MEMORY {
-    SRAM : ORIGIN = 0x80000000, LENGTH = 512M
+    SRAM : ORIGIN = 0x80000000, LENGTH = 2M
 }
 SECTIONS {
     .head : {
