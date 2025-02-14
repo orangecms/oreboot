@@ -21,6 +21,7 @@ use core::{
 use riscv::register::{marchid, mhartid, mimpid, mtvec, mvendorid};
 
 use layoutflash::areas::{find_fdt, FdtIterator};
+use util::write32;
 
 mod sbi_platform;
 mod uart;
@@ -94,9 +95,6 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 pub unsafe extern "C" fn start() -> ! {
     // starts with a 32 bytes header
     naked_asm!(
-        "li t0, 0x04140000",
-        "li t1, 0x41",
-        "sw t1, 0(t0)",
         // 1. clear cache and processor states
         "csrw   mie, zero",
         "csrw   mip, 0",
@@ -143,9 +141,11 @@ pub unsafe extern "C" fn reset() {
         static mut _edata: u8;
         static _sidata: u8;
     }
-
-    let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-    ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
+    // PROBLEMO
+    write32(0x04140000, 0x47);
+    // let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
+    // ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
+    write32(0x04140000, 0x47);
 
     let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
     ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
@@ -215,6 +215,7 @@ fn noisr(a: usize, b: usize) {
 fn main() {
     let s = uart::SGSerial::new();
     init_logger(s);
+    // WE GET HERE
     println!();
     println!("oreboot 🦀 main");
 

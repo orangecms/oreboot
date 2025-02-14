@@ -585,7 +585,7 @@ fn main() {
     println!();
 
     let load_addr = mem_map::DRAM_BASE;
-    rom::load_image(load_addr, 0x0, 0x6000, 0);
+    rom::load_image(load_addr, 0x0, 0x2_0000, 0);
 
     // https://github.com/orangecms/sbitest
     println!(">> load SBI test over USB");

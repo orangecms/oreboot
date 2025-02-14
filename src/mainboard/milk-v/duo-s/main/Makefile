@@ -22,9 +22,8 @@ build:
 
 run: build
 	sg_boot run --main $(RELEASE_BIN)
-
-sbitest:
-	sg_boot run --main ~/firmware/RISC-V/sbitest/test.bin
+	sleep 1
+	sg_boot run --main $(PAYLOAD)
 
 objdump: build
 	cargo objdump -- -D
