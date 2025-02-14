@@ -3,6 +3,7 @@ use crate::mem_map::{
     CLK_GEN_PLL_CTRL_BASE, DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB,
     PHYD_BASE_ADDR, TOP_BASE,
 };
+use crate::PRINT_LOG;
 use util::{read32, write32};
 
 // plat/cv181x/include/ddr/bitwise_ops.h
@@ -25,8 +26,10 @@ const DPLL_SSC_SYN_SPAN: usize = PLL_G6_BASE + 0x0058;
 const DPLL_SSC_SYN_STEP: usize = PLL_G6_BASE + 0x005C;
 
 // TODO: All of this would be a build-time config.
+const DRAM_TEST: bool = true;
+const DO_BIST: bool = false;
+
 const X16_MODE: bool = true;
-const DO_BIST: bool = true;
 const DBG_SHMOO: bool = false;
 const DDR2: bool = false;
 const DDR2_3: bool = false;
@@ -529,11 +532,11 @@ fn cvx16_setting_check() {
 }
 
 // plat/cv181x/ddr/cvx16_pinmux.c
-pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
+pub fn cvx16_pinmux(ddr_vendor: DramType) {
     println!("/ cvx16_pinmux start");
     match ddr_vendor {
         // Duo S
-        DramVendor::NY4GbitDDR3 => {
+        DramType::NY4GbitDDR3 => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x12141013);
             write32(0x0004 + PHYD_BASE_ADDR, 0x0C041503);
             write32(0x0008 + PHYD_BASE_ADDR, 0x06050001);
@@ -547,7 +550,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x76512308);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
-        DramVendor::NY2GbitDDR3 => {
+        DramType::NY2GbitDDR3 => {
             println!("pin mux for NY 2G DDR3");
             write32(0x0000 + PHYD_BASE_ADDR, 0x08070D09);
             write32(0x0004 + PHYD_BASE_ADDR, 0x0605020B);
@@ -562,7 +565,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x67513028);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
-        DramVendor::ESMT1GbitDDR2 => {
+        DramType::ESMT1GbitDDR2 => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x08070B09);
             write32(0x0004 + PHYD_BASE_ADDR, 0x05000206);
             write32(0x0008 + PHYD_BASE_ADDR, 0x0C04010D);
@@ -576,7 +579,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x26473518);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000000);
         }
-        DramVendor::ESMTN25512MbitDDR2 => {
+        DramType::ESMTN25512MbitDDR2 => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x0C06080B);
             write32(0x0004 + PHYD_BASE_ADDR, 0x070D0904);
             write32(0x0008 + PHYD_BASE_ADDR, 0x00010502);
@@ -590,7 +593,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x76103425);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000008);
         }
-        DramVendor::ESMT2GbitDDR3 => {
+        DramType::ESMT2GbitDDR3 => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x080B0D06);
             write32(0x0004 + PHYD_BASE_ADDR, 0x09010407);
             write32(0x0008 + PHYD_BASE_ADDR, 0x1405020C);
@@ -604,7 +607,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x67513208);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
-        DramVendor::ETRON1Gbit => {
+        DramType::ETRON1Gbit => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x0B060908);
             write32(0x0004 + PHYD_BASE_ADDR, 0x02000107);
             write32(0x0008 + PHYD_BASE_ADDR, 0x0C05040D);
@@ -618,7 +621,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x76158320);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
-        DramVendor::ESMTN251GbitDDR3 => {
+        DramType::ESMTN251GbitDDR3 => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x08060B09);
             write32(0x0004 + PHYD_BASE_ADDR, 0x02040701);
             write32(0x0008 + PHYD_BASE_ADDR, 0x0C00050D);
@@ -632,7 +635,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x76153280);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
-        DramVendor::ETRON512MbitDDR2 => {
+        DramType::ETRON512MbitDDR2 => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x070B090C);
             write32(0x0004 + PHYD_BASE_ADDR, 0x04050608);
             write32(0x0008 + PHYD_BASE_ADDR, 0x0E02030D);
@@ -646,7 +649,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x76012345);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000008);
         }
-        DramVendor::Unknown | _ => {
+        DramType::Unknown | _ => {
             println!("  DRAM vendor unknown");
         }
     }
@@ -898,7 +901,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
     */
     match ddr_vendor {
         // ifdef DDR3_2G
-        DramVendor::NY2GbitDDR3 => {
+        DramType::NY2GbitDDR3 => {
             println!("pin mux X16 mode DDR3_2G setting\n");
             write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
             write32(0x0020 + PHYD_BASE_ADDR, 0x82135764);
@@ -913,7 +916,7 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
             write32(0x0014 + PHYD_BASE_ADDR, 0x00111016);
             write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
         }
-        DramVendor::NY4GbitDDR3 => {
+        DramType::NY4GbitDDR3 => {
             // TODO: try this out!
             // TODO: is the order important? All the same as above (NY4G).
             if false {
@@ -1070,13 +1073,14 @@ pub fn cvx16_pinmux(ddr_vendor: DramVendor) {
     println!("\\ cvx16_pinmux finish");
 }
 
+const DDR3_1866: bool = true;
+
 // This is a full duplicate in the vendor code:
 // plat/cv181x/ddr/ddr_config/ddr_auto_x16/ddr_patch_regs.c
 // plat/cv181x/ddr/ddr_config/ddr3_1866_x16/ddr_patch_regs.c
 fn ddr_patch_set() {
     println!("/ ddr_patch_set start");
-    const DDR3_1866: bool = true;
-    if DDR3_1866 {
+    if false {
         // tune damp //////
         write32(0x08000150, 0x00000005);
 
@@ -1085,15 +1089,28 @@ fn ddr_patch_set() {
 
         // CLK driving
         write32(0x08000980, 0x08080808);
+    }
 
-        // DQ driving // BYTE0
-        write32(0x08000a38, 0x00000606);
-        // DQS driving // BYTE0
-        write32(0x08000a3c, 0x06060606);
-        // DQ driving // BYTE1
-        write32(0x08000a78, 0x00000606);
-        // DQS driving // BYTE1
-        write32(0x08000a7c, 0x06060606);
+    if false {
+        if DDR3_1866 {
+            // DQ driving // BYTE0
+            write32(0x08000a38, 0x00000606);
+            // DQS driving // BYTE0
+            write32(0x08000a3c, 0x06060606);
+            // DQ driving // BYTE1
+            write32(0x08000a78, 0x00000606);
+            // DQS driving // BYTE1
+            write32(0x08000a7c, 0x06060606);
+        } else {
+            // DQ driving // BYTE0
+            write32(0x08000a38, 0x00000808);
+            // DQS driving // BYTE0
+            write32(0x08000a3c, 0x04040404);
+            // DQ driving // BYTE1
+            write32(0x08000a78, 0x00000808);
+            // DQS driving // BYTE1
+            write32(0x08000a7c, 0x04040404);
+        }
 
         //trigger level //////
         // BYTE0
@@ -1110,19 +1127,25 @@ fn ddr_patch_set() {
 
         // tx dline code
         //  BYTE0 DQ
-        write32(0x08000a00, 0x06430643);
-        write32(0x08000a04, 0x06430643);
-        write32(0x08000a08, 0x06430643);
-        write32(0x08000a0c, 0x06430643);
-        write32(0x08000a10, 0x00000643);
-        write32(0x08000a14, 0x0a7e007e);
+        let dq0 = 0x08000a00;
+        let v = if DDR3_1866 { 0x06430643 } else { 0x06430644 };
+        for r in (0x00..0x10).step_by(4) {
+            write32(dq0 + r, v);
+        }
+        let v = if DDR3_1866 { 0x00000643 } else { 0x00000644 };
+        write32(dq0 + 0x10, v);
+        let v = if DDR3_1866 { 0x0a7e007e } else { 0x0d000000 };
+        write32(dq0 + 0x14, v);
         //  BYTE1 DQ
-        write32(0x08000a40, 0x06480648);
-        write32(0x08000a44, 0x06480648);
-        write32(0x08000a48, 0x06480648);
-        write32(0x08000a4c, 0x06480648);
-        write32(0x08000a50, 0x00000648);
-        write32(0x08000a54, 0x0a7e007e);
+        let dq1 = 0x08000a40;
+        let v = if DDR3_1866 { 0x06430648 } else { 0x06430644 };
+        for r in (0x00..0x10).step_by(4) {
+            write32(dq1 + r, v);
+        }
+        let v = if DDR3_1866 { 0x00000648 } else { 0x00000644 };
+        write32(dq1 + 0x10, v);
+        let v = if DDR3_1866 { 0x0a7e007e } else { 0x0d000000 };
+        write32(dq1 + 0x14, v);
 
         //APHY RX TRIG rangex2[18] & disable lsmode[0]
         //f0_param_phya_reg_rx_byte0_en_lsmode[0]
@@ -1149,30 +1172,40 @@ fn ddr_patch_set() {
         /////////// U02 enable MASK voltage mode receiver
         // param_phya_reg_rx_sel_dqs_wo_pream_mode[2]
         write32(0x08000138, 0x00000014);
+    }
 
-        // BYTE0 RX DQ deskew
-        write32(0x08000b00, 0x00020402);
-        write32(0x08000b04, 0x05020401);
-        // BYTE0  DQ8 deskew [6:0] neg DQS  [15:8]  ;  pos DQS  [23:16]
-        write32(0x08000b08, 0x00313902);
+    // BYTE0 RX DQ deskew
+    let v = if DDR3_1866 { 0x00020402 } else { 0x02000202 };
+    write32(0x08000b00, v);
+    let v = if DDR3_1866 { 0x05020401 } else { 0x00020000 };
+    write32(0x08000b04, v);
+    // BYTE0  DQ8 deskew [6:0] neg DQS  [15:8]  ;  pos DQS  [23:16]
+    let v = if DDR3_1866 { 0x00313902 } else { 0x002d3202 };
+    write32(0x08000b08, v);
 
-        // BYTE1 RX DQ deskew
-        write32(0x08000b30, 0x06000100);
-        write32(0x08000b34, 0x02010303);
-        // BYTE1  DQ8 deskew [6:0] neg DQS  [15:8]  ;  pos DQS  [23:16]
-        write32(0x08000b38, 0x00323900);
+    // BYTE1 RX DQ deskew
+    let v = if DDR3_1866 { 0x06000100 } else { 0x04020603 };
+    write32(0x08000b30, v);
+    let v = if DDR3_1866 { 0x02010303 } else { 0x00060203 };
+    write32(0x08000b34, v);
+    // BYTE1  DQ8 deskew [6:0] neg DQS  [15:8]  ;  pos DQS  [23:16]
+    let v = if DDR3_1866 { 0x00323900 } else { 0x00313503 };
+    write32(0x08000b38, v);
 
+    if false {
         //Read gate TX dline + shift
+        let v = if DDR3_1866 { 0x00000a14 } else { 0x0000081e };
         // BYTE0
-        write32(0x08000b0c, 0x00000a14);
+        write32(0x08000b0c, v);
         // BYTE1
-        write32(0x08000b3c, 0x00000a14);
+        write32(0x08000b3c, v);
 
         // CKE dline + shift CKE0 [6:0]+[13:8] ; CKE1 [22:16]+[29:24]
         write32(0x08000930, 0x04000400);
         // CSB dline + shift CSB0 [6:0]+[13:8] ; CSB1 [22:16]+[29:24]
         write32(0x08000934, 0x04000400);
     }
+
     println!("\\ ddr_patch_set finish");
 }
 
@@ -1209,17 +1242,19 @@ fn cvx16_set_dfi_init_start() {
 fn cvx16_ddr_phy_power_on_seq1() {
     println!("/ ddr_phy_power_on_seq1 start");
     // RESETZ/CKE PD=0
-    let v = read32(0x40 + PHYD_APB);
+    let v = read32(PHYD_APB + 0x40);
     // TOP_REG_TX_CA_PD_CKE0
     let v = v & !(1 << 24);
     // TOP_REG_TX_CA_PD_RESETZ
     let v = v & !(1 << 30);
-    write32(0x40 + PHYD_APB, v);
+    write32(PHYD_APB + 0x40, v);
     println!("  RESET PD !!!");
 
     // CA PD=0
     // All PHYA CA PD=0
-    write32(0x40 + PHYD_APB, 0);
+    let v = read32(PHYD_APB + 0x40);
+    let v = v & !(1 << 31);
+    write32(PHYD_APB + 0x40, v);
     println!("  All PHYA CA PD=0 ...");
 
     // TOP_REG_TX_SEL_GPIO = 1 (DQ)
@@ -1243,7 +1278,7 @@ fn cvx16_ddr_phy_power_on_seq1() {
 
 fn cvx16_polling_dfi_init_start() {
     println!("/ first dfi_init_start");
-    while read32(0x3028 + PHYD_BASE_ADDR) & (1 << 8) == 0 {}
+    while read32(PHYD_BASE_ADDR + 0x3028) & (1 << 8) == 0 {}
     println!("\\ cvx16_polling_dfi_init_start finish");
 }
 
@@ -1255,19 +1290,19 @@ fn get_pll_speed_change(v: u32) -> (bool, u32, u32) {
     // <= #RD (~pwstrb_mask[5:4] & TOP_REG_CUR_PLL_SPEED[1:0]) |  pwstrb_mask_pwdata[5:4];
     // TOP_REG_NEXT_PLL_SPEED  [1:0]
     // <= #RD (~pwstrb_mask[9:8] & TOP_REG_NEXT_PLL_SPEED[1:0]) |  pwstrb_mask_pwdata[9:8];
-    let en_pll_speed_chg = (v & 0b1) != 0;
+    let en_pll_speed = (v & 0b1) != 0;
     let curr_pll_speed = v & (0b11 << 4);
     let next_pll_speed = v & (0b11 << 8);
-    println!("  en_pll_speed_chg {en_pll_speed_chg}");
+    println!("  en_pll_speed {en_pll_speed}");
     println!("  curr_pll_speed   {curr_pll_speed}");
     println!("  next_pll_speed   {next_pll_speed}");
-    (en_pll_speed_chg, curr_pll_speed, next_pll_speed)
+    (en_pll_speed, curr_pll_speed, next_pll_speed)
 }
 
 fn cvx16_int_isr_08() {
     println!("/ cvx16_int_isr_08 start");
-    write32(0x0118 + PHYD_BASE_ADDR, 0x0);
-    let v = read32(0x4c + PHYD_APB);
+    write32(PHYD_BASE_ADDR + 0x0118, 0x0);
+    let v = read32(PHYD_APB + 0x4c);
     let _ = get_pll_speed_change(v);
     println!("\\ cvx16_int_isr_08 finish");
 }
@@ -1304,8 +1339,47 @@ fn cvx16_dll_cal() {
     println!("  DLL CAL Finish");
 }
 
+fn cvx16_chg_pll_freq() {
+    // Change PLL frequency
+    // TOP_REG_RESETZ_DIV =0
+    write32(PHYD_APB + 0x04, 0);
+    // TOP_REG_RESETZ_DQS =0
+    write32(PHYD_APB + 0x08, 0);
+    // TOP_REG_DDRPLL_MAS_RSTZ_DIV  =0
+    let v = read32(PHYD_APB + 0x0c);
+    write32(PHYD_APB + 0x0c, v & !(1 << 7));
+    println!("RST Z div = 0");
+    read32(PHYD_APB + 0x4c);
+    read32(PHYD_APB + 0x4c);
+    read32(PHYD_APB + 0x4c);
+    read32(PHYD_APB + 0x4c);
+    read32(PHYD_APB + 0x4c);
+    let v = read32(PHYD_APB + 0x4c);
+    let (en_chg, curr_speed, next_speed) = get_pll_speed_change(v);
+
+    if en_chg {
+        println!("xx");
+        panic!();
+    }
+    // TOP_REG_RESETZ_DIV  =1
+    write32(PHYD_APB + 0x04, 1);
+
+    let v = read32(PHYD_APB + 0x0c);
+    // rddata[7]   = 1;    //TOP_REG_DDRPLL_MAS_RSTZ_DIV
+    println!("RST Z div = 1");
+    // rddata[0]   = 1;    //TOP_REG_RESETZ_DQS
+    write32(PHYD_APB + 0x0c, v & !(1 << 7));
+
+    write32(PHYD_APB + 0x08, 1);
+    println!("TOP_REG_RESETZ_DQS");
+}
+
 fn cvx16_ddr_phy_power_on_seq2() {
     println!("/ cvx16_ddr_phy_power_on_seq2 start");
+
+    cvx16_chg_pll_freq();
+
+    println!("xxxx");
 
     // OEN
     // param_phyd_sel_cke_oenz        <= `PI_SD int_regin[0];
@@ -1323,7 +1397,10 @@ fn cvx16_ddr_phy_power_on_seq2() {
     println!("  ZQCAL if necessary ...");
     const DO_ZQ_CAL: bool = false;
     if DO_ZQ_CAL {
-        // zqcal hw mode, bit0: offset_cal, bit1:pl_en, bit2:step2_en
+        // zqcal hw mode
+        //  bit0: offset_cal
+        //  bit1: pl_en
+        //  bit2: step2_en
         // cvx16_ddr_zqcal_hw_isr8(0x7);
         println!("  ZQCAL done");
     } else {
@@ -1568,7 +1645,7 @@ fn cvx16_polling_synp_normal_mode() {
 // plat/cv181x/include/ddr/ddr_pkg_info.h
 #[derive(Debug)]
 #[repr(u32)]
-pub enum DramVendor {
+pub enum DramType {
     Unknown = 0,
     NY4GbitDDR3 = 1,
     NY2GbitDDR3 = 2,
@@ -1582,7 +1659,7 @@ pub enum DramVendor {
     ESMTN251GbitDDR3 = 10,
 }
 
-impl From<u8> for DramVendor {
+impl From<u8> for DramType {
     fn from(value: u8) -> Self {
         match value {
             0 => panic!(),
@@ -2562,7 +2639,7 @@ fn axi_mon_start_all() {
 }
 
 // fsbl plat/cv181x/ddr/ddr_sys_bring_up.c ddr_sys_bring_up
-pub fn init(ddr_data_rate: usize, dram_vendor: DramVendor) {
+pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
     let (reg_set, reg_span, reg_step) = get_pll_settings(ddr_data_rate);
     cvx16_pll_init(reg_set, reg_span, reg_step);
     ddrc_init();
@@ -2589,6 +2666,7 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramVendor) {
     cvx16_set_dfi_init_start();
     cvx16_ddr_phy_power_on_seq1();
     cvx16_polling_dfi_init_start();
+    // CHECK
     cvx16_int_isr_08();
     cvx16_ddr_phy_power_on_seq2();
     cvx16_set_dfi_init_complete();
@@ -2597,9 +2675,9 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramVendor) {
     cvx16_wait_for_dfi_init_complete();
     cvx16_polling_synp_normal_mode();
 
-    const DRAM_TEST: bool = false;
     // a very simple write+read check
     if DRAM_TEST {
+        println!("DRAM test start");
         let offset1 = 0x3000;
         let offset2 = 0x6000;
         for i in (0..128).step_by(4) {
@@ -2624,6 +2702,7 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramVendor) {
                 panic!("@{a:08x} expected {e:08x} got {v:08x}");
             }
         }
+        println!("DRAM test done");
     }
 
     if DO_BIST {

@@ -35,6 +35,7 @@ use util::{read32, write32};
 pub type EntryPoint = unsafe extern "C" fn();
 
 const DEBUG: bool = false;
+const PRINT_LOG: bool = false;
 
 const STACK_SIZE: usize = 512;
 
@@ -531,23 +532,48 @@ fn main() {
        FTSN4:         1526b59a
        TYPE:          unknown
        CP_STATE:      00000000
-       [bt0] Jump to main stage @80200000
+    */
+
+    /*
+     SG2002 / Duo 256
+       ATF state:     b100fe00
+       CP_STATE:      00000000
+       CONF:          570003ab
+       TYPE:          SG2002 / 256 DDR3 RAM @1866 (5)
+
+       SW INFO:       00000000
+       EFUSE_STATUS:  00000020
+       FTSN0:         00000000
+       efuse: FTSN0 is NOT locked
+       FTSN1:         00000000
+       efuse: FTSN1 is NOT locked
+       EFUSE_LEAKAGE: 2c40002a
+       efuse: FTSN2 is locked
+       FTSN3:         d1c05443
+       efuse: FTSN3 is locked
+       FTSN4:         1526b59a
+       efuse: FTSN4 is locked
+
+       DRAM: NY 2Gbit DDR3, (vendor: 2, capacity: 3)
+       Package: QFN88
     */
 
     print_boot_info();
 
+    if PRINT_LOG {
+        print_boot_log();
+    }
+
     rtc_setup();
     rtc_en();
 
-    print_boot_log();
-
     let start = riscv::register::time::read64();
-    dram::init(ddr_rate, dram::DramVendor::from(dram_vendor as u8));
+    dram::init(ddr_rate, dram::DramType::from(dram_vendor as u8));
     println!("DRAM init done");
     let time = riscv::register::time::read64() - start;
     println!("time: {time}");
 
-    util::memtest::mem_test(DRAM_BASE, 0x2_0000);
+    util::memtest::mem_test(DRAM_BASE, 0x20_0000);
 
     let v = read32(AXI_SRAM_RTOS_BASE);
     // 0x0c85e985
