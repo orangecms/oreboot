@@ -1225,23 +1225,19 @@ fn cvx16_en_rec_vol_mode() {
     println!("\\ cvx16_en_rec_vol_mode finish");
 }
 
-fn dfi_init() {
+// DFI = DDR PHY Interface
+// https://www.synopsys.com/blogs/chip-design/mastering-ddr-phy-interoperability-dfi.html
+// plat/cv181x/ddr/ddr_sys.c
+fn cvx16_set_dfi_init_start() {
+    println!("/ cvx16_set_dfi_init start");
     // synp setting
     // phy is ready for initial dfi_init_start request
     // set umctl2 to trigger dfi_init_start
     write32(DDR_CFG_BASE + 0x00000320, 0x0);
     // dfi_init_start @ rddata[5];
     let v = read32(DDR_CFG_BASE + 0x000001b0);
-    write32(DDR_CFG_BASE + 0x000001b0, (v & !(0b111111)) | 5);
+    write32(DDR_CFG_BASE + 0x000001b0, v | (1 << 5));
     write32(DDR_CFG_BASE + 0x00000320, 0x1);
-}
-
-// DFI = DDR PHY Interface
-// https://www.synopsys.com/blogs/chip-design/mastering-ddr-phy-interoperability-dfi.html
-// plat/cv181x/ddr/ddr_sys.c
-fn cvx16_set_dfi_init_start() {
-    println!("/ cvx16_set_dfi_init start");
-    dfi_init();
     println!("\\ set_dfi_init_start finish");
 }
 
@@ -1587,7 +1583,10 @@ fn cvx16_ddr_phy_power_on_seq3() {
 fn cvx16_wait_for_dfi_init_complete() {
     println!("/ wait_for_dfi_init_complete start");
     while read32(DDR_CFG_BASE + 0x01bc) & 0x1 == 0 {}
-    dfi_init();
+    write32(DDR_CFG_BASE + 0x00000320, 0x0);
+    let v = read32(DDR_CFG_BASE + 0x000001b0);
+    write32(DDR_CFG_BASE + 0x000001b0, (v & !(0b111111)) | 5);
+    write32(DDR_CFG_BASE + 0x00000320, 0x1);
     println!("\\ wait_for_dfi_init_complete finish");
 }
 
