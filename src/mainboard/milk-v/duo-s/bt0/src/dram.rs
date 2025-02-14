@@ -6,6 +6,12 @@ use crate::mem_map::{
 use crate::PRINT_LOG;
 use util::{read32, write32};
 
+fn opdelay(t: usize) {
+    for _ in 0..t {
+        unsafe { riscv::asm::nop() }
+    }
+}
+
 // plat/cv181x/include/ddr/bitwise_ops.h
 
 // NOTE: SSC_EN is commented out in plat/cv18{0,1}x/ddr/ddr.mk
@@ -1252,9 +1258,9 @@ fn cvx16_ddr_phy_power_on_seq1() {
 
     // CA PD=0
     // All PHYA CA PD=0
-    let v = read32(PHYD_APB + 0x40);
-    let v = v & !(1 << 31);
-    write32(PHYD_APB + 0x40, v);
+    // let v = read32(PHYD_APB + 0x40);
+    // write32(PHYD_APB + 0x40, v & !(1 << 31));
+    write32(PHYD_APB + 0x40, 0);
     println!("  All PHYA CA PD=0 ...");
 
     // TOP_REG_TX_SEL_GPIO = 1 (DQ)
@@ -1265,12 +1271,12 @@ fn cvx16_ddr_phy_power_on_seq1() {
     // DQ PD=0
     // TOP_REG_TX_BYTE0_PD
     // TOP_REG_TX_BYTE1_PD
-    write32(0x00 + PHYD_APB, 0);
+    write32(PHYD_APB + 0x00, 0);
     println!("  TX_BYTE PD=0 ...");
 
     // TOP_REG_TX_SEL_GPIO = 0 (DQ)
-    let v = read32(0x1c + PHYD_APB);
-    write32(0x1c + PHYD_APB, v & !(1 << 7));
+    let v = read32(PHYD_APB + 0x1c);
+    write32(PHYD_APB + 0x1c, v & !(1 << 7));
     println!("  TOP_REG_TX_SEL_GPIO = 0");
 
     println!("\\ ddr_phy_power_on_seq1 finish");
@@ -1291,8 +1297,8 @@ fn get_pll_speed_change(v: u32) -> (bool, u32, u32) {
     // TOP_REG_NEXT_PLL_SPEED  [1:0]
     // <= #RD (~pwstrb_mask[9:8] & TOP_REG_NEXT_PLL_SPEED[1:0]) |  pwstrb_mask_pwdata[9:8];
     let en_pll_speed = (v & 0b1) != 0;
-    let curr_pll_speed = v & (0b11 << 4);
-    let next_pll_speed = v & (0b11 << 8);
+    let curr_pll_speed = (v & (0b11 << 4)) >> 4;
+    let next_pll_speed = (v & (0b11 << 8)) >> 8;
     println!("  en_pll_speed {en_pll_speed}");
     println!("  curr_pll_speed   {curr_pll_speed}");
     println!("  next_pll_speed   {next_pll_speed}");
@@ -1307,6 +1313,9 @@ fn cvx16_int_isr_08() {
     println!("\\ cvx16_int_isr_08 finish");
 }
 
+const PHYD_DLL_CTRL: usize = PHYD_BASE_ADDR + 0x0040;
+const PHYD_DLL_STATUS: usize = PHYD_BASE_ADDR + 0x3014;
+
 fn cvx16_dll_cal() {
     let v = read32(PHYD_APB + 0x4c);
     let (en_pll_speed_chg, curr_pll_speed, next_pll_speed) = get_pll_speed_change(v);
@@ -1315,15 +1324,14 @@ fn cvx16_dll_cal() {
     if (curr_pll_speed != 0) {
         // param_phyd_dll_rx_start_cal <= int_regin[1];
         // param_phyd_dll_tx_start_cal <= int_regin[17];
-        let v = read32(PHYD_BASE_ADDR + 0x0040);
+        let v = read32(PHYD_DLL_CTRL);
         let v = v & !((1 << 17) | (1 << 1));
-        write32(PHYD_BASE_ADDR + 0x0040, v);
+        write32(PHYD_DLL_CTRL, v);
         // param_phyd_dll_rx_start_cal <= int_regin[1];
         // param_phyd_dll_tx_start_cal <= int_regin[17];
-        let v = read32(PHYD_BASE_ADDR + 0x0040);
-        let v = v | (1 << 17) | (1 << 1);
-        write32(PHYD_BASE_ADDR + 0x0040, v);
-        while read32(0x3014 + PHYD_BASE_ADDR) & !(1 << 16) == 0 {}
+        let v = read32(PHYD_DLL_CTRL);
+        write32(PHYD_DLL_CTRL, v | (1 << 17) | (1 << 1));
+        while read32(PHYD_DLL_STATUS) & !(1 << 16) == 0 {}
         println!("  DLL lock !");
         // opdelay(1000);
         println!("  Do DLL UPD");
@@ -1332,63 +1340,26 @@ fn cvx16_dll_cal() {
         // stop calibration and update when low speed
         // param_phyd_dll_rx_start_cal <= int_regin[1];
         // param_phyd_dll_tx_start_cal <= int_regin[17];
-        let v = read32(PHYD_BASE_ADDR + 0x0040);
-        let v = v & !((1 << 17) | (1 << 1));
-        write32(PHYD_BASE_ADDR + 0x0040, v);
+        let v = read32(PHYD_DLL_CTRL);
+        write32(PHYD_DLL_CTRL, v & !((1 << 17) | (1 << 1)));
     }
     println!("  DLL CAL Finish");
 }
 
-fn cvx16_chg_pll_freq() {
-    // Change PLL frequency
-    // TOP_REG_RESETZ_DIV =0
-    write32(PHYD_APB + 0x04, 0);
-    // TOP_REG_RESETZ_DQS =0
-    write32(PHYD_APB + 0x08, 0);
-    // TOP_REG_DDRPLL_MAS_RSTZ_DIV  =0
-    let v = read32(PHYD_APB + 0x0c);
-    write32(PHYD_APB + 0x0c, v & !(1 << 7));
-    println!("RST Z div = 0");
-    read32(PHYD_APB + 0x4c);
-    read32(PHYD_APB + 0x4c);
-    read32(PHYD_APB + 0x4c);
-    read32(PHYD_APB + 0x4c);
-    read32(PHYD_APB + 0x4c);
-    let v = read32(PHYD_APB + 0x4c);
-    let (en_chg, curr_speed, next_speed) = get_pll_speed_change(v);
-
-    if en_chg {
-        println!("xx");
-        panic!();
-    }
-    // TOP_REG_RESETZ_DIV  =1
-    write32(PHYD_APB + 0x04, 1);
-
-    let v = read32(PHYD_APB + 0x0c);
-    // rddata[7]   = 1;    //TOP_REG_DDRPLL_MAS_RSTZ_DIV
-    println!("RST Z div = 1");
-    // rddata[0]   = 1;    //TOP_REG_RESETZ_DQS
-    write32(PHYD_APB + 0x0c, v & !(1 << 7));
-
-    write32(PHYD_APB + 0x08, 1);
-    println!("TOP_REG_RESETZ_DQS");
-}
+const PHYD_TX_CA: usize = PHYD_BASE_ADDR + 0x0130;
+const PHYD_OUTPUT_ENABLE: usize = PHYD_BASE_ADDR + 0x0154;
 
 fn cvx16_ddr_phy_power_on_seq2() {
     println!("/ cvx16_ddr_phy_power_on_seq2 start");
 
-    cvx16_chg_pll_freq();
-
-    println!("xxxx");
-
     // OEN
     // param_phyd_sel_cke_oenz        <= `PI_SD int_regin[0];
-    let v = read32(0x0154 + PHYD_BASE_ADDR);
-    write32(0x0154 + PHYD_BASE_ADDR, v & !(1));
+    let v = read32(PHYD_OUTPUT_ENABLE);
+    write32(PHYD_OUTPUT_ENABLE, v & !(1));
     // param_phyd_tx_ca_oenz          <= `PI_SD int_regin[0];
     // param_phyd_tx_ca_clk0_oenz     <= `PI_SD int_regin[8];
     // param_phyd_tx_ca_clk1_oenz     <= `PI_SD int_regin[16];
-    write32(0x0130 + PHYD_BASE_ADDR, 0x00000000);
+    write32(PHYD_TX_CA, 0x00000000);
 
     println!("  DLL calibration if necessary ...");
     cvx16_dll_cal();
@@ -1423,23 +1394,16 @@ fn cvx16_ddr_phy_power_on_seq2() {
         println!("  ZQ calculate variation not run");
     }
 
-    // CA PD =0
-    // All PHYA CA PD=0
-    write32(0x40 + PHYD_APB, 0x80000000);
+    write32(PHYD_APB + 0x40, 0x80000000);
     println!("  All PHYA CA PD = 0 ...");
-    // BYTE PD =0
-    write32(0x00 + PHYD_APB, 0x00000000);
+    write32(PHYD_APB + 0x00, 0x00000000);
     println!("  TX_BYTE PD = 0 ...");
     println!("\\ cvx16_ddr_phy_power_on_seq2 finish");
 }
 
 fn cvx16_set_dfi_init_complete() {
     println!("/ cvx16_set_dfi_init_complete start");
-    // opdelay(20000);
-    // HACK
-    for _ in 0..20000 {
-        read32(PHYD_BASE_ADDR + 0x0118);
-    }
+    opdelay(20000);
     // rddata[8] = 1;
     write32(PHYD_BASE_ADDR + 0x0120, 0x00000010);
     println!("  set init_complete = 1 ...");
@@ -1529,26 +1493,27 @@ fn cvx16_clk_normal(reg_set: u32, reg_span: u32, reg_step: u32) {
     println!("  back to original frequency");
 }
 
+const RESETZ_DIV: usize = PHYD_APB + 0x04;
+const RESETZ_DQS: usize = PHYD_APB + 0x08;
+
 fn change_pll_freq(reg_set: u32, reg_span: u32, reg_step: u32) {
     println!("/ change_pll_freq start");
     println!("  Change PLL frequency if necessary ...");
     // TOP_REG_RESETZ_DIV = 0
-    write32(0x04 + PHYD_APB, 0);
-    // TOP_REG_RESETZ_DQS = 0
-    write32(0x08 + PHYD_APB, 0);
+    write32(RESETZ_DIV, 0);
+    // TOP_REG_RESETZ_DQS =0
+    write32(RESETZ_DQS, 0);
     // TOP_REG_DDRPLL_MAS_RSTZ_DIV  =0
-    let v = read32(0x0C + PHYD_APB);
-    write32(0x0C + PHYD_APB, v & !(1 << 7));
+    let v = read32(PHYD_APB + 0x0c);
+    write32(PHYD_APB + 0x0c, v & !(1 << 7));
     println!("  RSTZ_DIV = 0");
 
     // NOTE: Reading a register may have meaning in hardware.
     // Yes, the vendor code reads this 6x. It _may_ have an effect.
-    read32(0x4c + PHYD_APB);
-    read32(0x4c + PHYD_APB);
-    read32(0x4c + PHYD_APB);
-    read32(0x4c + PHYD_APB);
-    read32(0x4c + PHYD_APB);
-    let v = read32(0x4c + PHYD_APB);
+    for _ in 0..5 {
+        read32(PHYD_APB + 0x4c);
+    }
+    let v = read32(PHYD_APB + 0x4c);
     let (en_chg, curr_speed, next_speed) = get_pll_speed_change(v);
 
     let v = (v & (0b11 << 8)) | curr_speed << 8;
@@ -1560,12 +1525,12 @@ fn change_pll_freq(reg_set: u32, reg_span: u32, reg_step: u32) {
                 write32(0x4c + PHYD_APB, v);
                 cvx16_clk_div40();
             }
-            0x1 => {
+            1 => {
                 // next clk normal div_2
                 write32(0x4c + PHYD_APB, v);
                 cvx16_clk_div2();
             }
-            0x2 => {
+            2 => {
                 // next clk normal
                 write32(0x4c + PHYD_APB, v);
                 cvx16_clk_normal(reg_set, reg_span, reg_step);
@@ -1577,22 +1542,18 @@ fn change_pll_freq(reg_set: u32, reg_span: u32, reg_step: u32) {
 
     // NOTE: similar to cvx16_pll_init
     // TOP_REG_RESETZ_DIV = 1
-    write32(PHYD_APB + 0x04, 0x1);
+    write32(RESETZ_DIV, 1);
     // TOP_REG_DDRPLL_MAS_RSTZ_DIV
-    let v = read32(0x0C + PHYD_APB);
+    let v = read32(PHYD_APB + 0x0c);
     write32(PHYD_APB + 0x0c, v | (1 << 7));
     println!("  RSTZ_DIV = 1");
     // TOP_REG_RESETZ_DQS
-    write32(PHYD_APB + 0x08, 0x1);
+    write32(RESETZ_DQS, 1);
     println!("  TOP_REG_RESETZ_DQS");
 
     println!("  Wait for DDR PLL_SLV_LOCK = 1...");
     while read32(PHYD_APB + 0x10) & (1 << 15) == 0 {
-        // opdelay(200);
-        // HACK
-        for _ in 0..200 {
-            read32(PHYD_APB + 0x10);
-        }
+        opdelay(200);
     }
 
     println!("\\ change_pll_freq finish");
@@ -2666,9 +2627,11 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
     cvx16_set_dfi_init_start();
     cvx16_ddr_phy_power_on_seq1();
     cvx16_polling_dfi_init_start();
-    // CHECK
     cvx16_int_isr_08();
+    // NOTE: Vendor code calls cvx16_chg_pll_freq() within cvx16_ddr_phy_power_on_seq2().
+    change_pll_freq(reg_set, reg_span, reg_step);
     cvx16_ddr_phy_power_on_seq2();
+    // CHECK
     cvx16_set_dfi_init_complete();
     change_pll_freq(reg_set, reg_span, reg_step);
     cvx16_ddr_phy_power_on_seq3();
