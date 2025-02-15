@@ -4,8 +4,6 @@
 // TODO: remove when done debugging crap
 #![allow(unused)]
 
-use embedded_hal_nb::serial::Write;
-
 #[macro_use]
 extern crate log;
 
@@ -21,22 +19,23 @@ use riscv::register::{marchid, mimpid, mvendorid};
 
 use layoutflash::areas::{find_fdt, FdtIterator};
 
+mod cv18xx;
 mod ddr_phy;
 mod dram;
 mod efuse;
 mod mem_map;
 mod rom;
+mod rtc;
 mod uart;
-// mod util;
 
-use rom::MASK_ROM_BASE;
+use mem_map::{AXI_SRAM_BASE, DRAM_BASE};
 use util::{dump, dump_block, read32, write32};
 
 pub type EntryPoint = unsafe extern "C" fn();
 
-const DEBUG: bool = false;
-const DRAM_TEST: bool = false;
+const DRAM_TEST: bool = true;
 const PRINT_LOG: bool = false;
+const DUMP_MASK_ROM: bool = false;
 
 const STACK_SIZE: usize = 512;
 
@@ -127,42 +126,6 @@ pub unsafe extern "C" fn reset() {
     main();
 }
 
-fn vendorid_to_name<'a>(vendorid: usize) -> &'a str {
-    match vendorid {
-        0x0489 => "SiFive",
-        0x05b7 => "T-Head",
-        _ => "unknown",
-    }
-}
-
-// FIXME: This really depends on the vendor first!
-fn impid_to_name<'a>(impid: usize) -> &'a str {
-    match impid {
-        0x0421_0427 => "21G1.02.00 / llama.02.00-general",
-        _ => "unknown",
-    }
-}
-
-/// Print RISC-V core information:
-/// - vendor
-/// - arch
-/// - implementation
-/// - hart ID
-fn print_ids() {
-    let vid = mvendorid::read().map(|r| r.bits()).unwrap_or(0);
-    let aid = marchid::read().map(|r| r.bits()).unwrap_or(0);
-    let iid = mimpid::read().map(|r| r.bits()).unwrap_or(0);
-    // TODO: This prints 8000000000000007, but should be 80000007.
-    // See U74-MC core complex manual 21G3.
-    println!("RISC-V arch {aid:08x}");
-    let vendor_name = vendorid_to_name(vid);
-    println!("RISC-V core vendor: {vendor_name} (0x{vid:04x})");
-    let imp_name = impid_to_name(iid);
-    println!("RISC-V implementation: {imp_name} (0x{iid:08x})");
-    let hart_id = mhartid::read();
-    println!("RISC-V hart ID {hart_id}");
-}
-
 static mut SERIAL: Option<uart::SGSerial> = None;
 
 fn init_logger(s: uart::SGSerial) {
@@ -172,125 +135,6 @@ fn init_logger(s: uart::SGSerial) {
             log::init(m);
         }
     }
-}
-
-//// only for debugging
-///define ATF_DBG_REG (BOOT_LOG_LEN_ADDR + BOOT_LOG_LEN_SIZE)
-///define ATF_ERR_REG (ATF_DBG_REG + 0x04)
-///define ATF_ERR_INFO0 (ATF_DBG_REG + 0x08)
-///define CP_STATE_REG (ATF_DBG_REG + 0x0C)
-///
-///define ATF_ERR (((unsigned int __volatile__ *)ATF_ERR_REG)[0])
-
-const CONF: usize = mem_map::TOP_BASE + 0x0004;
-// used by mask ROM: _DAT_03000080 == 0x6526228c
-const GP_REG0: usize = mem_map::TOP_BASE + 0x0080;
-const GP_REG1: usize = mem_map::TOP_BASE + 0x0084;
-const ATF_STATE: usize = GP_REG1;
-
-const ATF_STATE_INIT: u32 = 0xb100_0000;
-
-const ATF_STATE_SXX0: u32 = 0xb100_1020;
-const ATF_STATE_SXX1: u32 = 0xb100_1022;
-
-// mask ROM writes this during bootup
-const ATF_STATE_MASK_ROM: u32 = 0xb100_f000;
-
-const ATF_STATE_TXX1: u32 = 0xb100_f001;
-const ATF_STATE_TXX2: u32 = 0xb100_f002;
-
-const ATF_STATE_FLASH_INIT_START: u32 = 0xb100_f005;
-const ATF_STATE_FLASH_INIT_END: u32 = 0xb100_f006;
-
-// CV1800B mask ROM
-const ATF_STATE_XX1: u32 = 0xb100_f00f;
-const ATF_STATE_XX2: u32 = 0xb100_f801;
-
-// NOTE: Vendor calls bt0 "bl2" (boot loader 2? after mask ROM...)
-// NOTE: ATF is probably meant to resemble Arm Trusted Firmware.
-const ATF_STATE_BL2_MAIN: u32 = 0xB200_F000;
-
-const ATF_STATE_RESET_WAIT: u32 = 0xBE00_3001;
-const ATF_STATE_BEFORE_ERROR_WAIT: u32 = 0xbe00_3002;
-const ATF_STATE_WD_XX: u32 = 0xc000_4004;
-
-// set in set_boot_src
-// NAND
-const ATF_STATE_BOOT_SRC_X1: u32 = 0xb300_0001;
-// NOR
-const ATF_STATE_BOOT_SRC_X2: u32 = 0xb300_0002;
-// EMMC
-const ATF_STATE_BOOT_SRC_X3: u32 = 0xb300_0003;
-// SD
-const ATF_STATE_BOOT_SRC_X4: u32 = 0xb300_0004;
-// USB
-const ATF_STATE_BOOT_SRC_X5: u32 = 0xb300_0005;
-
-// used in mask ROM
-const XXXXXX: usize = mem_map::TOP_BASE + 0x0294;
-const RST_GEN: usize = mem_map::TOP_BASE + 0x3000;
-const SOFT_CPU_RSTN: usize = RST_GEN + 0x0024;
-
-use mem_map::{AXI_SRAM_BASE, DRAM_BASE};
-// highest byte is compared vs 0x40 in mask ROM
-// lowest bit against 0, may be a status bit?
-const UNK1: usize = AXI_SRAM_BASE;
-const BOOT_SOURCE_FLAG: usize = AXI_SRAM_BASE + 0x0004;
-const BOOT_LOG_SIZE: usize = AXI_SRAM_BASE + 0x0008;
-// used in mask ROM
-const UNK2: usize = AXI_SRAM_BASE + 0x0010;
-// coprocessor state?
-const CP_STATE: usize = AXI_SRAM_BASE + 0x0018;
-const AXI_SRAM_RTOS_BASE: usize = AXI_SRAM_BASE + 0x007C;
-// mask ROM polls this for 0x6526_228c
-const AXI_STATUS_SMTH1: usize = AXI_SRAM_BASE + 0x0080;
-
-const TPU_SRAM_BASE: usize = 0x0c00_0000;
-// Our code runs from TPU SRAM, +4k for the header.
-const HEADER_SIZE: usize = 0x1000;
-const CODE_SIZE_MAX: usize = 0x0003_6000;
-// To avoid colliding with the boot log, our maximum size is 0x3_6000;
-// plat/cv181x/include/mmap.h
-//     #define BOOT_LOG_BUF_BASE (BL2_BASE + BL2_SIZE)
-const BOOT_LOG_BASE: usize = TPU_SRAM_BASE + HEADER_SIZE + CODE_SIZE_MAX;
-const MAX_LOG_SIZE: usize = 0x2000; // 8k
-
-// the mask ROM makes use of SRAM for special globals
-// 0x0c03_9000
-const AFTER_LOG: usize = BOOT_LOG_BASE + MAX_LOG_SIZE;
-const XX_SMTH1: usize = AFTER_LOG + 0x0010;
-const XX_SMTH2: usize = AFTER_LOG + 0x0080;
-const XX_SMTH3: usize = AFTER_LOG + 0x00bc;
-const XX_SMTH4: usize = AFTER_LOG + 0x00e8;
-
-// 0x0c09_e000
-const SPECIAL_BASE: usize = AFTER_LOG + 0x5000;
-const SG200X_BOOT_SRC: usize = SPECIAL_BASE + 0x0540;
-
-// TODO: Also dump log from Arm, see if we get anything
-// The mask ROM stores its own boot log in SRAM.
-fn print_boot_log() {
-    let boot_log_len = read32(BOOT_LOG_SIZE) as usize;
-    println!("boot_log_len: {boot_log_len}");
-    println!();
-    println!(">>> BEGIN OF BOOT LOG");
-
-    for i in (0..boot_log_len).step_by(4) {
-        let e = read32(BOOT_LOG_BASE + i);
-        let b = e.to_le_bytes();
-        if i + 4 < boot_log_len {
-            for c in b {
-                print!("{}", c as char);
-            }
-        } else {
-            for cc in 0..boot_log_len % 4 {
-                print!("{}", b[cc] as char);
-            }
-        }
-    }
-    println!();
-    println!("<<< END OF BOOT LOG");
-    println!();
 }
 
 // more funz
@@ -308,272 +152,57 @@ fn print_boot_log() {
   _DAT_0453e578 = 0xe0000701;
 */
 
-const RTC_SYS_BASE: usize = 0x0500_0000;
-
-const RTC_SMTH_BASE: usize = RTC_SYS_BASE + 0x0002_0000;
-const RTC_SMTH_XX: usize = RTC_SMTH_BASE + 0x1050;
-
-const RTC_CTRL_BASE: usize = RTC_SYS_BASE + 0x0002_5000;
-const RTC_CTRL0_UNLOCKKEY: usize = RTC_CTRL_BASE + 0x0004;
-const RTC_CTRL0: usize = RTC_CTRL_BASE + 0x0008;
-const RTC_CTRL0_STATUS0: usize = RTC_CTRL_BASE + 0x000c;
-const RTC_POR_RST_CTRL: usize = RTC_CTRL_BASE + 0x00ac;
-
-const RTC_BASE: usize = RTC_SYS_BASE + 0x0002_6000;
-const RTC_ST_ON_REASON: usize = RTC_BASE + 0x00f8;
-const RTC_ST_OFF_REASON: usize = RTC_BASE + 0x00fc;
-
-const RTC_EN_SHUTDOWN_REQUEST: usize = RTC_BASE + 0x00c0;
-const RTC_EN_POWER_CYCLE_REQUEST: usize = RTC_BASE + 0x00c8;
-const RTC_EN_WARM_RESET_REQUEST: usize = RTC_BASE + 0x00cc;
-const RTC_EN_PWR_VBAT_DET: usize = RTC_BASE + 0x00d0;
-const RTC_EN_WATCHDOG_TIMER_RESET_REQUEST: usize = RTC_BASE + 0x00e0;
-
-const RTC_MACRO_BASE: usize = RTC_SYS_BASE + 0x0002_6400;
-
-fn rtc_setup() {
-    const CV181X_SUPPORT_SUSPEND_RESUME: bool = false;
-    if CV181X_SUPPORT_SUSPEND_RESUME {
-        /*
-        if get_warmboot_entry() == BL31_WARMBOOT_ENTRY {
-            return;
-        }
-        */
-    }
-
-    // reg_rtc_mode = rtc_ctrl0[10]
-    if read32(RTC_CTRL0) & (1 << 10) != 0 {
-        println!("Bypass RTC mode switch");
-        return;
-    }
-
-    write32(RTC_CTRL0_UNLOCKKEY, 0xAB18);
-
-    // reg_clk32k_cg_en = rtc_ctrl0[11] -> 0
-    let v = read32(RTC_CTRL0);
-    let v = 0x08000000 | (v & 0xfffff7ff);
-    write32(RTC_CTRL0, v);
-
-    // cg_en_out_clk_32k = rtc_ctrl_status0[25]
-    while read32(RTC_CTRL0_STATUS0) & (1 << 25) != 0x00 {}
-
-    //r eg_rtc_mode = rtc_ctrl0[10];
-    let v = read32(RTC_CTRL0);
-    let v = 0x04000000 | (v & 0xfffffbff) | (0x1 << 10);
-    write32(RTC_CTRL0, v);
-
-    // DA_SOC_READY = 1
-    write32(RTC_MACRO_BASE + 0x8C, 0x1);
-    // DA_SOC_READY = 0
-    write32(RTC_MACRO_BASE + 0x8C, 0x0);
-
-    // delay ~200us
-    dram::opdelay(200);
-
-    // reg_clk32k_cg_en = rtc_ctrl0[11] -> 1
-    let v = read32(RTC_CTRL0);
-    let v = 0x0C000000 | (v & 0xffffffff) | (0x1 << 11);
-    write32(RTC_CTRL0, v);
-}
-
-fn rtc_en() {
-    let v = read32(RTC_ST_ON_REASON);
-    println!("st_on_reason  {v:08x}");
-    let v = read32(RTC_ST_OFF_REASON);
-    println!("st_off_reason {v:08x}");
-
-    write32(RTC_EN_SHUTDOWN_REQUEST, 0x01);
-    while read32(RTC_EN_SHUTDOWN_REQUEST) != 0x01 {}
-    write32(RTC_EN_WARM_RESET_REQUEST, 0x01);
-    while read32(RTC_EN_WARM_RESET_REQUEST) != 0x01 {}
-    write32(RTC_EN_POWER_CYCLE_REQUEST, 0x01);
-    while read32(RTC_EN_POWER_CYCLE_REQUEST) != 0x01 {}
-    write32(RTC_EN_WATCHDOG_TIMER_RESET_REQUEST, 0x01);
-    while read32(RTC_EN_WATCHDOG_TIMER_RESET_REQUEST) != 0x01 {}
-
-    // Set rtcsys_rst_ctrl[24] = 1; bit 24 is reg_rtcsys_reset_en
-    let v = read32(RTC_POR_RST_CTRL);
-    write32(RTC_POR_RST_CTRL, 1 << 1);
-
-    write32(RTC_CTRL0_UNLOCKKEY, 0xAB18);
-
-    // Enable hw_wdg_rst_en
-    let v = read32(RTC_CTRL0);
-    let v = v | 0xffff0000 | (0x1 << 11) | (0x01 << 6);
-    write32(RTC_CTRL0, v);
-
-    // Avoid power up again after poweroff
-    let v = read32(RTC_EN_PWR_VBAT_DET);
-    write32(RTC_EN_PWR_VBAT_DET, v & !(1 << 2));
-}
-
-const BOOT_SRC_USB: [u8; 4] = *b"MGN1";
-fn print_boot_info() {
-    let src = rom::get_boot_src();
-    println!("boot from {src}");
-
-    let flag = read32(BOOT_SOURCE_FLAG);
-    println!("boot flag {flag:08x}");
-
-    let v = u32::from_be_bytes(BOOT_SRC_USB);
-    write32(BOOT_SOURCE_FLAG, v);
-
-    let flag = read32(BOOT_SOURCE_FLAG);
-}
-
 #[no_mangle]
 fn main() {
-    let start = riscv::register::time::read64();
+    let mut ini_pc: usize = 0;
+    unsafe { asm!("mv {}, s4", out(reg) ini_pc) };
 
     let s = uart::SGSerial::new();
     init_logger(s);
-    println!();
+    // Some empty lines after mask ROM output, which has no line break before running our code
     println!();
     println!();
     println!("oreboot 🦀 bt0");
-    print_ids();
-
-    if false {
-        println!(">>> mask ROM dump");
-        util::dump_block(rom::MASK_ROM_FN_BASE, 96 * 1024, 32);
-        println!("<<< mask ROM dump");
-        panic!("DO NOT PANIC! EVERYTHING IS OKAY!");
-    }
-
+    println!("initial program counter (PC) {ini_pc:016x}");
+    println!();
+    oreboot_arch::riscv64::ids::print_ids();
+    println!();
     let boot_src = rom::get_boot_src();
-    println!("boot src: {boot_src}");
     let retry_count = rom::get_retry_count();
+    println!("boot src: {boot_src}");
     println!("retries:  {retry_count}");
-
     println!();
-
-    let atf_state = read32(ATF_STATE);
-    println!("ATF state:     {atf_state:08x}");
-    write32(ATF_STATE, ATF_STATE_BL2_MAIN);
-
-    let cp_state = read32(CP_STATE);
-    println!("CP_STATE:      {cp_state:08x}");
-    let conf = read32(CONF);
-    println!("CONF:          {conf:08x}");
-
-    let chip_type_v = (conf >> 28) & 0b111;
-    let chip_type = match chip_type_v {
-        1 => "SG2000 / 512MB DDR3 RAM @1866",
-        3 => "CV1800B / 64MB DDR2 RAM @1333",
-        5 => "SG2002 / 256 DDR3 RAM @1866",
-        _ => "unknown",
-    };
-    println!("TYPE:          {chip_type} ({chip_type_v})");
-    println!();
-
-    let efuse_leakage = efuse::setup();
-    println!();
-
-    if false {
-        print_boot_log();
-    }
-
-    // fsbl plat/cv181x/ddr/ddr_pkg_info.c
-    let dram_vendor = (efuse_leakage >> 21) & 0b11111;
-    let dram_capacity = (efuse_leakage >> 26) & 0b111;
-    let package_type = (efuse_leakage >> 29) & 0b111;
-
-    let dram_type = match (dram_vendor, dram_capacity) {
-        (1, 5) => "NY 4Gbit DDR3",
-        (2, 3) => "NY 2Gbit DDR3",
-        (4, 1) => "ESMT 512Mbit DDR2",
-        (_, _) => "unknown",
-    };
-
-    let package = match package_type {
-        1 => "QFN88",
-        2 => "BGA",
-        3 => "QFN68",
-        _ => "unknown",
-    };
-
-    println!("DRAM: {dram_type}, (vendor: {dram_vendor}, capacity: {dram_capacity})");
-    println!("Package: {package}");
-    println!();
-
-    let time = riscv::register::time::read64() - start;
-    println!("time passed: {time} (started at {start})");
-
-    let ddr_rate = match chip_type_v {
-        1 => 1866,
-        3 => 1333,
-        5 => 1866,
-        _ => panic!("DDR rate for chip type {chip_type_v} not supported"),
-    };
-
-    /*
-     CV1800B / Duo
-       W_LOCK0:       00000000
-       EFUSE_STATUS:  00000070
-       CONF:          3500032a
-       EFUSE_LEAKAGE: 64800024
-       FTSN3:         e1a5e4ca
-       FTSN4:         15274190
-       TYPE:          CV1800B / 64MB DDR2 RAM 1333
-       CP_STATE:      00000000
-    */
-
-    /*
-     SG2000 / Duo S
-       W_LOCK0:       00000018
-       EFUSE_STATUS:  00000070
-       CONF:          170003ab
-       EFUSE_LEAKAGE: 5020002d
-       FTSN3:         d1c21ea5
-       FTSN4:         1526b59a
-       TYPE:          unknown
-       CP_STATE:      00000000
-    */
-
-    /*
-     SG2002 / Duo 256
-       ATF state:     b100fe00
-       CP_STATE:      00000000
-       CONF:          570003ab
-       TYPE:          SG2002 / 256 DDR3 RAM @1866 (5)
-
-       SW INFO:       00000000
-       EFUSE_STATUS:  00000020
-       FTSN0:         00000000
-       efuse: FTSN0 is NOT locked
-       FTSN1:         00000000
-       efuse: FTSN1 is NOT locked
-       EFUSE_LEAKAGE: 2c40002a
-       efuse: FTSN2 is locked
-       FTSN3:         d1c05443
-       efuse: FTSN3 is locked
-       FTSN4:         1526b59a
-       efuse: FTSN4 is locked
-
-       DRAM: NY 2Gbit DDR3, (vendor: 2, capacity: 3)
-       Package: QFN88
-    */
-
-    print_boot_info();
+    cv18xx::print_platform_state();
+    cv18xx::print_boot_info();
 
     if PRINT_LOG {
-        print_boot_log();
+        println!();
+        cv18xx::print_boot_log();
+        println!();
+    }
+    if DUMP_MASK_ROM {
+        cv18xx::dump_mask_rom();
     }
 
-    rtc_setup();
-    rtc_en();
+    rtc::init();
+    rtc::en();
 
     let start = riscv::register::time::read64();
+    let (dram_vendor, ddr_rate) = cv18xx::get_dram_type();
     dram::init(ddr_rate, dram::DramType::from(dram_vendor as u8));
-    println!("DRAM init done");
     let time = riscv::register::time::read64() - start;
-    println!("time: {time}");
+    println!("DRAM init done in {time}");
 
+    // FIXME: DRAM on SG2002 is not stable and loses data :(
     if DRAM_TEST {
-        util::memtest::mem_test(DRAM_BASE, 0x2_0000);
+        util::memtest::mem_test(DRAM_BASE, 0x2000);
     }
 
-    let v = read32(AXI_SRAM_RTOS_BASE);
+    panic!("DRAM is sad");
+
+    // Load extra code
+
+    let v = read32(cv18xx::AXI_SRAM_RTOS_BASE);
     // 0x0c85e985
     // CVI_RTOS_MAGIC_CODE 0xABC0DEF
     println!("RTOS base: 0x{v:08x}");
@@ -603,7 +232,7 @@ fn main() {
         exec_payload(load_addr);
     } else {
         // RV64ACDFIMSUX
-        exec_hartl(load_addr);
+        cv18xx::exec_hartl(load_addr);
     }
 
     if false {
@@ -614,51 +243,6 @@ fn main() {
     }
 
     unsafe { riscv::asm::wfi() };
-}
-
-const SEC_SUBSYS_BASE: usize = 0x0200_0000;
-
-const SEC_XXY_BASE: usize = SEC_SUBSYS_BASE + 0x0009_0000;
-// mask ROM may set this to 0x0080_0800
-const SEC_SYS_SMTH: usize = SEC_XXY_BASE + 0x005c;
-
-const SEC_SYS_BASE: usize = SEC_SUBSYS_BASE + 0x000B_0000;
-
-const SEC_SYS_CTRL: usize = SEC_SYS_BASE + 0x0004;
-
-const SEC_SYS_A_ADDR_L: usize = SEC_SYS_BASE + 0x0010;
-const SEC_SYS_A_ADDR_H: usize = SEC_SYS_BASE + 0x0014;
-
-const SEC_SYS_B_ADDR_L: usize = SEC_SYS_BASE + 0x0018;
-const SEC_SYS_B_ADDR_H: usize = SEC_SYS_BASE + 0x001c;
-
-const SEC_SYS_L_ADDR_L: usize = SEC_SYS_BASE + 0x0020;
-const SEC_SYS_L_ADDR_H: usize = SEC_SYS_BASE + 0x0024;
-
-// Bits Name
-// 0    reg_soft_reset_x_cpucore0
-// 1    reg_soft_reset_x_cpucore1
-// 2    reg_soft_reset_x_cpucore2
-// 3    reg_soft_reset_x_cpucore3
-// 4    reg_soft_reset_x_cpusys0
-// 5    reg_soft_reset_x_cpusys1
-// 6    reg_soft_reset_x_cpusys2
-// 31:7 Reserved
-
-fn exec_hartl(addr: usize) {
-    // should be no-op
-    let v = read32(SOFT_CPU_RSTN);
-    write32(SOFT_CPU_RSTN, v & !(1 << 6));
-
-    let v = read32(SEC_SYS_CTRL);
-    write32(SEC_SYS_CTRL, v | (1 << 13));
-
-    write32(SEC_SYS_L_ADDR_L, addr as u32);
-    write32(SEC_SYS_L_ADDR_H, (addr >> 32) as u32);
-
-    // reset
-    let v = read32(SOFT_CPU_RSTN);
-    write32(SOFT_CPU_RSTN, v | (1 << 6));
 }
 
 fn exec_payload(addr: usize) {

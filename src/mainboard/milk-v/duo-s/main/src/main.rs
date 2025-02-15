@@ -22,10 +22,8 @@ use riscv::register::{marchid, mhartid, mimpid, mtvec, mvendorid};
 use layoutflash::areas::{find_fdt, FdtIterator};
 use util::write32;
 
-mod riscv_lib;
 mod sbi_platform;
 mod uart;
-mod xuantie;
 
 pub type EntryPoint = unsafe extern "C" fn() -> !;
 
@@ -146,9 +144,9 @@ fn main() -> ! {
     println!("oreboot 🦀 main");
     println!("initial program counter (PC) {ini_pc:016x}");
 
-    riscv_lib::print_ids();
-    xuantie::print_cpuid();
-    xuantie::init();
+    oreboot_arch::riscv64::ids::print_ids();
+    oreboot_arch::riscv64::xuantie::print_cpuid();
+    oreboot_arch::riscv64::xuantie::init();
 
     exec_payload()
 }
