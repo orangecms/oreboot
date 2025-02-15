@@ -6,7 +6,7 @@ use crate::mem_map::{
 use crate::PRINT_LOG;
 use util::{read32, write32};
 
-fn opdelay(t: usize) {
+pub fn opdelay(t: usize) {
     for _ in 0..t {
         unsafe { riscv::asm::nop() }
     }

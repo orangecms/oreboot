@@ -35,12 +35,13 @@ use util::{dump, dump_block, read32, write32};
 pub type EntryPoint = unsafe extern "C" fn();
 
 const DEBUG: bool = false;
+const DRAM_TEST: bool = false;
 const PRINT_LOG: bool = false;
 
 const STACK_SIZE: usize = 512;
 
 #[link_section = ".bss.uninit"]
-static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
 /// Set up stack and jump to executable code.
 ///
@@ -65,37 +66,35 @@ pub unsafe extern "C" fn start() -> ! {
         ".word 0",
         ".word 0",
         ".forrealsiez:",
-        "li     t0, 0x04140000",
-        "li     t1, 0x42",
-        "sw     t1, 0(t0)",
-        // Clear feature disable CSR to '0' to turn on all features
-        // TODO: do in Rust
-        // "csrwi  0x7c1, 0",
+        // save program counter for early printing
+        "auipc  s4, 0",
+        // 1. clear processor states
         "csrw   mie, zero",
+        "csrw   mip, zero",
         "csrw   mstatus, zero",
+        // When a trap is hit early, jump back to start
         "ld     t0, {start}",
         "csrw   mtvec, t0",
-        // 1. suspend non-boot hart
-        // hart 0 is the S7 monitor core; 1-4 are U7 cores
+        // 2. suspend non-boot hart
         "li     a1, 1",
         "csrr   a0, mhartid",
         "bne    a0, a1, .nonboothart",
-        // 2. prepare stack
+        // 3. prepare stack
         // FIXME: each hart needs its own stack
         "la     sp, {stack}",
         "li     t0, {stack_size}",
         "add    sp, sp, t0",
+        // 4. jump to reset/payload
         "j      .boothart",
         // wait for multihart to get back into the game
         ".nonboothart:",
         "j      .boothart",
         "csrw   mie, 8", // 1 << 3
         "wfi",
-        "csrw   mip, 0",
         "call   {payload}",
         ".boothart:",
         "call   {reset}",
-        stack      = sym BT0_STACK,
+        stack      = sym STACK,
         stack_size = const STACK_SIZE,
         payload    = sym exec_payload,
         reset      = sym reset,
@@ -368,11 +367,8 @@ fn rtc_setup() {
     // DA_SOC_READY = 0
     write32(RTC_MACRO_BASE + 0x8C, 0x0);
 
-    // udelay(200); // delay ~200us
-    for i in 0..200 {
-        // hack
-        read32(RTC_CTRL0);
-    }
+    // delay ~200us
+    dram::opdelay(200);
 
     // reg_clk32k_cg_en = rtc_ctrl0[11] -> 1
     let v = read32(RTC_CTRL0);
@@ -573,7 +569,9 @@ fn main() {
     let time = riscv::register::time::read64() - start;
     println!("time: {time}");
 
-    util::memtest::mem_test(DRAM_BASE, 0x2_0000);
+    if DRAM_TEST {
+        util::memtest::mem_test(DRAM_BASE, 0x2_0000);
+    }
 
     let v = read32(AXI_SRAM_RTOS_BASE);
     // 0x0c85e985
@@ -582,7 +580,7 @@ fn main() {
 
     // `make run` in main
     let size = 0x2_0000;
-    println!(">> load main stage (size: {size} max) over USB");
+    println!(">> load main stage (max size: {size} bytes) over USB");
     println!();
 
     let load_addr = mem_map::DRAM_BASE;
@@ -590,7 +588,7 @@ fn main() {
 
     // https://github.com/orangecms/sbitest
     let size = 0x1000;
-    println!(">> load SBI test (size: {size} max) over USB");
+    println!(">> load SBI test (max size: {size} bytes) over USB");
     println!();
 
     let test_addr = mem_map::DRAM_BASE + 0x0020_0000;

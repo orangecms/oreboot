@@ -3,57 +3,42 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-// see https://github.com/sophgo/fsbl
-//
-// Earlier SoCs (CV1800B, Milk-V Duo)
-//
-//  plat/cv180x/bl2/bl2.ld.S
-//  19:    RAM (rwx): ORIGIN = BL2_BASE, LENGTH = BL2_SIZE
-//
-//  plat/cv180x/include/mmap.h
-//  48:#define BL2_BASE (VC_RAM_BASE)
-//
-//  plat/cv180x/include/platform_def.h
-//  296:    #define VC_RAM_BASE 0x3BC00000 // Shadow_vc_mem
-//
-// Latere SoCs (SG200x, Milk-V Duo 256M, Duo S)
-//
-//  plat/cv181x/include/platform_def.h
-// #define TPU_SRAM_ORIGIN_BASE 0x0C000000
-// #define TPU_SRAM_SIZE 0x40000 // 256KiB
+// Same for all SoCs: CV1800B (Milk-V Duo), SG200x (Milk-V Duo 256M, Duo S)
+const MEM_BASE: usize = 0x80000000;
+const MEM_SIZE: usize = 2 * 1024 * 1024;
 
-const LINKERSCRIPT_FILENAME: &str = "link-duo_s-main.ld";
-
-const LINKERSCRIPT: &[u8] = b"
+const LINKERSCRIPT_FILENAME: &str = "link.x";
+const LINKERSCRIPT_TEMPLATE: &str = r#"
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
 MEMORY {
-    SRAM : ORIGIN = 0x80000000, LENGTH = 2M
+    MEM : ORIGIN = $MEM_BASE$, LENGTH = $MEM_SIZE$
 }
 SECTIONS {
     .head : {
         *(.head.text)
-    } > SRAM
+    } > MEM
     .text : {
         KEEP(*(.text.entry))
         *(.text .text.*)
         . = ALIGN(8);
-    } > SRAM
+    } > MEM
     .bss : {
         _sbss = .;
         *(.bss .bss.*);
         _ebss = .;
-    } > SRAM
+        . = ALIGN(8);
+    } > MEM
 
     # https://docs.rust-embedded.org/embedonomicon/main.html
     .rodata : {
         *(.rodata .rodata.*);
-    } > SRAM #FLASH
+    } > MEM
     .data : {
         _sdata = .;
         *(.data .data.*);
         _edata = .;
-    } > SRAM
+    } > MEM
     _sidata = LOADADDR(.data);
 
     /DISCARD/ : {
@@ -61,13 +46,23 @@ SECTIONS {
         *(.debug_*)
         *(.comment*)
     }
-}";
+}"#;
 
 fn main() {
+    // Until someone figures out how we can simplify this, do step by step
+    // conversion and string replacement to inject memory base and size.
+    let mem_base = format!("0x{MEM_BASE:08x}");
+    let ms = MEM_SIZE / 1024;
+    let mem_size = format!("{ms}K");
+    let ls = LINKERSCRIPT_TEMPLATE.replace("$MEM_BASE$", mem_base.as_str());
+    let ls = ls.replace("$MEM_SIZE$", mem_size.as_str());
+    let ls = ls.as_bytes();
+
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
     File::create(out.join(LINKERSCRIPT_FILENAME))
         .unwrap()
-        .write_all(LINKERSCRIPT)
+        .write_all(ls)
         .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
+    println!("cargo:rerun-if-changed=build.rs");
 }

@@ -1,20 +1,11 @@
 use core::ptr::{read_volatile, write_volatile};
 use log::{Error, Serial};
+use util::{read32, write32};
 
 const UART0_BASE: usize = 0x0414_0000;
 const UART0_THR: usize = UART0_BASE + 0x0000; /* Transmitter holding reg. */
 const UART0_LSR: usize = UART0_BASE + 0x0014; /* Line status reg.         */
-const LSR_THRE: u8 = 0x20; /* transmit holding register empty */
-
-fn read_8(reg: usize) -> u8 {
-    unsafe { read_volatile(reg as *mut u8) }
-}
-
-fn write_8(reg: usize, val: u8) {
-    unsafe {
-        write_volatile(reg as *mut u8, val);
-    }
-}
+const LSR_THRE: u32 = 0x20; /* transmit holding register empty */
 
 #[derive(Debug)]
 pub struct SGSerial();
@@ -34,10 +25,10 @@ impl embedded_hal_nb::serial::ErrorType for SGSerial {
 impl embedded_hal_nb::serial::Write<u8> for SGSerial {
     #[inline]
     fn write(&mut self, c: u8) -> nb::Result<(), self::Error> {
-        if read_8(UART0_LSR) & LSR_THRE == 0 {
+        if read32(UART0_LSR) & LSR_THRE == 0 {
             return Err(nb::Error::WouldBlock);
         }
-        write_8(UART0_THR, c);
+        write32(UART0_THR, c as u32);
         Ok(())
     }
 
