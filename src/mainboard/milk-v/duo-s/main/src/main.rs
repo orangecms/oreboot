@@ -95,6 +95,8 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 pub unsafe extern "C" fn start() -> ! {
     // starts with a 32 bytes header
     naked_asm!(
+        // save program counter for early printing
+        "auipc  s4, 0",
         // 1. clear cache and processor states
         "csrw   mie, zero",
         "csrw   mip, 0",
@@ -213,11 +215,16 @@ fn noisr(a: usize, b: usize) {
 
 #[no_mangle]
 fn main() {
+    let mut ini_pc: usize = 0;
+    unsafe { asm!("mv {}, s4", out(reg) ini_pc) };
+
     let s = uart::SGSerial::new();
     init_logger(s);
     // WE GET HERE
+    println!("{ini_pc:08x}");
     println!();
     println!("oreboot 🦀 main");
+    println!("initial program counter (PC) {ini_pc:016x}");
 
     print_ids();
     print_cpuid();

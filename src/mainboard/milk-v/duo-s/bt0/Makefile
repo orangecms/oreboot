@@ -4,7 +4,6 @@ RELEASE_ELF= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0
 RELEASE_BIN= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-bt0.bin
 
 SG_BOOT ?= sg_boot
-SERIAL  ?= /dev/ttyUSB0
 SOC     ?= SG200X
 
 cibuild: mainboard

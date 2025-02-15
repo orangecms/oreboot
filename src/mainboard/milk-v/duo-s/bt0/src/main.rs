@@ -573,7 +573,7 @@ fn main() {
     let time = riscv::register::time::read64() - start;
     println!("time: {time}");
 
-    // util::memtest::mem_test(DRAM_BASE, 0x20_0000);
+    util::memtest::mem_test(DRAM_BASE, 0x2_0000);
 
     let v = read32(AXI_SRAM_RTOS_BASE);
     // 0x0c85e985
@@ -581,18 +581,20 @@ fn main() {
     println!("RTOS base: 0x{v:08x}");
 
     // `make run` in main
-    println!(">> load main stage over USB");
+    let size = 0x2_0000;
+    println!(">> load main stage (size: {size} max) over USB");
     println!();
 
     let load_addr = mem_map::DRAM_BASE;
-    rom::load_image(load_addr, 0x0, 0x2_0000, 0);
+    rom::load_image(load_addr, 0x0, size, 0);
 
     // https://github.com/orangecms/sbitest
-    println!(">> load SBI test over USB");
+    let size = 0x1000;
+    println!(">> load SBI test (size: {size} max) over USB");
     println!();
 
     let test_addr = mem_map::DRAM_BASE + 0x0020_0000;
-    rom::load_image(test_addr, 0x0, 0x1000, 0);
+    rom::load_image(test_addr, 0x0, size, 0);
 
     println!("[bt0] Jump to main stage @{load_addr:08x}");
     dump_block(load_addr, 0x60, 0x20);

@@ -1,8 +1,10 @@
 OREBOOT=$(abspath $(CURDIR)/../../../../../)
 TARGET     = riscv64imac-unknown-none-elf
-SERIAL    := /dev/ttyUSB0
 RELEASE_ELF= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-main
 RELEASE_BIN= $(OREBOOT)/target/$(TARGET)/release/milk_v-duo_s-main.bin
+
+SG_BOOT ?= sg_boot
+SOC     ?= SG200X
 
 cibuild: mainboard
 # TODO
@@ -21,9 +23,7 @@ build:
 	cargo objcopy -- -O binary $(RELEASE_BIN)
 
 run: build
-	sg_boot run --main $(RELEASE_BIN)
-	sleep 1
-	sg_boot run --main $(PAYLOAD)
+	$(SG_BOOT) run $(RELEASE_BIN)
 
 objdump: build
 	cargo objdump -- -D

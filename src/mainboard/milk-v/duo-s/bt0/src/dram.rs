@@ -1,7 +1,7 @@
 use crate::ddr_phy::phy_init;
 use crate::mem_map::{
     CLK_GEN_PLL_CTRL_BASE, DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB,
-    PHYD_BASE_ADDR, TOP_BASE,
+    PHYD_BASE_ADDR, PHY_VERSION, TOP_BASE,
 };
 use crate::PRINT_LOG;
 use util::{read32, write32};
@@ -488,12 +488,11 @@ fn ctrl_init_low_patch() {
     // disable auto ctrl_upd
     write32(DDR_CFG_BASE + 0x01a0, 0xC0400018);
     // disable clock gating
-    write32(DDR_CFG_BASE + 0x0014, 0x00000fff);
+    write32(DDR_TOP_BASE + 0x0014, 0x00000fff);
     // change xpi to single DDR burst
-    // write32(DDR_CFG_BASE + 0x000c, 0x63746371);
+    write32(DDR_CFG_BASE + 0x000c, 0x63746371);
+    write32(DDR_CFG_BASE + 0x0044, 0x14000000);
 }
-
-const PHY_REG_VERSION: usize = PHYD_BASE_ADDR + 0x3000;
 
 const DFITMG0: usize = DDR_CFG_BASE + 0x0190;
 const DFITMG1: usize = DDR_CFG_BASE + 0x0194;
@@ -503,7 +502,7 @@ fn cvx16_setting_check() {
     println!("/ cvx16_setting_check");
 
     // NOTE: On SG2002 and SG2000 (Duo S), I get 20210920 - looking like year/month/day
-    let phy_reg_version = read32(PHY_REG_VERSION);
+    let phy_reg_version = read32(PHY_VERSION);
     println!("  phy_reg_version {phy_reg_version:08x}");
 
     // NOTE: Those were commented out in the vendor code as well.
@@ -1643,7 +1642,7 @@ fn pwrctl_init() -> (u32, u32, u32, u32) {
     // Write 0 to PCTRL_n.port_en, without port 0
     // port number = 0,1,2,3
     for i in 1..4 {
-        write32(DDR_CFG_BASE + 0x490 + 0xb0 * i, 0x0);
+        write32(PHYD_BASE_ADDR + 0x490 + 0xb0 * i, 0x0);
     }
 
     // Poll PSTAT.rd_port_busy_n = 0
@@ -2063,7 +2062,7 @@ fn cvx16_synp_mrw(addr: u32, data: u32) {
 fn cvx16_wrlvl_req() {
     // NOTE: training need ctrl_low_patch first
     // wrlvl response only DQ0
-    write32(0x005C + PHYD_BASE_ADDR, 0x00FE0000);
+    write32(PHYD_BASE_ADDR + 0x005C, 0x00FE0000);
 
     // Note: training need ctrl_low_patch first
     let (
@@ -2639,10 +2638,7 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
 
     // change_pll_freq(reg_set, reg_span, reg_step);
     cvx16_ddr_phy_power_on_seq3();
-
     cvx16_wait_for_dfi_init_complete();
-    // CHECK
-
     cvx16_polling_synp_normal_mode();
 
     // a very simple write+read check
@@ -2685,6 +2681,7 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
     ctrl_init_low_patch();
     println!("ctrl_low_patch finish");
 
+    // CHECK
     if !DDR2 {
         cvx16_wrlvl_req();
         println!("cvx16_wrlvl_req finish");
