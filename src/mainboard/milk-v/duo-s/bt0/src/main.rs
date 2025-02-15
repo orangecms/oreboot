@@ -88,7 +88,8 @@ pub unsafe extern "C" fn start() -> ! {
         // wait for multihart to get back into the game
         ".nonboothart:",
         "j      .boothart",
-        "csrw   mie, 8", // 1 << 3
+        // enable interrupt
+        "csrw   mie, 1 << 3",
         "wfi",
         "call   {payload}",
         ".boothart:",
@@ -195,7 +196,7 @@ fn main() {
 
     // FIXME: DRAM on SG2002 is not stable and loses data :(
     if DRAM_TEST {
-        util::memtest::mem_test(DRAM_BASE, 0x2000);
+        util::memtest::mem_test(DRAM_BASE, 0x1_0000);
     }
 
     panic!("DRAM is sad");

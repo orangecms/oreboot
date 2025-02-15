@@ -48,6 +48,42 @@ fn get_ddr_type() -> u32 {
     DDR_TYPE_DDR3
 }
 
+// plat/cv181x/include/ddr/ddr_pkg_info.h
+#[derive(Debug)]
+#[repr(u32)]
+pub enum DramType {
+    Unknown = 0,
+    NY4GbitDDR3 = 1,
+    NY2GbitDDR3 = 2,
+    ESMT1GbitDDR2 = 3,
+    ESMTN25512MbitDDR2 = 4,
+    ETRON1Gbit = 5,
+    ESMT2GbitDDR3 = 6,
+    PM2G = 7,
+    PM1G = 8,
+    ETRON512MbitDDR2 = 9,
+    ESMTN251GbitDDR3 = 10,
+}
+
+impl From<u8> for DramType {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => panic!(),
+            1 => Self::NY4GbitDDR3,
+            2 => Self::NY2GbitDDR3,
+            3 => Self::ESMT1GbitDDR2,
+            4 => Self::ESMTN25512MbitDDR2,
+            5 => Self::ETRON1Gbit,
+            6 => Self::ESMT2GbitDDR3,
+            7 => Self::PM2G,
+            8 => Self::PM1G,
+            9 => Self::ETRON512MbitDDR2,
+            10 => Self::ESMTN251GbitDDR3,
+            _ => panic!(),
+        }
+    }
+}
+
 // NOTE: CTRL settings are hardcoded; for SSC, add params to this fn
 fn set_dpll_ssc_syn(reg_set: u32, reg_span: u32, reg_step: u32) {
     let ctrl_cfg = 0b010000;
@@ -122,7 +158,7 @@ fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32) {
         rddata = modified_bits_by_value(rddata, 0, 6, 6); // ssc_syn_fix_div
         write32(0x50 + 0x03002900, rddata);
         */
-        println!("SSC_EN");
+        println!("SSC enabled");
     } else if SSC_BYPASS {
         /*
         rddata = (reg_set & 0xfc000000) + 0x04000000; // TOP_REG_SSC_SET
@@ -142,7 +178,7 @@ fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32) {
         uartlog("SSC_BYPASS\n");
         */
     } else {
-        println!("SSC_EN = 0");
+        println!("SSC bypassed/disabled");
         set_dpll_ssc_syn(reg_set, reg_span, reg_step);
     }
 
@@ -480,18 +516,6 @@ fn ddrc_init() {
     write32(DDR_CFG_BASE + 0x600, 0x01a801a8);
     // PCFGWQOS1_2.wqos_map_timeout2:16:16:=0x1a8
     // PCFGWQOS1_2.wqos_map_timeout1:0:16:=0x1a8
-}
-
-fn ctrl_init_low_patch() {
-    // disable auto PD/SR
-    write32(DDR_CFG_BASE + 0x0030, 0x00000000);
-    // disable auto ctrl_upd
-    write32(DDR_CFG_BASE + 0x01a0, 0xC0400018);
-    // disable clock gating
-    write32(DDR_TOP_BASE + 0x0014, 0x00000fff);
-    // change xpi to single DDR burst
-    write32(DDR_CFG_BASE + 0x000c, 0x63746371);
-    write32(DDR_CFG_BASE + 0x0044, 0x14000000);
 }
 
 const DFITMG0: usize = DDR_CFG_BASE + 0x0190;
@@ -1291,10 +1315,10 @@ fn get_pll_speed_change(v: u32) -> (bool, u32, u32) {
     // <= #RD (~pwstrb_mask[5:4] & TOP_REG_CUR_PLL_SPEED[1:0]) |  pwstrb_mask_pwdata[5:4];
     // TOP_REG_NEXT_PLL_SPEED  [1:0]
     // <= #RD (~pwstrb_mask[9:8] & TOP_REG_NEXT_PLL_SPEED[1:0]) |  pwstrb_mask_pwdata[9:8];
-    let en_pll_speed = (v & 0b1) != 0;
+    let en_pll_speed = v & 0b1 == 1;
     let curr_pll_speed = (v & (0b11 << 4)) >> 4;
     let next_pll_speed = (v & (0b11 << 8)) >> 8;
-    println!("  en_pll_speed {en_pll_speed}");
+    println!("  en_pll_speed     {en_pll_speed}");
     println!("  curr_pll_speed   {curr_pll_speed}");
     println!("  next_pll_speed   {next_pll_speed}");
     (en_pll_speed, curr_pll_speed, next_pll_speed)
@@ -1309,36 +1333,34 @@ fn cvx16_int_isr_08() {
 }
 
 const PHYD_DLL_CTRL: usize = PHYD_BASE_ADDR + 0x0040;
+const PHYD_DLL_RX_START_CAL: u32 = 1 << 1;
+const PHYD_DLL_TX_START_CAL: u32 = 1 << 17;
+
 const PHYD_DLL_STATUS: usize = PHYD_BASE_ADDR + 0x3014;
+const PHYD_DLL_STATUS_DONE: u32 = 1 << 16;
+
+const PHYD_SPEED: usize = PHYD_APB + 0x004c;
 
 fn cvx16_dll_cal() {
-    let v = read32(PHYD_APB + 0x4c);
+    println!("/ cvx16_dll_cal start");
+    let v = read32(PHYD_SPEED);
     let (en_pll_speed_chg, curr_pll_speed, next_pll_speed) = get_pll_speed_change(v);
-
+    // stop calibration and update
+    let v = read32(PHYD_DLL_CTRL);
+    let v = v & !PHYD_DLL_RX_START_CAL & !PHYD_DLL_TX_START_CAL;
+    write32(PHYD_DLL_CTRL, v);
     // only do calibration and update when high speed
-    if (curr_pll_speed != 0) {
-        // param_phyd_dll_rx_start_cal <= int_regin[1];
-        // param_phyd_dll_tx_start_cal <= int_regin[17];
+    if (curr_pll_speed > 0) {
         let v = read32(PHYD_DLL_CTRL);
-        let v = v & !((1 << 17) | (1 << 1));
+        let v = v | PHYD_DLL_RX_START_CAL | PHYD_DLL_TX_START_CAL;
         write32(PHYD_DLL_CTRL, v);
-        // param_phyd_dll_rx_start_cal <= int_regin[1];
-        // param_phyd_dll_tx_start_cal <= int_regin[17];
-        let v = read32(PHYD_DLL_CTRL);
-        write32(PHYD_DLL_CTRL, v | (1 << 17) | (1 << 1));
-        while read32(PHYD_DLL_STATUS) & !(1 << 16) == 0 {}
-        println!("  DLL lock !");
+        while read32(PHYD_DLL_STATUS) & !PHYD_DLL_STATUS_DONE == 0 {}
+        println!("  DLL lock");
         // opdelay(1000);
-        println!("  Do DLL UPD");
-    // cvx16_dll_cal_status();
-    } else {
-        // stop calibration and update when low speed
-        // param_phyd_dll_rx_start_cal <= int_regin[1];
-        // param_phyd_dll_tx_start_cal <= int_regin[17];
-        let v = read32(PHYD_DLL_CTRL);
-        write32(PHYD_DLL_CTRL, v & !((1 << 17) | (1 << 1)));
+        println!("  DLL UPD");
+        // cvx16_dll_cal_status();
     }
-    println!("  DLL CAL Finish");
+    println!("\\ cvx16_dll_cal finish");
 }
 
 const PHYD_TX_CA: usize = PHYD_BASE_ADDR + 0x0130;
@@ -1490,6 +1512,7 @@ fn cvx16_clk_normal(reg_set: u32, reg_span: u32, reg_step: u32) {
 
 const RESETZ_DIV: usize = PHYD_APB + 0x04;
 const RESETZ_DQS: usize = PHYD_APB + 0x08;
+const DDR_PLL_MAS_RSTZ_DIV: usize = PHYD_APB + 0x0c;
 
 fn change_pll_freq(reg_set: u32, reg_span: u32, reg_step: u32) {
     println!("/ change_pll_freq start");
@@ -1499,35 +1522,32 @@ fn change_pll_freq(reg_set: u32, reg_span: u32, reg_step: u32) {
     // TOP_REG_RESETZ_DQS =0
     write32(RESETZ_DQS, 0);
     // TOP_REG_DDRPLL_MAS_RSTZ_DIV  =0
-    let v = read32(PHYD_APB + 0x0c);
-    write32(PHYD_APB + 0x0c, v & !(1 << 7));
+    let v = read32(DDR_PLL_MAS_RSTZ_DIV);
+    write32(DDR_PLL_MAS_RSTZ_DIV, v & !(1 << 7));
     println!("  RSTZ_DIV = 0");
 
     // NOTE: Reading a register may have meaning in hardware.
     // Yes, the vendor code reads this 6x. It _may_ have an effect.
     for _ in 0..5 {
-        read32(PHYD_APB + 0x4c);
+        read32(PHYD_SPEED);
     }
-    let v = read32(PHYD_APB + 0x4c);
+    let v = read32(PHYD_SPEED);
     let (en_chg, curr_speed, next_speed) = get_pll_speed_change(v);
 
-    let v = (v & (0b11 << 8)) | curr_speed << 8;
-    let v = (v & (0b11 << 4)) | next_speed << 4;
+    let v = (v & !(0b11 << 4)) | (next_speed << 4);
+    let v = (v & !(0b11 << 8)) | (curr_speed << 8);
     if (en_chg) {
         match next_speed {
             0 => {
-                // next clk_div40
-                write32(0x4c + PHYD_APB, v);
+                write32(PHYD_SPEED, v);
                 cvx16_clk_div40();
             }
             1 => {
-                // next clk normal div_2
-                write32(0x4c + PHYD_APB, v);
+                write32(PHYD_SPEED, v);
                 cvx16_clk_div2();
             }
             2 => {
-                // next clk normal
-                write32(0x4c + PHYD_APB, v);
+                write32(PHYD_SPEED, v);
                 cvx16_clk_normal(reg_set, reg_span, reg_step);
             }
             _ => {}
@@ -1539,8 +1559,8 @@ fn change_pll_freq(reg_set: u32, reg_span: u32, reg_step: u32) {
     // TOP_REG_RESETZ_DIV = 1
     write32(RESETZ_DIV, 1);
     // TOP_REG_DDRPLL_MAS_RSTZ_DIV
-    let v = read32(PHYD_APB + 0x0c);
-    write32(PHYD_APB + 0x0c, v | (1 << 7));
+    let v = read32(DDR_PLL_MAS_RSTZ_DIV);
+    write32(DDR_PLL_MAS_RSTZ_DIV, v | (1 << 7));
     println!("  RSTZ_DIV = 1");
     // TOP_REG_RESETZ_DQS
     write32(RESETZ_DQS, 1);
@@ -1602,74 +1622,47 @@ fn cvx16_polling_synp_normal_mode() {
     println!("\\ polling_synp_normal_mode finish");
 }
 
-// plat/cv181x/include/ddr/ddr_pkg_info.h
-#[derive(Debug)]
-#[repr(u32)]
-pub enum DramType {
-    Unknown = 0,
-    NY4GbitDDR3 = 1,
-    NY2GbitDDR3 = 2,
-    ESMT1GbitDDR2 = 3,
-    ESMTN25512MbitDDR2 = 4,
-    ETRON1Gbit = 5,
-    ESMT2GbitDDR3 = 6,
-    PM2G = 7,
-    PM1G = 8,
-    ETRON512MbitDDR2 = 9,
-    ESMTN251GbitDDR3 = 10,
-}
+const POWER_CONTROL: usize = DDR_CFG_BASE + 0x0030;
+const POWER_CONTROL_SELF_REFRESH_SW: u32 = 1 << 5;
+const POWER_CONTROL_DFI_DRAM_CLOCK_EN: u32 = 1 << 3;
+const POWER_CONTROL_DEEP_POWER_DOWN_EN: u32 = 1 << 2;
+const POWER_CONTROL_POWER_DOWN_EN: u32 = 1 << 1;
+const POWER_CONTROL_SELF_REFRESH_EN: u32 = 1 << 0;
 
-impl From<u8> for DramType {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => panic!(),
-            1 => Self::NY4GbitDDR3,
-            2 => Self::NY2GbitDDR3,
-            3 => Self::ESMT1GbitDDR2,
-            4 => Self::ESMTN25512MbitDDR2,
-            5 => Self::ETRON1Gbit,
-            6 => Self::ESMT2GbitDDR3,
-            7 => Self::PM2G,
-            8 => Self::PM1G,
-            9 => Self::ETRON512MbitDDR2,
-            10 => Self::ESMTN251GbitDDR3,
-            _ => panic!(),
-        }
-    }
-}
+const PSTAT: usize = DDR_CFG_BASE + 0x03fc;
+const PORT_OFFSET: usize = 0x0490;
+const PORT_CTRL_0_EN: usize = DDR_CFG_BASE + PORT_OFFSET + 0xb0 * 0;
+const PORT_CTRL_1_EN: usize = DDR_CFG_BASE + PORT_OFFSET + 0xb0 * 1;
+const PORT_CTRL_2_EN: usize = DDR_CFG_BASE + PORT_OFFSET + 0xb0 * 2;
+const PORT_CTRL_3_EN: usize = DDR_CFG_BASE + PORT_OFFSET + 0xb0 * 3;
 
 fn pwrctl_init() -> (u32, u32, u32, u32) {
-    // Write 0 to PCTRL_n.port_en, without port 0
-    // port number = 0,1,2,3
-    for i in 1..4 {
-        write32(DDR_CFG_BASE + 0x490 + 0xb0 * i, 0x0);
-    }
-
-    // Poll PSTAT.rd_port_busy_n = 0
-    // Poll PSTAT.wr_port_busy_n = 0
-    while read32(DDR_CFG_BASE + 0x3fc) != 0 {
+    // Disable all ports except 0
+    write32(PORT_CTRL_1_EN, 0x0);
+    write32(PORT_CTRL_2_EN, 0x0);
+    write32(PORT_CTRL_3_EN, 0x0);
+    // Poll rd_port_busy_n = 0 + wr_port_busy_n = 0
+    while read32(PSTAT) != 0 {
         println!("  Poll PSTAT.rd_port_busy_n = 0");
     }
 
-    // disable PWRCTL.powerdown_en, PWRCTL.selfref_en
-    let v = read32(DDR_CFG_BASE + 0x30);
+    let v = read32(POWER_CONTROL);
     // save for later
     let selfref_sw = (v >> 5) & 0b1;
     let en_dfi_dram_clk_disable = (v >> 3) & 0b1;
     let powerdown_en = (v >> 1) & 0b1;
     let selfref_en = v & 0b1;
-    // PWRCTL.selfref_sw
-    let v = v & !(1 << 5);
-    // PWRCTL.en_dfi_dram_clk_disable
-    let v = v & !(1 << 3);
-    // PWRCTL.deeppowerdown_en, non-mDDR/non-LPDDR2/non-LPDDR3,
-    // v = v & !(1 << 2);
-    // this register must not be set to 1
-    // PWRCTL.powerdown_en
-    let v = v & !(1 << 1);
-    // PWRCTL.selfref_en
-    let v = v & !1;
-    write32(DDR_CFG_BASE + 0x30, v);
+
+    let v = v & !POWER_CONTROL_SELF_REFRESH_SW;
+    let v = v & !POWER_CONTROL_DFI_DRAM_CLOCK_EN;
+    // for non-mDDR/non-LPDDR2/non-LPDDR3,
+    // let v = v & !POWER_CONTROL_DEEP_POWER_DOWN_EN;
+    // disable powerdown and self refresh
+    // this must not be set to 1
+    let v = v & !POWER_CONTROL_POWER_DOWN_EN;
+    let v = v & !POWER_CONTROL_SELF_REFRESH_EN;
+    write32(POWER_CONTROL, v);
+
     (
         selfref_sw,
         en_dfi_dram_clk_disable,
@@ -2321,13 +2314,31 @@ fn cvx16_wdqlvl_sw_req(x: u32, y: u32) {
 
 fn ctrl_init_high_patch() {
     // enable auto PD/SR
-    write32(0x08004000 + 0x30, 0x00000002);
+    write32(DDR_CFG_BASE + 0x0030, 0x00000002);
     // enable auto ctrl_upd
-    write32(0x08004000 + 0x1a0, 0x00400018);
+    write32(DDR_CFG_BASE + 0x01a0, 0x00400018);
     // enable clock gating
-    write32(0x0800a000 + 0x14, 0x00000000);
-    // change xpi to multi DDR burst
-    // write32(0x08004000 + 0xc, 0x63786370);
+    write32(DDR_TOP_BASE + 0x0014, 0x00000000);
+
+    // change XPI to multi DDR burst
+    // write32(DDR_CFG_BASE + 0x000c, 0x63786370);
+    // cv180x only
+    // write32(DDR_CFG_BASE + 0x000c, 0x63746371);
+    // write32(DDR_CFG_BASE + 0x0044, 0x08000000);
+}
+
+fn ctrl_init_low_patch() {
+    // disable auto PD/SR
+    write32(DDR_CFG_BASE + 0x0030, 0x00000000);
+    // disable auto ctrl_upd
+    write32(DDR_CFG_BASE + 0x01a0, 0xC0400018);
+    // disable clock gating
+    write32(DDR_TOP_BASE + 0x0014, 0x00000fff);
+
+    // change XPI to single DDR burst
+    // write32(DDR_CFG_BASE + 0x000c, 0x63746371);
+    // cv180x only
+    // write32(DDR_CFG_BASE + 0x0044, 0x14000000);
 }
 
 fn ctrl_init_detect_dram_size() -> u32 {
@@ -2598,15 +2609,18 @@ fn axi_mon_start_all() {
     axi_mon_start(AXIMON_M6_READ);
 }
 
+const DDRC_RESET: usize = DDR_TOP_BASE + 0x20;
+
 // fsbl plat/cv181x/ddr/ddr_sys_bring_up.c ddr_sys_bring_up
 pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
     let (reg_set, reg_span, reg_step) = get_pll_settings(ddr_data_rate);
     cvx16_pll_init(reg_set, reg_span, reg_step);
     ddrc_init();
+    // cvx16_ctrlupd_short();
 
     // release ddrc soft reset
     println!("Release DDR controller from reset");
-    write32(DDR_TOP_BASE + 0x20, 0x0);
+    write32(DDRC_RESET, 0x0);
 
     // set axi QOS
     // M1 = 0xA (VIP realtime)
@@ -2673,8 +2687,8 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
 
     if DO_BIST {
         cvx16_bist_wr_prbs_init();
-        if let Err(()) = bist() {
-            panic!("ERROR bist_fail");
+        if bist().is_err() {
+            panic!("BIST fail");
         }
     }
 
@@ -2689,8 +2703,8 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
 
     if DO_BIST {
         cvx16_bist_wr_prbs_init();
-        if let Err(()) = bist() {
-            panic!("ERROR bist_fail");
+        if bist().is_err() {
+            panic!("BIST fail");
         }
     }
 
@@ -2699,8 +2713,8 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
 
     if DO_BIST {
         cvx16_bist_wr_prbs_init();
-        if let Err(()) = bist() {
-            panic!("ERROR bist_fail");
+        if bist().is_err() {
+            panic!("BIST fail");
         }
     }
 
