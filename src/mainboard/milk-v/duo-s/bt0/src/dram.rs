@@ -1642,7 +1642,7 @@ fn pwrctl_init() -> (u32, u32, u32, u32) {
     // Write 0 to PCTRL_n.port_en, without port 0
     // port number = 0,1,2,3
     for i in 1..4 {
-        write32(PHYD_BASE_ADDR + 0x490 + 0xb0 * i, 0x0);
+        write32(DDR_CFG_BASE + 0x490 + 0xb0 * i, 0x0);
     }
 
     // Poll PSTAT.rd_port_busy_n = 0
