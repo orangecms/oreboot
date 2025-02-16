@@ -40,6 +40,8 @@ const DBG_SHMOO: bool = false;
 const DDR3: bool = true;
 const DDR4: bool = false;
 
+const REFRESH_CONTROL3: usize = DDR_CFG_BASE + 0x60;
+
 // plat/cv181x/include/ddr/ddr_pkg_info.h
 #[derive(Debug)]
 #[repr(u32)]
@@ -1355,9 +1357,9 @@ fn pwrctl_init() -> (u32, u32, u32, u32) {
     let v = v & !POWER_CONTROL_SELF_REFRESH_SW;
     let v = v & !POWER_CONTROL_DFI_DRAM_CLOCK_EN;
     // for non-mDDR/non-LPDDR2/non-LPDDR3,
+    // this must not be set to 1
     // let v = v & !POWER_CONTROL_DEEP_POWER_DOWN_EN;
     // disable powerdown and self refresh
-    // this must not be set to 1
     let v = v & !POWER_CONTROL_POWER_DOWN_EN;
     let v = v & !POWER_CONTROL_SELF_REFRESH_EN;
     write32(POWER_CONTROL, v);
@@ -1376,29 +1378,24 @@ fn pwrctl_restore(
     powerdown_en: u32,
     selfref_en: u32,
 ) {
-    // RFSHCTL3.dis_auto_refresh = 0
-    // let v = read32(DDR_CFG_BASE + 0x60);
-    // let v = v & !(0b1);
-    // write32(DDR_CFG_BASE + 0x60, v);
-    // restore PWRCTL.powerdown_en, PWRCTL.selfref_en
-    let v = read32(DDR_CFG_BASE + 0x30);
-    // PWRCTL.selfref_sw
-    let v = v & !(1 << 5) | (selfref_sw << 5);
-    // PWRCTL.en_dfi_dram_clk_disable
-    let v = v & !(1 << 3) | (en_dfi_dram_clk_disable << 3);
-    // PWRCTL.deeppowerdown_en, non-mDDR/non-LPDDR2/non-LPDDR3,
+    // dis_auto_refresh = 0
+    // let v = read32(REFRESH_CONTROL3);
+    // write32(REFRESH_CONTROL3, v & !(0b1));
+    // restore powerdown_en, selfref_en
+    let v = read32(POWER_CONTROL);
+    let v = (v & !POWER_CONTROL_SELF_REFRESH_SW) | (selfref_sw << 5);
+    let v = (v & !POWER_CONTROL_DFI_DRAM_CLOCK_EN) | (en_dfi_dram_clk_disable << 3);
+    // deeppowerdown_en, non-mDDR/non-LPDDR2/non-LPDDR3,
+    // this must not be set to 1
     // let v = v & !(1 << 2);
-    // this register must not be set to 1
-    // PWRCTL.powerdown_en
-    let v = v & !(1 << 1) | (powerdown_en << 1);
-    // PWRCTL.selfref_en
-    let v = v & !(1) | selfref_en;
+    let v = (v & !POWER_CONTROL_POWER_DOWN_EN) | (powerdown_en << 1);
+    let v = v & !POWER_CONTROL_SELF_REFRESH_EN | selfref_en;
     write32(DDR_CFG_BASE + 0x30, v);
 
-    // Write 1 to PCTRL_n.port_en
-    for i in 1..4 {
-        write32(DDR_CFG_BASE + 0x490 + 0xb0 * i, 0x1);
-    }
+    // Reenable ports 1-3
+    write32(PORT_CTRL_1_EN, 1);
+    write32(PORT_CTRL_2_EN, 1);
+    write32(PORT_CTRL_3_EN, 1);
 }
 
 fn bist_x_init_finish() {
@@ -1586,17 +1583,17 @@ fn cvx16_rdglvl_req(ddr_type: &DdrType) {
 
     cvx16_clk_gating_disable();
 
-    // RFSHCTL3.dis_auto_refresh = 1
-    // let v = read32(DDR_CFG_BASE + 0x60);
-    // write32(DDR_CFG_BASE + 0x60, v | 1);
+    // dis_auto_refresh = 1
+    // let v = read32(REFRESH_CONTROL3);
+    // write32(REFRESH_CONTROL3, v | 1);
 
     let ddr3 = *ddr_type == DdrType::Ddr3;
     let ddr3_mpr_mode = read32(PHYD_BASE + 0x0184) & (1 << 4) != 0;
 
     if ddr3 && ddr3_mpr_mode {
-        // RFSHCTL3.dis_auto_refresh =1
-        let v = read32(DDR_CFG_BASE + 0x60);
-        write32(DDR_CFG_BASE + 0x60, v | 0x1);
+        // dis_auto_refresh =1
+        let v = read32(REFRESH_CONTROL3);
+        write32(REFRESH_CONTROL3, v | 0x1);
         // MR3
         let v = read32(DDR_CFG_BASE + 0xe0);
         // Dataflow from MPR
@@ -1626,9 +1623,9 @@ fn cvx16_rdglvl_req(ddr_type: &DdrType) {
         // Normal operation
         let v = v & !(1 << 2);
         cvx16_synp_mrw(0x3, v & 0xffff);
-        // RFSHCTL3.dis_auto_refresh = 0
-        let v = read32(DDR_CFG_BASE + 0x60);
-        write32(DDR_CFG_BASE + 0x60, v & !1);
+        // dis_auto_refresh = 0
+        let v = read32(REFRESH_CONTROL3);
+        write32(REFRESH_CONTROL3, v & !1);
     }
 
     pwrctl_restore(
@@ -1779,8 +1776,8 @@ fn cvx16_wrlvl_req(ddr_type: &DdrType) {
     cvx16_bist_wrlvl_init();
 
     // RFSHCTL3.dis_auto_refresh = 1
-    // let v = read32(DDR_CFG_BASE + 0x60);
-    // write32(DDR_CFG_BASE + 0x60, v | 1);
+    // let v = read32(REFRESH_CONTROL3);
+    // write32(REFRESH_CONTROL3, v | 1);
 
     let ddr3 = *ddr_type == DdrType::Ddr3;
     if ddr3 {
@@ -1851,9 +1848,9 @@ fn cvx16_wrlvl_req(ddr_type: &DdrType) {
     // BIST clock disable
     write32(DDR_BIST_BASE + 0x0, 0x00040000);
 
-    // RFSHCTL3.dis_auto_refresh =0
-    let v = read32(DDR_CFG_BASE + 0x60);
-    write32(DDR_CFG_BASE + 0x60, v & !(0b1));
+    // dis_auto_refresh = 0
+    let v = read32(REFRESH_CONTROL3);
+    write32(REFRESH_CONTROL3, v & !(0b1));
 
     if ddr3 {
         let v = read32(DDR_CFG_BASE + 0xdc);
@@ -2192,8 +2189,8 @@ fn ctrl_init_update_by_dram_size(size: u32) {
         }
     }
     // toggle refresh_update_level
-    write32(0x08004000 + 0x60, 0x00000002);
-    write32(0x08004000 + 0x60, 0x00000000);
+    write32(REFRESH_CONTROL3, 0x00000002);
+    write32(REFRESH_CONTROL3, 0x00000000);
 }
 
 fn cvx16_dram_cap_check(size: u32) {
