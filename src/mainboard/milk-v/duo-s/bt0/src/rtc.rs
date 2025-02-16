@@ -1,6 +1,6 @@
+use oreboot_arch::riscv64::util::delay;
 use util::{read32, write32};
 
-use crate::dram;
 use crate::mem_map::RTC_SYS_BASE;
 
 const RTC_SMTH_BASE: usize = RTC_SYS_BASE + 0x0002_0000;
@@ -61,7 +61,7 @@ pub fn init() {
     write32(RTC_MACRO_BASE + 0x8C, 0x0);
 
     // delay ~200us
-    dram::opdelay(200);
+    delay(500);
 
     // reg_clk32k_cg_en = rtc_ctrl0[11] -> 1
     let v = read32(RTC_CTRL0);

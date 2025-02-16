@@ -11,13 +11,11 @@ use core::{
     arch::{asm, naked_asm},
     mem::transmute,
     panic::PanicInfo,
-    ptr::{self, addr_of, addr_of_mut},
     slice::from_raw_parts as slice_from,
 };
-use riscv::register::mhartid;
-use riscv::register::{marchid, mimpid, mvendorid};
 
 use layoutflash::areas::{find_fdt, FdtIterator};
+use util::{dump, dump_block, read32, write32};
 
 mod cv18xx;
 mod ddr_phy;
@@ -28,10 +26,7 @@ mod rom;
 mod rtc;
 mod uart;
 
-use mem_map::{AXI_SRAM_BASE, DRAM_BASE};
-use util::{dump, dump_block, read32, write32};
-
-pub type EntryPoint = unsafe extern "C" fn();
+pub type ExternFn0 = unsafe extern "C" fn() -> !;
 
 const DRAM_TEST: bool = true;
 const PRINT_LOG: bool = false;
@@ -83,7 +78,7 @@ pub unsafe extern "C" fn start() -> ! {
         "la     sp, {stack}",
         "li     t0, {stack_size}",
         "add    sp, sp, t0",
-        // 4. jump to reset/payload
+        // 4. jump to reset/next stage
         "j      .boothart",
         // wait for multihart to get back into the game
         ".nonboothart:",
@@ -91,12 +86,12 @@ pub unsafe extern "C" fn start() -> ! {
         // enable interrupt
         "csrw   mie, 1 << 3",
         "wfi",
-        "call   {payload}",
+        "call   {next}",
         ".boothart:",
         "call   {reset}",
         stack      = sym STACK,
         stack_size = const STACK_SIZE,
-        payload    = sym exec_payload,
+        next    = sym next_stage,
         reset      = sym reset,
         start      = sym start
     )
@@ -118,6 +113,7 @@ pub unsafe extern "C" fn reset() {
         static _sidata: u8;
     }
 
+    use core::ptr::{self, addr_of, addr_of_mut};
     let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
     ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
 
@@ -127,12 +123,13 @@ pub unsafe extern "C" fn reset() {
     main();
 }
 
-static mut SERIAL: Option<uart::SGSerial> = None;
+use core::cell::OnceCell;
+static mut SERIAL: OnceCell<uart::SGSerial> = OnceCell::new();
 
 fn init_logger(s: uart::SGSerial) {
     unsafe {
-        SERIAL.replace(s);
-        if let Some(m) = SERIAL.as_mut() {
+        SERIAL.get_or_init(|| s);
+        if let Some(m) = SERIAL.get_mut() {
             log::init(m);
         }
     }
@@ -196,7 +193,7 @@ fn main() {
 
     // FIXME: DRAM on SG2002 is not stable and loses data :(
     if DRAM_TEST {
-        util::memtest::mem_test(DRAM_BASE, 0x1_0000);
+        util::memtest::mem_test(mem_map::DRAM_BASE, 0x1_0000);
     }
 
     panic!("DRAM is sad");
@@ -230,28 +227,24 @@ fn main() {
     const BOOT_MAIN: bool = true;
     if BOOT_MAIN {
         // RV64ACDFIMSUVX
-        exec_payload(load_addr);
+        next_stage(load_addr);
     } else {
         // RV64ACDFIMSUX
         cv18xx::exec_hartl(load_addr);
     }
-
-    if false {
-        println!("[bt0] Exit from main stage, resetting...");
-        unsafe {
-            reset();
-        }
-    }
-
-    unsafe { riscv::asm::wfi() };
 }
 
-fn exec_payload(addr: usize) {
+// jump to main stage
+fn next_stage(addr: usize) {
     unsafe {
-        // jump to main
-        let f: EntryPoint = transmute(addr);
+        let f: ExternFn0 = transmute(addr);
         asm!("fence.i");
         f();
+    }
+
+    println!("[bt0] Exit from main stage, resetting...");
+    unsafe {
+        reset();
     }
 }
 

@@ -1,16 +1,14 @@
+use core::ptr::read_volatile;
+
 use crate::ddr_phy::phy_init;
 use crate::mem_map::{
     CLK_GEN_PLL_CTRL_BASE, DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB,
     PHYD_BASE, PHY_VERSION, TOP_BASE,
 };
 use crate::PRINT_LOG;
-use util::{read32, write32};
+use util::{read32, read64, write32};
 
-pub fn opdelay(t: usize) {
-    for _ in 0..t {
-        unsafe { riscv::asm::nop() }
-    }
-}
+use oreboot_arch::riscv64::util::delay as opdelay;
 
 // plat/cv181x/include/ddr/bitwise_ops.h
 
@@ -33,7 +31,7 @@ const DPLL_SSC_SYN_STEP: usize = PLL_G6_BASE + 0x005C;
 
 // TODO: All of this would be a build-time config.
 const DRAM_TEST: bool = true;
-const DO_BIST: bool = false;
+const DO_BIST: bool = true;
 
 const X16_MODE: bool = true;
 const DBG_SHMOO: bool = false;
@@ -1390,7 +1388,7 @@ fn pwrctl_restore(
     // let v = v & !(1 << 2);
     let v = (v & !POWER_CONTROL_POWER_DOWN_EN) | (powerdown_en << 1);
     let v = v & !POWER_CONTROL_SELF_REFRESH_EN | selfref_en;
-    write32(DDR_CFG_BASE + 0x30, v);
+    write32(POWER_CONTROL, v);
 
     // Reenable ports 1-3
     write32(PORT_CTRL_1_EN, 1);
@@ -1639,6 +1637,9 @@ fn cvx16_rdglvl_req(ddr_type: &DdrType) {
     cvx16_clk_gating_enable();
 }
 
+const CLOCK_GATING_ENABLE: usize = PHYD_APB + 0x0044;
+const PHYD_SHIFT_GATING_EN: usize = PHYD_BASE + 0x00f4;
+
 fn cvx16_clk_gating_enable() {
     // TOP_REG_CG_EN_PHYD_TOP      0
     // TOP_REG_CG_EN_CALVL         1
@@ -1655,26 +1656,24 @@ fn cvx16_clk_gating_enable() {
     // TOP_REG_CG_EN_ZQ            12
     // TOP_REG_CG_EN_PHY_PARAM     13 //0:a-on
     // 0b10110010000001
-    write32(0x44 + PHYD_APB, 0x00002C81);
+    write32(CLOCK_GATING_ENABLE, 0x00002C81);
     // #ifdef _mem_freq_1333
     // #ifdef DDR2
     let v = read32(DDR_CFG_BASE + 0x190);
     let v = v & !(0b11111 << 24) | (6 << 24);
     write32(DDR_CFG_BASE + 0x190, v);
     // #endif
-    // PHYD_SHIFT_GATING_EN
-    write32(0x00F4 + PHYD_BASE, 0x00030033);
+    write32(PHYD_SHIFT_GATING_EN, 0x00030033);
     // phyd_stop_clk
-    let v = read32(DDR_CFG_BASE + 0x30);
-    write32(DDR_CFG_BASE + 0x30, v | 1 << 9);
+    let v = read32(POWER_CONTROL);
+    write32(POWER_CONTROL, v | (1 << 9));
     // dfi read/write clock gatting
     let v = read32(DDR_CFG_BASE + 0x148);
-    let v = v | (1 << 23) | (1 << 31);
-    write32(DDR_CFG_BASE + 0x148, v);
+    write32(DDR_CFG_BASE + 0x148, v | (1 << 23) | (1 << 31));
     println!("clk_gating_enable");
 
     // disable clock gating
-    // write32(0x0800_a000 + 0x14 , 0x00000fff);
+    // write32(DDR_TOP_BASE + 0x0014 , 0x00000fff);
     // println!("axi disable clock gating");
 }
 
@@ -1694,13 +1693,12 @@ fn cvx16_clk_gating_disable() {
     // TOP_REG_CG_EN_ZQ            12
     // TOP_REG_CG_EN_PHY_PARAM     13 //0:a-on
     // 0b01001011110101
-    write32(0x44 + PHYD_APB, 0x000012F5);
-    // PHYD_SHIFT_GATING_EN
-    write32(0x00F4 + PHYD_BASE, 0x00000000);
+    write32(CLOCK_GATING_ENABLE, 0x000012F5);
+    write32(PHYD_SHIFT_GATING_EN, 0x00000000);
     // phyd_stop_clk
-    let v = read32(DDR_CFG_BASE + 0x30);
+    let v = read32(POWER_CONTROL);
     let v = v & !(1 << 9);
-    write32(DDR_CFG_BASE + 0x30, v);
+    write32(POWER_CONTROL, v);
     // dfi read/write clock gatting
     let v = read32(DDR_CFG_BASE + 0x148);
     let v = v & !((1 << 23) | (1 << 31));
@@ -1708,7 +1706,7 @@ fn cvx16_clk_gating_disable() {
     println!("  clk_gating_disable");
 
     // disable clock gating
-    // write32(0x0800_a000 + 0x14 , 0x00000fff);
+    // write32(DDR_TOP_BASE + 0x0014 , 0x00000fff);
     // println!("axi disable clock gating");
 }
 
@@ -2046,9 +2044,11 @@ fn ctrl_init_low_patch() {
 }
 
 fn ctrl_init_detect_dram_size(ddr_type: &DdrType) -> u32 {
-    let mut cap_in_mbyte = 4;
+    let mut cap_in_mbyte = 0;
 
     if *ddr_type == DdrType::Ddr3 {
+        cap_in_mbyte = 4;
+
         fn bist_poll() -> u32 {
             // bist_enable
             write32(DDR_BIST_BASE + 0x0, 0x00010001);
@@ -2076,7 +2076,7 @@ fn ctrl_init_detect_dram_size(ddr_type: &DdrType) -> u32 {
         write32(DDR_BIST_BASE + 0x18, 0x00000004);
 
         // write PRBS to 0x0 as background {{{
-        let cmd = BIST_OP_WRITE | (3 << 12) | (0b0101 << 9);
+        let cmd = BIST_OP_WRITE | (3 << 12) | (5 << 9);
         write32(DDR_BIST_BASE + 0x40, cmd);
         // NOP
         for i in 0..5 {
@@ -2097,7 +2097,7 @@ fn ctrl_init_detect_dram_size(ddr_type: &DdrType) -> u32 {
             // write ~PRBS to (0x1 << *dram_cap_in_mbyte) {{{
 
             // write 16 UI~prbs
-            let cmd = BIST_OP_WRITE | (3 << 12) | (0b0101 << 9) | (1 << 8);
+            let cmd = BIST_OP_WRITE | (3 << 12) | (5 << 9) | (1 << 8);
             write32(DDR_BIST_BASE + 0x40, cmd);
             // NOP
             for i in 0..5 {
@@ -2108,7 +2108,7 @@ fn ctrl_init_detect_dram_size(ddr_type: &DdrType) -> u32 {
 
             // check PRBS at 0x0 {{{
             // read 16 UI prbs
-            let cmd = BIST_OP_READ | (3 << 12) | (0b0101 << 9);
+            let cmd = BIST_OP_READ | (3 << 12) | (5 << 9);
             write32(DDR_BIST_BASE + 0x40, cmd);
             // NOP
             for i in 0..5 {
@@ -2211,11 +2211,9 @@ fn bist() -> Result<(), ()> {
     let success = res & (1 << 3) == 0;
     let (odd, even) = if success {
         // read err_data
-        let ol = read32(DDR_BIST_BASE + 0x88) as u64;
-        let oh = read32(DDR_BIST_BASE + 0x8c) as u64;
-        let el = read32(DDR_BIST_BASE + 0x90) as u64;
-        let eh = read32(DDR_BIST_BASE + 0x94) as u64;
-        (oh << 32 | ol, eh << 32 | el)
+        let o = read64(DDR_BIST_BASE + 0x0088);
+        let e = read64(DDR_BIST_BASE + 0x0090);
+        (o, e)
     } else {
         (0, 0)
     };
@@ -2288,9 +2286,10 @@ fn axi_mon_latency_setting(lat_bin_size_sel: u32) {
     let rdata = read32(AXI_MON_BASE + AXIMON_M5_READ + 0x04);
     write32(AXI_MON_BASE + AXIMON_M5_READ + 0x04, rdata & 0xfffffc00);
 
+    // monitor clock gating?
     // ERROR("mon cg en.\n");
-    let rdata = read32(DDR_TOP_BASE + 0x14);
-    write32(DDR_TOP_BASE + 0x14, rdata | 0x00000100);
+    let rdata = read32(DDR_TOP_BASE + 0x0014);
+    write32(DDR_TOP_BASE + 0x0014, rdata | (1 << 8));
 }
 
 const AXIMON_START_REGVALUE: u32 = 0x30001;
