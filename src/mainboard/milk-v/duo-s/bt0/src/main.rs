@@ -190,7 +190,7 @@ fn main() {
 
     let start = riscv::register::time::read64();
     let (dram_vendor, ddr_rate) = cv18xx::get_dram_type();
-    dram::init(ddr_rate, dram::DramType::from(dram_vendor as u8));
+    dram::init(ddr_rate, &dram::DramType::from(dram_vendor as u8));
     let time = riscv::register::time::read64() - start;
     println!("DRAM init done in {time}");
 

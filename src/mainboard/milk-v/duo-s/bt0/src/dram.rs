@@ -55,7 +55,7 @@ pub enum DramType {
     Unknown = 0,
     NY4GbitDDR3 = 1,
     NY2GbitDDR3 = 2,
-    ESMT1GbitDDR2 = 3,
+    ESMT1GbitDDR3 = 3,
     ESMTN25512MbitDDR2 = 4,
     ETRON1Gbit = 5,
     ESMT2GbitDDR3 = 6,
@@ -71,7 +71,7 @@ impl From<u8> for DramType {
             0 => panic!(),
             1 => Self::NY4GbitDDR3,
             2 => Self::NY2GbitDDR3,
-            3 => Self::ESMT1GbitDDR2,
+            3 => Self::ESMT1GbitDDR3,
             4 => Self::ESMTN25512MbitDDR2,
             5 => Self::ETRON1Gbit,
             6 => Self::ESMT2GbitDDR3,
@@ -86,31 +86,29 @@ impl From<u8> for DramType {
 
 // NOTE: CTRL settings are hardcoded; for SSC, add params to this fn
 fn set_dpll_ssc_syn(reg_set: u32, reg_span: u32, reg_step: u32) {
-    let ctrl_cfg = 0b010000;
-
     write32(DPLL_SSC_SYN_SET, reg_set);
     // 15..0
     write32(DPLL_SSC_SYN_SPAN, reg_span);
     // 23..0
     write32(DPLL_SSC_SYN_STEP, reg_step);
 
-    // 6: FIX_DIV
-    // 5: EXTPULSE
-    // 4: BYPASS
-    // 3..2: MODE
-    // 1: EN_SSC
-    // 0: SW_UP
+    const FIX_DIV: u32 = 1 << 6;
+    const EXT_PULSE: u32 = 1 << 5;
+    const BYPASS: u32 = 1 << 4;
+    const MODE_MASK: u32 = 0b11 << 2;
+    const EN_SSC: u32 = 1 << 1;
+    const SW_UP: u32 = 1 << 0;
     let v = read32(DPLL_SSC_SYN_CTRL);
     println!("DPLL_SSC_SYN_CTRL {v:032b}");
     // invert SW_UP
-    let neg_sw_up = !(v & 0x1) & 0x1;
-    let v = (v & !(0b1111111)) | (ctrl_cfg << 1) | neg_sw_up;
+    let neg_sw_up = !(v & SW_UP) & SW_UP;
+    let m = !(FIX_DIV | EXT_PULSE | BYPASS | MODE_MASK | EN_SSC | SW_UP);
+    let v = (v & m) | EXT_PULSE | neg_sw_up;
     println!("DPLL_SSC_SYN_CTRL {v:032b}");
     write32(DPLL_SSC_SYN_CTRL, v);
-    println!("SSC_OFF");
 }
 
-fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32) {
+fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32, dram_type: &DramType) {
     println!("cvx16_pll_init");
     // opdelay(10);
     write32(TX_VREF_PD, 0x0000_0000);
@@ -119,22 +117,14 @@ fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32) {
     const DDR3: bool = true;
     let x_mem_freq_2133 = false;
 
-    // TODO: variants
-    if DDR3 {
-        if x_mem_freq_2133 {
-            write32(GPO_SETTING, 0x0100_0808);
-        } else {
-            const TX_DDR3_GPO_IN: u32 = 1 << 16;
-            write32(GPO_SETTING, 0x0100_0808 | TX_DDR3_GPO_IN);
-        }
-    }
-    /*
-    #ifdef DDR2_3
-    if (get_ddr_type() == DDR_TYPE_DDR3) {
-        write32(GPO_SETTING, 0x0100_0808 | TX_DDR3_GPO_IN);
-    }
-    #endif
-    */
+    // TODO: check vendor code again for real variants, it is a mess
+    // use dram_type for real?
+    const TX_DDR3_GPO_IN: u32 = 1 << 16;
+    let v = match (dram_type, x_mem_freq_2133) {
+        (_, false) => TX_DDR3_GPO_IN,
+        (_, true) => 0,
+    };
+    write32(GPO_SETTING, 0x0100_0808 | v);
 
     if SSC_EN {
         /*
@@ -158,7 +148,7 @@ fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32) {
         rddata = modified_bits_by_value(rddata, 0, 6, 6); // ssc_syn_fix_div
         write32(0x50 + 0x03002900, rddata);
         */
-        println!("SSC enabled");
+        println!("  SSC enabled");
     } else if SSC_BYPASS {
         /*
         rddata = (reg_set & 0xfc000000) + 0x04000000; // TOP_REG_SSC_SET
@@ -175,11 +165,11 @@ fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32) {
         rddata = modified_bits_by_value(rddata, 1, 5, 5); // TOP_REG_SSC_EXTPULSE
         rddata = modified_bits_by_value(rddata, 1, 6, 6); // ssc_syn_fix_div
         write32(0x50 + 0x03002900, rddata);
-        uartlog("SSC_BYPASS\n");
         */
+        println!("  SSC bypassed");
     } else {
-        println!("SSC bypassed/disabled");
         set_dpll_ssc_syn(reg_set, reg_span, reg_step);
+        println!("  SSC off");
     }
 
     // opdelay(1000);
@@ -213,9 +203,8 @@ fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32) {
     let v = read32(DDR_PLL);
     write32(DDR_PLL, v | (1 << 7));
 
-    println!("Wait for DDR PLL LOCK=1...");
+    println!("Wait for PLL LOCK");
     while read32(PHYD_APB + 0x10) & (1 << 15) == 0 {}
-    println!("Finished DDR PLL LOCK=1.");
     println!("PLL init done.");
 }
 
@@ -561,11 +550,72 @@ fn cvx16_setting_check() {
 }
 
 // plat/cv181x/ddr/cvx16_pinmux.c
-pub fn cvx16_pinmux(ddr_vendor: DramType) {
+pub fn cvx16_pinmux(dram_type: &DramType) {
     println!("/ cvx16_pinmux start");
-    match ddr_vendor {
+    /*
+    // PHYA pin mux registers / params
+    00
+    swap_ca0    [4:     0]
+    swap_ca1    [12:    8]
+    swap_ca2    [20:   16]
+    swap_ca3    [28:   24]
+    04
+    swap_ca4    [4:     0]
+    swap_ca5    [12:    8]
+    swap_ca6    [20:   16]
+    swap_ca7    [28:   24]
+    08
+    swap_ca8    [4:     0]
+    swap_ca9    [12:    8]
+    swap_ca10   [20:   16]
+    swap_ca11   [28:   24]
+    0c
+    swap_ca12   [4:     0]
+    swap_ca13   [12:    8]
+    swap_ca14   [20:   16]
+    swap_ca15   [28:   24]
+    10
+    swap_ca16   [4:     0]
+    swap_ca17   [12:    8]
+    swap_ca18   [20:   16]
+    swap_ca19   [28:   24]
+    14
+    swap_ca20   [4:     0]
+    swap_ca21   [12:    8]
+    swap_ca22   [20:   16]
+    18
+    swap_cke0   [0:0]
+    swap_cs0    [4:4]
+    1c
+    data_byte_swap_slice0    [1:     0]
+    data_byte_swap_slice1    [9:     8]
+    20
+    swap_byte0_dq0_mux    [3:     0]
+    swap_byte0_dq1_mux    [7:     4]
+    swap_byte0_dq2_mux    [11:    8]
+    swap_byte0_dq3_mux    [15:   12]
+    swap_byte0_dq4_mux    [19:   16]
+    swap_byte0_dq5_mux    [23:   20]
+    swap_byte0_dq6_mux    [27:   24]
+    swap_byte0_dq7_mux    [31:   28]
+    24
+    swap_byte0_dm_mux     [3:     0]
+    28
+    swap_byte1_dq0_mux    [3:     0]
+    swap_byte1_dq1_mux    [7:     4]
+    swap_byte1_dq2_mux    [11:    8]
+    swap_byte1_dq3_mux    [15:   12]
+    swap_byte1_dq4_mux    [19:   16]
+    swap_byte1_dq5_mux    [23:   20]
+    swap_byte1_dq6_mux    [27:   24]
+    swap_byte1_dq7_mux    [31:   28]
+    2c
+    swap_byte1_dm_mux     [3:     0]
+    */
+    match dram_type {
         // Duo S
         DramType::NY4GbitDDR3 => {
+            println!("pin mux for NY 4Gbit DDR3");
             write32(0x0000 + PHYD_BASE_ADDR, 0x12141013);
             write32(0x0004 + PHYD_BASE_ADDR, 0x0C041503);
             write32(0x0008 + PHYD_BASE_ADDR, 0x06050001);
@@ -579,8 +629,9 @@ pub fn cvx16_pinmux(ddr_vendor: DramType) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x76512308);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
+        // Duo 256, LicheeRV Nano
         DramType::NY2GbitDDR3 => {
-            println!("pin mux for NY 2G DDR3");
+            println!("pin mux for NY 2Gbit DDR3");
             write32(0x0000 + PHYD_BASE_ADDR, 0x08070D09);
             write32(0x0004 + PHYD_BASE_ADDR, 0x0605020B);
             write32(0x0008 + PHYD_BASE_ADDR, 0x14040100);
@@ -594,7 +645,8 @@ pub fn cvx16_pinmux(ddr_vendor: DramType) {
             write32(0x0028 + PHYD_BASE_ADDR, 0x67513028);
             write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
         }
-        DramType::ESMT1GbitDDR2 => {
+        // also used in vendor code for DDR3_1G
+        DramType::ESMT1GbitDDR3 => {
             write32(0x0000 + PHYD_BASE_ADDR, 0x08070B09);
             write32(0x0004 + PHYD_BASE_ADDR, 0x05000206);
             write32(0x0008 + PHYD_BASE_ADDR, 0x0C04010D);
@@ -682,328 +734,29 @@ pub fn cvx16_pinmux(ddr_vendor: DramType) {
             println!("  DRAM vendor unknown");
         }
     }
-    /*
-    #ifdef ETRON_DDR2_512
-        KC_MSG("pin mux X16 mode ETRON_DDR2_512 setting\n");
-        //------------------------------
-        //  pin mux base on PHYA
-        //------------------------------
-        //param_phyd_data_byte_swap_slice0    [1:     0]
-        //param_phyd_data_byte_swap_slice1    [9:     8]
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte0_dq0_mux    [3:     0]
-        //param_phyd_swap_byte0_dq1_mux    [7:     4]
-        //param_phyd_swap_byte0_dq2_mux    [11:    8]
-        //param_phyd_swap_byte0_dq3_mux    [15:   12]
-        //param_phyd_swap_byte0_dq4_mux    [19:   16]
-        //param_phyd_swap_byte0_dq5_mux    [23:   20]
-        //param_phyd_swap_byte0_dq6_mux    [27:   24]
-        //param_phyd_swap_byte0_dq7_mux    [31:   28]
-        rddata = 0x86014532;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte0_dm_mux     [3:     0]
-        rddata = 0x00000007;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte1_dq0_mux    [3:     0]
-        //param_phyd_swap_byte1_dq1_mux    [7:     4]
-        //param_phyd_swap_byte1_dq2_mux    [11:    8]
-        //param_phyd_swap_byte1_dq3_mux    [15:   12]
-        //param_phyd_swap_byte1_dq4_mux    [19:   16]
-        //param_phyd_swap_byte1_dq5_mux    [23:   20]
-        //param_phyd_swap_byte1_dq6_mux    [27:   24]
-        //param_phyd_swap_byte1_dq7_mux    [31:   28]
-        rddata = 0x76012345;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte1_dm_mux     [3:     0]
-        rddata = 0x00000008;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca0    [4:     0]
-        //param_phyd_swap_ca1    [12:    8]
-        //param_phyd_swap_ca2    [20:   16]
-        //param_phyd_swap_ca3    [28:   24]
-        rddata = 0x070B090C;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca4    [4:     0]
-        //param_phyd_swap_ca5    [12:    8]
-        //param_phyd_swap_ca6    [20:   16]
-        //param_phyd_swap_ca7    [28:   24]
-        rddata = 0x04050608;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca8    [4:     0]
-        //param_phyd_swap_ca9    [12:    8]
-        //param_phyd_swap_ca10   [20:   16]
-        //param_phyd_swap_ca11   [28:   24]
-        rddata = 0x0E02030D;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca12   [4:     0]
-        //param_phyd_swap_ca13   [12:    8]
-        //param_phyd_swap_ca14   [20:   16]
-        //param_phyd_swap_ca15   [28:   24]
-        rddata = 0x110A0100;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca16   [4:     0]
-        //param_phyd_swap_ca17   [12:    8]
-        //param_phyd_swap_ca18   [20:   16]
-        //param_phyd_swap_ca19   [28:   24]
-        rddata = 0x0F131614;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca20   [4:     0]
-        //param_phyd_swap_ca21   [12:    8]
-        //param_phyd_swap_ca22   [20:   16]
-        rddata = 0x00151012;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_cke0   [0:0]
-        //param_phyd_swap_cs0    [4:4]
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
-    /*
-    #ifdef ESMT_N25_DDR3_1G
-        KC_MSG("pin mux X16 mode ESMT_N25_DDR3_1G setting\n");
-        //------------------------------
-        //  pin mux base on PHYA
-        //------------------------------
-        //param_phyd_data_byte_swap_slice0    [1:     0]
-        //param_phyd_data_byte_swap_slice1    [9:     8]
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte0_dq0_mux    [3:     0]
-        //param_phyd_swap_byte0_dq1_mux    [7:     4]
-        //param_phyd_swap_byte0_dq2_mux    [11:    8]
-        //param_phyd_swap_byte0_dq3_mux    [15:   12]
-        //param_phyd_swap_byte0_dq4_mux    [19:   16]
-        //param_phyd_swap_byte0_dq5_mux    [23:   20]
-        //param_phyd_swap_byte0_dq6_mux    [27:   24]
-        //param_phyd_swap_byte0_dq7_mux    [31:   28]
-        rddata = 0x82135674;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte0_dm_mux     [3:     0]
-        rddata = 0x00000000;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte1_dq0_mux    [3:     0]
-        //param_phyd_swap_byte1_dq1_mux    [7:     4]
-        //param_phyd_swap_byte1_dq2_mux    [11:    8]
-        //param_phyd_swap_byte1_dq3_mux    [15:   12]
-        //param_phyd_swap_byte1_dq4_mux    [19:   16]
-        //param_phyd_swap_byte1_dq5_mux    [23:   20]
-        //param_phyd_swap_byte1_dq6_mux    [27:   24]
-        //param_phyd_swap_byte1_dq7_mux    [31:   28]
-        rddata = 0x76153280;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_byte1_dm_mux     [3:     0]
-        rddata = 0x00000004;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca0    [4:     0]
-        //param_phyd_swap_ca1    [12:    8]
-        //param_phyd_swap_ca2    [20:   16]
-        //param_phyd_swap_ca3    [28:   24]
-        rddata = 0x08060B09;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca4    [4:     0]
-        //param_phyd_swap_ca5    [12:    8]
-        //param_phyd_swap_ca6    [20:   16]
-        //param_phyd_swap_ca7    [28:   24]
-        rddata = 0x02040701;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca8    [4:     0]
-        //param_phyd_swap_ca9    [12:    8]
-        //param_phyd_swap_ca10   [20:   16]
-        //param_phyd_swap_ca11   [28:   24]
-        rddata = 0x0C00050D;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca12   [4:     0]
-        //param_phyd_swap_ca13   [12:    8]
-        //param_phyd_swap_ca14   [20:   16]
-        //param_phyd_swap_ca15   [28:   24]
-        rddata = 0x13150314;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca16   [4:     0]
-        //param_phyd_swap_ca17   [12:    8]
-        //param_phyd_swap_ca18   [20:   16]
-        //param_phyd_swap_ca19   [28:   24]
-        rddata = 0x10111216;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_ca20   [4:     0]
-        //param_phyd_swap_ca21   [12:    8]
-        //param_phyd_swap_ca22   [20:   16]
-        rddata = 0x000F0A0E;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        //param_phyd_swap_cke0   [0:     0]
-        //param_phyd_swap_cs0    [4:     4]
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
-    /*
-    #ifdef ESMT_DDR3_2G
-        KC_MSG("pin mux X16 mode ESMT_DDR3_2G setting\n");
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x82135764;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x67513208;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000004;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x080B0D06;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x09010407;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x1405020C;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x15000E03;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0A0F1213;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00111016;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
-    /*
-    #ifdef ETRON_DDR3_1G
-        KC_MSG("pin mux X16 mode ETRON_DDR3_1G setting\n");
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x28137564;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x76158320;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000004;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0B060908;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x02000107;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0C05040D;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x13141503;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x160A1112;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x000F100E;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
-    /*
-    #ifdef DDR3_1G
-        KC_MSG("pin mux X16 mode DDR3_1G setting\n");
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x31756024;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000008;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x26473518;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x08070B09;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x05000206;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0C04010D;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x15030A14;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x10111213;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x000F160E;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
-    match ddr_vendor {
-        // ifdef DDR3_2G
-        DramType::NY2GbitDDR3 => {
-            println!("pin mux X16 mode DDR3_2G setting\n");
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x82135764);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x67513028);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
-            write32(0x0000 + PHYD_BASE_ADDR, 0x08070D09);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x0605020B);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x14040100);
-            write32(0x000C + PHYD_BASE_ADDR, 0x15030E0C);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F1213);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x00111016);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-        }
-        DramType::NY4GbitDDR3 => {
-            // TODO: try this out!
-            // TODO: is the order important? All the same as above (NY4G).
-            if false {
-                println!("pin mux X16 mode DDR3_4G setting");
-                write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-                write32(0x0020 + PHYD_BASE_ADDR, 0x02136574);
-                write32(0x0024 + PHYD_BASE_ADDR, 0x00000008);
-                write32(0x0028 + PHYD_BASE_ADDR, 0x76512308);
-                write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
-                write32(0x0000 + PHYD_BASE_ADDR, 0x12141013);
-                write32(0x0004 + PHYD_BASE_ADDR, 0x0C041503);
-                write32(0x0008 + PHYD_BASE_ADDR, 0x06050001);
-                write32(0x000C + PHYD_BASE_ADDR, 0x08070B02);
-                write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F0E09);
-                write32(0x0014 + PHYD_BASE_ADDR, 0x0016110D);
-                write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            }
-        }
-        _ => {}
-    }
-    /*
-    #ifdef DDR3_DBG
-        KC_MSG("pin mux X16 mode DDR3_DBG setting\n");
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x30587246;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000001;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x26417538;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0002080E;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x04060D01;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x090C030B;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x05071412;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0A151013;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0016110F;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
+    // The following are from within ifdefs in the vendor code.
+    // Many of them were actually duplicates, omitted/deduped here.
+    const DDR2_512: bool = false;
+    const DDR2_PINMUX: bool = false;
     const DDR3_PINMUX: bool = false;
-    if DDR3_PINMUX {
-        println!("pin mux X16 mode DDR3_6mil setting");
-        write32(0x001C + PHYD_BASE_ADDR, 0x00000001);
-        write32(0x0020 + PHYD_BASE_ADDR, 0x40613578);
-        write32(0x0024 + PHYD_BASE_ADDR, 0x00000002);
-        write32(0x0028 + PHYD_BASE_ADDR, 0x03582467);
-        write32(0x002C + PHYD_BASE_ADDR, 0x00000001);
+    const DDR3_DBG: bool = false;
+    if DDR2_512 {
+        println!("pin mux X16 mode DDR2 512 setting");
+        write32(0x0000 + PHYD_BASE_ADDR, 0x0C06080B);
+        write32(0x0004 + PHYD_BASE_ADDR, 0x090D0204);
+        write32(0x0008 + PHYD_BASE_ADDR, 0x01050700);
+        write32(0x000C + PHYD_BASE_ADDR, 0x160A0E03);
+        write32(0x0010 + PHYD_BASE_ADDR, 0x0F141110);
+        write32(0x0014 + PHYD_BASE_ADDR, 0x00151312);
+        write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
+        write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
+        write32(0x0020 + PHYD_BASE_ADDR, 0x60851243);
+        write32(0x0024 + PHYD_BASE_ADDR, 0x00000007);
+        write32(0x0028 + PHYD_BASE_ADDR, 0x67012354);
+        write32(0x002C + PHYD_BASE_ADDR, 0x00000008);
+    }
+    if DDR2_PINMUX || DDR3_PINMUX {
+        println!("pin mux X16 mode DDR3 6mil setting");
         write32(0x0000 + PHYD_BASE_ADDR, 0x020E0D00);
         write32(0x0004 + PHYD_BASE_ADDR, 0x07090806);
         write32(0x0008 + PHYD_BASE_ADDR, 0x0C05010B);
@@ -1011,94 +764,27 @@ pub fn cvx16_pinmux(ddr_vendor: DramType) {
         write32(0x0010 + PHYD_BASE_ADDR, 0x100A0413);
         write32(0x0014 + PHYD_BASE_ADDR, 0x00160F11);
         write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
+        write32(0x001C + PHYD_BASE_ADDR, 0x00000001);
+        write32(0x0020 + PHYD_BASE_ADDR, 0x40613578);
+        write32(0x0024 + PHYD_BASE_ADDR, 0x00000002);
+        write32(0x0028 + PHYD_BASE_ADDR, 0x03582467);
+        write32(0x002C + PHYD_BASE_ADDR, 0x00000001);
     }
-    /*
-    #ifdef DDR2_512
-        KC_MSG("pin mux X16 mode DDR2_512 setting\n");
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x60851243;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000007;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x67012354;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000008;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0C06080B;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x090D0204;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x01050700;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x160A0E03;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0F141110;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00151312;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-
-    #ifdef N25_DDR2_512
-        KC_MSG("pin mux X16 mode N25_DDR2_512 setting\n");
-        rddata = 0x00000100;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x71840532;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000006;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x76103425;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000008;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0C06080B;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x070D0904;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00010502;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x110A0E03;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0F141610;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00151312;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    #ifdef DDR2_PINMUX
-        KC_MSG("pin mux X16 mode DDR2 setting\n");
-        rddata = 0x00000001;
-        write32(0x001C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x40613578;
-        write32(0x0020 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000002;
-        write32(0x0024 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x03582467;
-        write32(0x0028 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000001;
-        write32(0x002C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x020E0D00;
-        write32(0x0000 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x07090806;
-        write32(0x0004 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x0C05010B;
-        write32(0x0008 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x12141503;
-        write32(0x000C + PHYD_BASE_ADDR, rddata);
-        rddata = 0x100A0413;
-        write32(0x0010 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00160F11;
-        write32(0x0014 + PHYD_BASE_ADDR, rddata);
-        rddata = 0x00000000;
-        write32(0x0018 + PHYD_BASE_ADDR, rddata);
-        KC_MSG("pin mux setting }\n");
-    #endif
-    */
+    if DDR3_DBG {
+        println!("pin mux X16 mode DDR3 debug setting");
+        write32(0x0000 + PHYD_BASE_ADDR, 0x0002080E);
+        write32(0x0004 + PHYD_BASE_ADDR, 0x04060D01);
+        write32(0x0008 + PHYD_BASE_ADDR, 0x090C030B);
+        write32(0x000C + PHYD_BASE_ADDR, 0x05071412);
+        write32(0x0010 + PHYD_BASE_ADDR, 0x0A151013);
+        write32(0x0014 + PHYD_BASE_ADDR, 0x0016110F);
+        write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
+        write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
+        write32(0x0020 + PHYD_BASE_ADDR, 0x30587246);
+        write32(0x0024 + PHYD_BASE_ADDR, 0x00000001);
+        write32(0x0028 + PHYD_BASE_ADDR, 0x26417538);
+        write32(0x002C + PHYD_BASE_ADDR, 0x00000000);
+    }
     println!("\\ cvx16_pinmux finish");
 }
 
@@ -1110,7 +796,7 @@ const DDR3_1866: bool = true;
 fn ddr_patch_set() {
     println!("/ ddr_patch_set start");
     if false {
-        // tune damp //////
+        // tune damp
         write32(0x08000150, 0x00000005);
 
         // CSB & CA driving
@@ -1475,7 +1161,7 @@ fn cvx16_clk_normal(reg_set: u32, reg_span: u32, reg_step: u32) {
         rddata = modified_bits_by_value(rddata, 0, 6, 6);
         write32(0x50 + 0x03002900, rddata);
         */
-        println!("SSC_EN");
+        println!("  SSC enabled");
     }
     if SSC_BYPASS {
         /*
@@ -1502,10 +1188,10 @@ fn cvx16_clk_normal(reg_set: u32, reg_span: u32, reg_step: u32) {
         // ssc_syn_fix_div
         rddata = modified_bits_by_value(rddata, 1, 6, 6);
         */
-        println!("  SSC_BYPASS");
+        println!("  SSC bypassed");
     } else {
         set_dpll_ssc_syn(reg_set, reg_span, reg_step);
-        println!("  SSC_OFF");
+        println!("  SSC off");
     }
     println!("  back to original frequency");
 }
@@ -2586,7 +2272,7 @@ fn axi_mon_latency_setting(lat_bin_size_sel: u32) {
 
     // ERROR("mon cg en.\n");
     let rdata = read32(DDR_TOP_BASE + 0x14);
-    write32((DDR_TOP_BASE + 0x14), rdata | 0x00000100);
+    write32(DDR_TOP_BASE + 0x14, rdata | 0x00000100);
 }
 
 const AXIMON_START_REGVALUE: u32 = 0x30001;
@@ -2612,9 +2298,10 @@ fn axi_mon_start_all() {
 const DDRC_RESET: usize = DDR_TOP_BASE + 0x20;
 
 // fsbl plat/cv181x/ddr/ddr_sys_bring_up.c ddr_sys_bring_up
-pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
+pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     let (reg_set, reg_span, reg_step) = get_pll_settings(ddr_data_rate);
-    cvx16_pll_init(reg_set, reg_span, reg_step);
+    // NOTE: cvx16_pll_init is called from within pll_init in the vendor code
+    cvx16_pll_init(reg_set, reg_span, reg_step, dram_type);
     ddrc_init();
     // cvx16_ctrlupd_short();
 
@@ -2634,7 +2321,7 @@ pub fn init(ddr_data_rate: usize, dram_vendor: DramType) {
 
     phy_init();
     cvx16_setting_check();
-    cvx16_pinmux(dram_vendor);
+    cvx16_pinmux(dram_type);
     ddr_patch_set();
     cvx16_en_rec_vol_mode();
     cvx16_set_dfi_init_start();
