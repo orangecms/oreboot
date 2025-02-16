@@ -1,7 +1,7 @@
 use crate::ddr_phy::phy_init;
 use crate::mem_map::{
     CLK_GEN_PLL_CTRL_BASE, DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB,
-    PHYD_BASE_ADDR, PHY_VERSION, TOP_BASE,
+    PHYD_BASE, PHY_VERSION, TOP_BASE,
 };
 use crate::PRINT_LOG;
 use util::{read32, write32};
@@ -37,16 +37,8 @@ const DO_BIST: bool = false;
 
 const X16_MODE: bool = true;
 const DBG_SHMOO: bool = false;
-const DDR2: bool = false;
-const DDR2_3: bool = false;
 const DDR3: bool = true;
 const DDR4: bool = false;
-// TODO: enum
-const DDR_TYPE_DDR2: u32 = 0;
-const DDR_TYPE_DDR3: u32 = 1;
-fn get_ddr_type() -> u32 {
-    DDR_TYPE_DDR3
-}
 
 // plat/cv181x/include/ddr/ddr_pkg_info.h
 #[derive(Debug)]
@@ -84,6 +76,28 @@ impl From<u8> for DramType {
     }
 }
 
+#[derive(Eq, PartialEq)]
+enum DdrType {
+    Ddr2, // data rate = 1333
+    Ddr3, // data rate = 1866
+    Unknown,
+}
+
+fn get_ddr_type(dram_type: &DramType) -> DdrType {
+    match dram_type {
+        DramType::ESMTN25512MbitDDR2 | DramType::ETRON512MbitDDR2 => DdrType::Ddr2,
+        DramType::NY4GbitDDR3
+        | DramType::NY2GbitDDR3
+        | DramType::ESMT1GbitDDR3
+        | DramType::ETRON1Gbit
+        | DramType::ESMT2GbitDDR3
+        | DramType::PM2G
+        | DramType::PM1G
+        | DramType::ESMTN251GbitDDR3 => DdrType::Ddr3,
+        DramType::Unknown => DdrType::Unknown,
+    }
+}
+
 // NOTE: CTRL settings are hardcoded; for SSC, add params to this fn
 fn set_dpll_ssc_syn(reg_set: u32, reg_span: u32, reg_step: u32) {
     write32(DPLL_SSC_SYN_SET, reg_set);
@@ -114,7 +128,6 @@ fn cvx16_pll_init(reg_set: u32, reg_span: u32, reg_step: u32, dram_type: &DramTy
     write32(TX_VREF_PD, 0x0000_0000);
     write32(ZQ_240_OPTION, 0x0008_0001);
 
-    const DDR3: bool = true;
     let x_mem_freq_2133 = false;
 
     // TODO: check vendor code again for real variants, it is a mess
@@ -616,119 +629,119 @@ pub fn cvx16_pinmux(dram_type: &DramType) {
         // Duo S
         DramType::NY4GbitDDR3 => {
             println!("pin mux for NY 4Gbit DDR3");
-            write32(0x0000 + PHYD_BASE_ADDR, 0x12141013);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x0C041503);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x06050001);
-            write32(0x000C + PHYD_BASE_ADDR, 0x08070B02);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F0E09);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x0016110D);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x02136574);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000008);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x76512308);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
+            write32(0x0000 + PHYD_BASE, 0x12141013);
+            write32(0x0004 + PHYD_BASE, 0x0C041503);
+            write32(0x0008 + PHYD_BASE, 0x06050001);
+            write32(0x000C + PHYD_BASE, 0x08070B02);
+            write32(0x0010 + PHYD_BASE, 0x0A0F0E09);
+            write32(0x0014 + PHYD_BASE, 0x0016110D);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x02136574);
+            write32(0x0024 + PHYD_BASE, 0x00000008);
+            write32(0x0028 + PHYD_BASE, 0x76512308);
+            write32(0x002C + PHYD_BASE, 0x00000004);
         }
         // Duo 256, LicheeRV Nano
         DramType::NY2GbitDDR3 => {
             println!("pin mux for NY 2Gbit DDR3");
-            write32(0x0000 + PHYD_BASE_ADDR, 0x08070D09);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x0605020B);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x14040100);
-            write32(0x000C + PHYD_BASE_ADDR, 0x15030E0C);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F1213);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x00111016);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x82135764);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x67513028);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
+            write32(0x0000 + PHYD_BASE, 0x08070D09);
+            write32(0x0004 + PHYD_BASE, 0x0605020B);
+            write32(0x0008 + PHYD_BASE, 0x14040100);
+            write32(0x000C + PHYD_BASE, 0x15030E0C);
+            write32(0x0010 + PHYD_BASE, 0x0A0F1213);
+            write32(0x0014 + PHYD_BASE, 0x00111016);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x82135764);
+            write32(0x0024 + PHYD_BASE, 0x00000000);
+            write32(0x0028 + PHYD_BASE, 0x67513028);
+            write32(0x002C + PHYD_BASE, 0x00000004);
         }
         // also used in vendor code for DDR3_1G
         DramType::ESMT1GbitDDR3 => {
-            write32(0x0000 + PHYD_BASE_ADDR, 0x08070B09);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x05000206);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x0C04010D);
-            write32(0x000C + PHYD_BASE_ADDR, 0x15030A14);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x10111213);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x000F160E);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x31756024);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000008);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x26473518);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000000);
+            write32(0x0000 + PHYD_BASE, 0x08070B09);
+            write32(0x0004 + PHYD_BASE, 0x05000206);
+            write32(0x0008 + PHYD_BASE, 0x0C04010D);
+            write32(0x000C + PHYD_BASE, 0x15030A14);
+            write32(0x0010 + PHYD_BASE, 0x10111213);
+            write32(0x0014 + PHYD_BASE, 0x000F160E);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x31756024);
+            write32(0x0024 + PHYD_BASE, 0x00000008);
+            write32(0x0028 + PHYD_BASE, 0x26473518);
+            write32(0x002C + PHYD_BASE, 0x00000000);
         }
         DramType::ESMTN25512MbitDDR2 => {
-            write32(0x0000 + PHYD_BASE_ADDR, 0x0C06080B);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x070D0904);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x00010502);
-            write32(0x000C + PHYD_BASE_ADDR, 0x110A0E03);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x0F141610);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x00151312);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x71840532);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000006);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x76103425);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000008);
+            write32(0x0000 + PHYD_BASE, 0x0C06080B);
+            write32(0x0004 + PHYD_BASE, 0x070D0904);
+            write32(0x0008 + PHYD_BASE, 0x00010502);
+            write32(0x000C + PHYD_BASE, 0x110A0E03);
+            write32(0x0010 + PHYD_BASE, 0x0F141610);
+            write32(0x0014 + PHYD_BASE, 0x00151312);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x71840532);
+            write32(0x0024 + PHYD_BASE, 0x00000006);
+            write32(0x0028 + PHYD_BASE, 0x76103425);
+            write32(0x002C + PHYD_BASE, 0x00000008);
         }
         DramType::ESMT2GbitDDR3 => {
-            write32(0x0000 + PHYD_BASE_ADDR, 0x080B0D06);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x09010407);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x1405020C);
-            write32(0x000C + PHYD_BASE_ADDR, 0x15000E03);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x0A0F1213);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x00111016);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x82135764);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x67513208);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
+            write32(0x0000 + PHYD_BASE, 0x080B0D06);
+            write32(0x0004 + PHYD_BASE, 0x09010407);
+            write32(0x0008 + PHYD_BASE, 0x1405020C);
+            write32(0x000C + PHYD_BASE, 0x15000E03);
+            write32(0x0010 + PHYD_BASE, 0x0A0F1213);
+            write32(0x0014 + PHYD_BASE, 0x00111016);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x82135764);
+            write32(0x0024 + PHYD_BASE, 0x00000000);
+            write32(0x0028 + PHYD_BASE, 0x67513208);
+            write32(0x002C + PHYD_BASE, 0x00000004);
         }
         DramType::ETRON1Gbit => {
-            write32(0x0000 + PHYD_BASE_ADDR, 0x0B060908);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x02000107);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x0C05040D);
-            write32(0x000C + PHYD_BASE_ADDR, 0x13141503);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x160A1112);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x000F100E);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x28137564);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x76158320);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
+            write32(0x0000 + PHYD_BASE, 0x0B060908);
+            write32(0x0004 + PHYD_BASE, 0x02000107);
+            write32(0x0008 + PHYD_BASE, 0x0C05040D);
+            write32(0x000C + PHYD_BASE, 0x13141503);
+            write32(0x0010 + PHYD_BASE, 0x160A1112);
+            write32(0x0014 + PHYD_BASE, 0x000F100E);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x28137564);
+            write32(0x0024 + PHYD_BASE, 0x00000000);
+            write32(0x0028 + PHYD_BASE, 0x76158320);
+            write32(0x002C + PHYD_BASE, 0x00000004);
         }
         DramType::ESMTN251GbitDDR3 => {
-            write32(0x0000 + PHYD_BASE_ADDR, 0x08060B09);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x02040701);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x0C00050D);
-            write32(0x000C + PHYD_BASE_ADDR, 0x13150314);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x10111216);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x000F0A0E);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x82135674);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x76153280);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000004);
+            write32(0x0000 + PHYD_BASE, 0x08060B09);
+            write32(0x0004 + PHYD_BASE, 0x02040701);
+            write32(0x0008 + PHYD_BASE, 0x0C00050D);
+            write32(0x000C + PHYD_BASE, 0x13150314);
+            write32(0x0010 + PHYD_BASE, 0x10111216);
+            write32(0x0014 + PHYD_BASE, 0x000F0A0E);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x82135674);
+            write32(0x0024 + PHYD_BASE, 0x00000000);
+            write32(0x0028 + PHYD_BASE, 0x76153280);
+            write32(0x002C + PHYD_BASE, 0x00000004);
         }
         DramType::ETRON512MbitDDR2 => {
-            write32(0x0000 + PHYD_BASE_ADDR, 0x070B090C);
-            write32(0x0004 + PHYD_BASE_ADDR, 0x04050608);
-            write32(0x0008 + PHYD_BASE_ADDR, 0x0E02030D);
-            write32(0x000C + PHYD_BASE_ADDR, 0x110A0100);
-            write32(0x0010 + PHYD_BASE_ADDR, 0x0F131614);
-            write32(0x0014 + PHYD_BASE_ADDR, 0x00151012);
-            write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-            write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-            write32(0x0020 + PHYD_BASE_ADDR, 0x86014532);
-            write32(0x0024 + PHYD_BASE_ADDR, 0x00000007);
-            write32(0x0028 + PHYD_BASE_ADDR, 0x76012345);
-            write32(0x002C + PHYD_BASE_ADDR, 0x00000008);
+            write32(0x0000 + PHYD_BASE, 0x070B090C);
+            write32(0x0004 + PHYD_BASE, 0x04050608);
+            write32(0x0008 + PHYD_BASE, 0x0E02030D);
+            write32(0x000C + PHYD_BASE, 0x110A0100);
+            write32(0x0010 + PHYD_BASE, 0x0F131614);
+            write32(0x0014 + PHYD_BASE, 0x00151012);
+            write32(0x0018 + PHYD_BASE, 0x00000000);
+            write32(0x001C + PHYD_BASE, 0x00000100);
+            write32(0x0020 + PHYD_BASE, 0x86014532);
+            write32(0x0024 + PHYD_BASE, 0x00000007);
+            write32(0x0028 + PHYD_BASE, 0x76012345);
+            write32(0x002C + PHYD_BASE, 0x00000008);
         }
         DramType::Unknown | _ => {
             println!("  DRAM vendor unknown");
@@ -742,48 +755,48 @@ pub fn cvx16_pinmux(dram_type: &DramType) {
     const DDR3_DBG: bool = false;
     if DDR2_512 {
         println!("pin mux X16 mode DDR2 512 setting");
-        write32(0x0000 + PHYD_BASE_ADDR, 0x0C06080B);
-        write32(0x0004 + PHYD_BASE_ADDR, 0x090D0204);
-        write32(0x0008 + PHYD_BASE_ADDR, 0x01050700);
-        write32(0x000C + PHYD_BASE_ADDR, 0x160A0E03);
-        write32(0x0010 + PHYD_BASE_ADDR, 0x0F141110);
-        write32(0x0014 + PHYD_BASE_ADDR, 0x00151312);
-        write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-        write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-        write32(0x0020 + PHYD_BASE_ADDR, 0x60851243);
-        write32(0x0024 + PHYD_BASE_ADDR, 0x00000007);
-        write32(0x0028 + PHYD_BASE_ADDR, 0x67012354);
-        write32(0x002C + PHYD_BASE_ADDR, 0x00000008);
+        write32(0x0000 + PHYD_BASE, 0x0C06080B);
+        write32(0x0004 + PHYD_BASE, 0x090D0204);
+        write32(0x0008 + PHYD_BASE, 0x01050700);
+        write32(0x000C + PHYD_BASE, 0x160A0E03);
+        write32(0x0010 + PHYD_BASE, 0x0F141110);
+        write32(0x0014 + PHYD_BASE, 0x00151312);
+        write32(0x0018 + PHYD_BASE, 0x00000000);
+        write32(0x001C + PHYD_BASE, 0x00000100);
+        write32(0x0020 + PHYD_BASE, 0x60851243);
+        write32(0x0024 + PHYD_BASE, 0x00000007);
+        write32(0x0028 + PHYD_BASE, 0x67012354);
+        write32(0x002C + PHYD_BASE, 0x00000008);
     }
     if DDR2_PINMUX || DDR3_PINMUX {
         println!("pin mux X16 mode DDR3 6mil setting");
-        write32(0x0000 + PHYD_BASE_ADDR, 0x020E0D00);
-        write32(0x0004 + PHYD_BASE_ADDR, 0x07090806);
-        write32(0x0008 + PHYD_BASE_ADDR, 0x0C05010B);
-        write32(0x000C + PHYD_BASE_ADDR, 0x12141503);
-        write32(0x0010 + PHYD_BASE_ADDR, 0x100A0413);
-        write32(0x0014 + PHYD_BASE_ADDR, 0x00160F11);
-        write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-        write32(0x001C + PHYD_BASE_ADDR, 0x00000001);
-        write32(0x0020 + PHYD_BASE_ADDR, 0x40613578);
-        write32(0x0024 + PHYD_BASE_ADDR, 0x00000002);
-        write32(0x0028 + PHYD_BASE_ADDR, 0x03582467);
-        write32(0x002C + PHYD_BASE_ADDR, 0x00000001);
+        write32(0x0000 + PHYD_BASE, 0x020E0D00);
+        write32(0x0004 + PHYD_BASE, 0x07090806);
+        write32(0x0008 + PHYD_BASE, 0x0C05010B);
+        write32(0x000C + PHYD_BASE, 0x12141503);
+        write32(0x0010 + PHYD_BASE, 0x100A0413);
+        write32(0x0014 + PHYD_BASE, 0x00160F11);
+        write32(0x0018 + PHYD_BASE, 0x00000000);
+        write32(0x001C + PHYD_BASE, 0x00000001);
+        write32(0x0020 + PHYD_BASE, 0x40613578);
+        write32(0x0024 + PHYD_BASE, 0x00000002);
+        write32(0x0028 + PHYD_BASE, 0x03582467);
+        write32(0x002C + PHYD_BASE, 0x00000001);
     }
     if DDR3_DBG {
         println!("pin mux X16 mode DDR3 debug setting");
-        write32(0x0000 + PHYD_BASE_ADDR, 0x0002080E);
-        write32(0x0004 + PHYD_BASE_ADDR, 0x04060D01);
-        write32(0x0008 + PHYD_BASE_ADDR, 0x090C030B);
-        write32(0x000C + PHYD_BASE_ADDR, 0x05071412);
-        write32(0x0010 + PHYD_BASE_ADDR, 0x0A151013);
-        write32(0x0014 + PHYD_BASE_ADDR, 0x0016110F);
-        write32(0x0018 + PHYD_BASE_ADDR, 0x00000000);
-        write32(0x001C + PHYD_BASE_ADDR, 0x00000100);
-        write32(0x0020 + PHYD_BASE_ADDR, 0x30587246);
-        write32(0x0024 + PHYD_BASE_ADDR, 0x00000001);
-        write32(0x0028 + PHYD_BASE_ADDR, 0x26417538);
-        write32(0x002C + PHYD_BASE_ADDR, 0x00000000);
+        write32(0x0000 + PHYD_BASE, 0x0002080E);
+        write32(0x0004 + PHYD_BASE, 0x04060D01);
+        write32(0x0008 + PHYD_BASE, 0x090C030B);
+        write32(0x000C + PHYD_BASE, 0x05071412);
+        write32(0x0010 + PHYD_BASE, 0x0A151013);
+        write32(0x0014 + PHYD_BASE, 0x0016110F);
+        write32(0x0018 + PHYD_BASE, 0x00000000);
+        write32(0x001C + PHYD_BASE, 0x00000100);
+        write32(0x0020 + PHYD_BASE, 0x30587246);
+        write32(0x0024 + PHYD_BASE, 0x00000001);
+        write32(0x0028 + PHYD_BASE, 0x26417538);
+        write32(0x002C + PHYD_BASE, 0x00000000);
     }
     println!("\\ cvx16_pinmux finish");
 }
@@ -925,11 +938,11 @@ fn ddr_patch_set() {
 }
 
 // plat/cv181x/ddr/ddr_sys.c
-fn cvx16_en_rec_vol_mode() {
+fn cvx16_en_rec_vol_mode(ddr_type: &DdrType) {
     println!("/ cvx16_en_rec_vol_mode start");
-    if DDR2 {
-        write32(0x0500 + PHYD_BASE_ADDR, 0x00001001);
-        write32(0x0540 + PHYD_BASE_ADDR, 0x00001001);
+    if *ddr_type == DdrType::Ddr2 {
+        write32(0x0500 + PHYD_BASE, 0x00001001);
+        write32(0x0540 + PHYD_BASE, 0x00001001);
     }
     println!("\\ cvx16_en_rec_vol_mode finish");
 }
@@ -989,11 +1002,11 @@ fn cvx16_ddr_phy_power_on_seq1() {
 
 fn cvx16_polling_dfi_init_start() {
     println!("/ first dfi_init_start");
-    while read32(PHYD_BASE_ADDR + 0x3028) & (1 << 8) == 0 {}
+    while read32(PHYD_BASE + 0x3028) & (1 << 8) == 0 {}
     println!("\\ cvx16_polling_dfi_init_start finish");
 }
 
-// pass in result of reading PHYD_BASE_ADDR + 0x004c
+// pass in result of reading PHYD_BASE + 0x004c
 fn get_pll_speed_change(v: u32) -> (bool, u32, u32) {
     // TOP_REG_EN_PLL_SPEED_CHG
     // <= #RD (~pwstrb_mask[0] & TOP_REG_EN_PLL_SPEED_CHG) |  pwstrb_mask_pwdata[0];
@@ -1012,17 +1025,17 @@ fn get_pll_speed_change(v: u32) -> (bool, u32, u32) {
 
 fn cvx16_int_isr_08() {
     println!("/ cvx16_int_isr_08 start");
-    write32(PHYD_BASE_ADDR + 0x0118, 0x0);
+    write32(PHYD_BASE + 0x0118, 0x0);
     let v = read32(PHYD_APB + 0x4c);
     let _ = get_pll_speed_change(v);
     println!("\\ cvx16_int_isr_08 finish");
 }
 
-const PHYD_DLL_CTRL: usize = PHYD_BASE_ADDR + 0x0040;
+const PHYD_DLL_CTRL: usize = PHYD_BASE + 0x0040;
 const PHYD_DLL_RX_START_CAL: u32 = 1 << 1;
 const PHYD_DLL_TX_START_CAL: u32 = 1 << 17;
 
-const PHYD_DLL_STATUS: usize = PHYD_BASE_ADDR + 0x3014;
+const PHYD_DLL_STATUS: usize = PHYD_BASE + 0x3014;
 const PHYD_DLL_STATUS_DONE: u32 = 1 << 16;
 
 const PHYD_SPEED: usize = PHYD_APB + 0x004c;
@@ -1049,8 +1062,8 @@ fn cvx16_dll_cal() {
     println!("\\ cvx16_dll_cal finish");
 }
 
-const PHYD_TX_CA: usize = PHYD_BASE_ADDR + 0x0130;
-const PHYD_OUTPUT_ENABLE: usize = PHYD_BASE_ADDR + 0x0154;
+const PHYD_TX_CA: usize = PHYD_BASE + 0x0130;
+const PHYD_OUTPUT_ENABLE: usize = PHYD_BASE + 0x0154;
 
 fn cvx16_ddr_phy_power_on_seq2() {
     println!("/ cvx16_ddr_phy_power_on_seq2 start");
@@ -1108,10 +1121,10 @@ fn cvx16_set_dfi_init_complete() {
     println!("/ cvx16_set_dfi_init_complete start");
     opdelay(20000);
     // rddata[8] = 1;
-    write32(PHYD_BASE_ADDR + 0x0120, 0x00000010);
+    write32(PHYD_BASE + 0x0120, 0x00000010);
     println!("  set init_complete = 1 ...");
     // param_phyd_clkctrl_init_complete   <= int_regin[0];
-    write32(PHYD_BASE_ADDR + 0x0118, 0x1);
+    write32(PHYD_BASE + 0x0118, 0x1);
     println!("\\ cvx16_set_dfi_init_complete finish");
 }
 
@@ -1264,12 +1277,12 @@ fn cvx16_ddr_phy_power_on_seq3() {
     println!("/ ddr_phy_power_on_seq3 start");
     // RESETYZ/CKE OENZ
     // param_phyd_sel_cke_oenz        <= `PI_SD int_regin[0];
-    let v = read32(PHYD_BASE_ADDR + 0x0154);
-    write32(PHYD_BASE_ADDR + 0x0154, v & !(0x1));
+    let v = read32(PHYD_BASE + 0x0154);
+    write32(PHYD_BASE + 0x0154, v & !(0x1));
     // param_phyd_tx_ca_oenz          <= `PI_SD int_regin[0];
     // param_phyd_tx_ca_clk0_oenz     <= `PI_SD int_regin[8];
     // param_phyd_tx_ca_clk1_oenz     <= `PI_SD int_regin[16];
-    write32(PHYD_BASE_ADDR + 0x0130, 0x0);
+    write32(PHYD_BASE + 0x0130, 0x0);
     println!("  --> ca_oenz  ca_clk_oenz !!!");
 
     // clock gated for power save
@@ -1277,10 +1290,10 @@ fn cvx16_ddr_phy_power_on_seq3() {
     // param_phya_reg_tx_byte1_en_extend_oenz_gated_dline <= `PI_SD int_regin[1];
     // param_phya_reg_tx_byte2_en_extend_oenz_gated_dline <= `PI_SD int_regin[2];
     // param_phya_reg_tx_byte3_en_extend_oenz_gated_dline <= `PI_SD int_regin[3];
-    let v = read32(PHYD_BASE_ADDR + 0x0204);
-    write32(PHYD_BASE_ADDR + 0x0204, v | (1 << 18));
-    let v = read32(PHYD_BASE_ADDR + 0x0224);
-    write32(PHYD_BASE_ADDR + 0x0224, v | (1 << 18));
+    let v = read32(PHYD_BASE + 0x0204);
+    write32(PHYD_BASE + 0x0204, v | (1 << 18));
+    let v = read32(PHYD_BASE + 0x0224);
+    write32(PHYD_BASE + 0x0224, v | (1 << 18));
     println!("  --> en clock gated for power save !!!");
     println!("\\ ddr_phy_power_on_seq3 finish");
 }
@@ -1499,48 +1512,53 @@ fn cvx16_bist_wdqlvl_init(mode: u32) {
     // bist clock enable
     write32(DDR_BIST_BASE + 0x0, 0x00060006);
 
-    if mode == 0 {
-        // phyd pattern
-        let base_cmd = (0 << 21) | (3 << 12) | (0b0101 << 9);
-        let cmd1 = BIST_OP_WRITE | base_cmd;
-        let cmd2 = BIST_OP_READ | base_cmd;
-        write32(DDR_BIST_BASE + 0x40, cmd1);
-        write32(DDR_BIST_BASE + 0x44, cmd2);
-        // NOP
-        for i in 0..4 {
-            write32(DDR_BIST_BASE + 0x48 + i * 4, 0);
+    match mode {
+        0 => {
+            // phyd pattern
+            let base_cmd = (0 << 21) | (3 << 12) | (0b0101 << 9);
+            let cmd1 = BIST_OP_WRITE | base_cmd;
+            let cmd2 = BIST_OP_READ | base_cmd;
+            write32(DDR_BIST_BASE + 0x40, cmd1);
+            write32(DDR_BIST_BASE + 0x44, cmd2);
+            // NOP
+            for i in 0..4 {
+                write32(DDR_BIST_BASE + 0x48 + i * 4, 0);
+            }
         }
-    } else if mode == 0x1 {
-        // bist write/read
-        let fmin = 5;
-        let fmax = 15;
-        let fdiff = fmax - fmin + 1;
-        // 8*f/4 -1
-        let sram_sp = 9 * (fmin + fmax) * fdiff / 2 / 4 + fdiff;
-        println!("      sram_sp = {sram_sp:08x}");
+        0x1 => {
+            // bist write/read
+            let fmin = 5;
+            let fmax = 15;
+            let fdiff = fmax - fmin + 1;
+            // 8*f/4 -1
+            let sram_sp = 9 * (fmin + fmax) * fdiff / 2 / 4 + fdiff;
+            println!("      sram_sp = {sram_sp:08x}");
 
-        // bist sso_period
-        write32(DDR_BIST_BASE + 0x24, (fmax << 8) + fmin);
-        let base1 = (511 << 12) | (0b0101 << 9);
-        let base2 = (sram_sp << 12) | (0b0110 << 9);
-        write32(DDR_BIST_BASE + 0x40, BIST_OP_WRITE | base1);
-        write32(DDR_BIST_BASE + 0x44, BIST_OP_READ | base1);
-        write32(DDR_BIST_BASE + 0x48, BIST_OP_WRITE | base2);
-        write32(DDR_BIST_BASE + 0x4c, BIST_OP_READ | base2);
-        //       GOTO      addr_not_reset loop_cnt
-        write32(DDR_BIST_BASE + 0x50, BIST_OP_GOTO | (0 << 20) | (1 << 0));
-        // NOP
-        write32(DDR_BIST_BASE + 0x54, 0);
-    } else if (mode == 0x11) {
-        // bist write/read
-        // TODO
-    } else if (mode == 0x12) {
-        // bist write/read
-        // TODO
-    } else {
-        // TODO
+            // bist sso_period
+            write32(DDR_BIST_BASE + 0x24, (fmax << 8) + fmin);
+            let base1 = (511 << 12) | (0b0101 << 9);
+            let base2 = (sram_sp << 12) | (0b0110 << 9);
+            write32(DDR_BIST_BASE + 0x40, BIST_OP_WRITE | base1);
+            write32(DDR_BIST_BASE + 0x44, BIST_OP_READ | base1);
+            write32(DDR_BIST_BASE + 0x48, BIST_OP_WRITE | base2);
+            write32(DDR_BIST_BASE + 0x4c, BIST_OP_READ | base2);
+            //       GOTO      addr_not_reset loop_cnt
+            write32(DDR_BIST_BASE + 0x50, BIST_OP_GOTO | (0 << 20) | (1 << 0));
+            // NOP
+            write32(DDR_BIST_BASE + 0x54, 0);
+        }
+        0x11 => {
+            // bist write/read
+            // TODO
+        }
+        0x12 => {
+            // bist write/read
+            // TODO
+        }
+        _ => {
+            // TODO
+        }
     }
-
     bist_x_init_finish();
     println!("    bist_wdqlvl_init done");
 }
@@ -1557,7 +1575,7 @@ fn cvx16_rdlvl_sw_req(x: u32) {
     //
 }
 
-fn cvx16_rdglvl_req() {
+fn cvx16_rdglvl_req(ddr_type: &DdrType) {
     // NOTE: training need ctrl_low_patch first
     let (
         selfref_sw,
@@ -1572,8 +1590,8 @@ fn cvx16_rdglvl_req() {
     // let v = read32(DDR_CFG_BASE + 0x60);
     // write32(DDR_CFG_BASE + 0x60, v | 1);
 
-    let ddr3 = DDR3 || (DDR2_3 && (get_ddr_type() == DDR_TYPE_DDR3));
-    let ddr3_mpr_mode = read32(PHYD_BASE_ADDR + 0x0184) & (1 << 4) != 0;
+    let ddr3 = *ddr_type == DdrType::Ddr3;
+    let ddr3_mpr_mode = read32(PHYD_BASE + 0x0184) & (1 << 4) != 0;
 
     if ddr3 && ddr3_mpr_mode {
         // RFSHCTL3.dis_auto_refresh =1
@@ -1590,15 +1608,15 @@ fn cvx16_rdglvl_req() {
     cvx16_bist_rdglvl_init();
 
     // param_phyd_dfi_rdglvl_req
-    let v = read32(PHYD_BASE_ADDR + 0x0184);
-    write32(PHYD_BASE_ADDR + 0x0184, v | 1);
+    let v = read32(PHYD_BASE + 0x0184);
+    write32(PHYD_BASE + 0x0184, v | 1);
 
     println!("wait retraining finish ...");
     //[0] param_phyd_dfi_wrlvl_done
     //[1] param_phyd_dfi_rdglvl_done
     //[2] param_phyd_dfi_rdlvl_done
     //[3] param_phyd_dfi_wdqlvl_done
-    while read32(PHYD_BASE_ADDR + 0x3444) & (1 << 1) == 0 {}
+    while read32(PHYD_BASE + 0x3444) & (1 << 1) == 0 {}
     // BIST clock disable
     write32(DDR_BIST_BASE + 0x0, 0x00040000);
 
@@ -1648,7 +1666,7 @@ fn cvx16_clk_gating_enable() {
     write32(DDR_CFG_BASE + 0x190, v);
     // #endif
     // PHYD_SHIFT_GATING_EN
-    write32(0x00F4 + PHYD_BASE_ADDR, 0x00030033);
+    write32(0x00F4 + PHYD_BASE, 0x00030033);
     // phyd_stop_clk
     let v = read32(DDR_CFG_BASE + 0x30);
     write32(DDR_CFG_BASE + 0x30, v | 1 << 9);
@@ -1681,7 +1699,7 @@ fn cvx16_clk_gating_disable() {
     // 0b01001011110101
     write32(0x44 + PHYD_APB, 0x000012F5);
     // PHYD_SHIFT_GATING_EN
-    write32(0x00F4 + PHYD_BASE_ADDR, 0x00000000);
+    write32(0x00F4 + PHYD_BASE, 0x00000000);
     // phyd_stop_clk
     let v = read32(DDR_CFG_BASE + 0x30);
     let v = v & !(1 << 9);
@@ -1738,10 +1756,10 @@ fn cvx16_synp_mrw(addr: u32, data: u32) {
     }
 }
 
-fn cvx16_wrlvl_req() {
+fn cvx16_wrlvl_req(ddr_type: &DdrType) {
     // NOTE: training need ctrl_low_patch first
     // wrlvl response only DQ0
-    write32(PHYD_BASE_ADDR + 0x005C, 0x00FE0000);
+    write32(PHYD_BASE + 0x005C, 0x00FE0000);
 
     // Note: training need ctrl_low_patch first
     let (
@@ -1764,7 +1782,7 @@ fn cvx16_wrlvl_req() {
     // let v = read32(DDR_CFG_BASE + 0x60);
     // write32(DDR_CFG_BASE + 0x60, v | 1);
 
-    let ddr3 = DDR3 || (DDR2_3 && (get_ddr_type() == DDR_TYPE_DDR3));
+    let ddr3 = *ddr_type == DdrType::Ddr3;
     if ddr3 {
         let mut rtt_nom = 0;
         if (wr_odt_en == 1) {
@@ -1817,19 +1835,19 @@ fn cvx16_wrlvl_req() {
         cvx16_synp_mrw(0x1, v & 0xffff);
     }
 
-    let v = read32(PHYD_BASE_ADDR + 0x0180);
+    let v = read32(PHYD_BASE + 0x0180);
     // param_phyd_dfi_wrlvl_req
     let v = v | 1;
     // param_phyd_dfi_wrlvl_odt_en
     let v = v & !(1 << 4) | (wr_odt_en << 4);
-    write32(PHYD_BASE_ADDR + 0x0180, v);
+    write32(PHYD_BASE + 0x0180, v);
     println!("wait retraining finish ...");
 
     //[0] param_phyd_dfi_wrlvl_done
     //[1] param_phyd_dfi_rdglvl_done
     //[2] param_phyd_dfi_rdlvl_done
     //[3] param_phyd_dfi_wdqlvl_done
-    while read32(PHYD_BASE_ADDR + 0x3444) & (1 << 0) == 0 {}
+    while read32(PHYD_BASE + 0x3444) & (1 << 0) == 0 {}
     // BIST clock disable
     write32(DDR_BIST_BASE + 0x0, 0x00040000);
 
@@ -1867,10 +1885,10 @@ fn cvx16_wrlvl_req() {
 
 fn cvx16_dfi_ca_park_prbs(cap_enable: bool) {
     // param_phyd_sw_dfi_phyupd_req =1
-    write32(PHYD_BASE_ADDR + 0x0174, 0x1);
+    write32(PHYD_BASE + 0x0174, 0x1);
     // param_phyd_to_reg_dfi_phyupd_req  8   8
     // param_phyd_to_reg_dfi_phyupd_ack  9   9
-    while (read32(PHYD_BASE_ADDR + 0x3030) >> 8) & 0b11 != 0b11 {}
+    while (read32(PHYD_BASE + 0x3030) >> 8) & 0b11 != 0b11 {}
 
     // DDR3
     //   cfg_det_en = 0b1;
@@ -1895,7 +1913,7 @@ fn cvx16_dfi_ca_park_prbs(cap_enable: bool) {
     write32(DDR_TOP_BASE + 0x0c, 0x3fffffff);
 
     // param_phyd_sw_dfi_phyupd_req_clr =1
-    write32(PHYD_BASE_ADDR + 0x0174, 0x00000010);
+    write32(PHYD_BASE + 0x0174, 0x00000010);
 }
 
 enum LvlMode {
@@ -1904,6 +1922,10 @@ enum LvlMode {
     WdqAndWdmLvl,
 }
 
+// data_mode = 'h0 : phyd pattern
+// data_mode = 'h1 : bist read/write
+// data_mode = 'h11: with Error enject,  multi- bist write/read
+// data_mode = 'h12: with Error enject,  multi- bist write/read
 fn cvx16_wdqlvl_req(data_mode: u32, lvl_mode: LvlMode) {
     // NOTE: training need ctrl_low_patch first
     let (
@@ -1929,8 +1951,8 @@ fn cvx16_wdqlvl_req(data_mode: u32, lvl_mode: LvlMode) {
         LvlMode::WdqLvl => 1 << 12,
         LvlMode::WdqAndWdmLvl => (1 << 13) | (1 << 12),
     };
-    let v = read32(0x00BC + PHYD_BASE_ADDR);
-    write32(0x00BC + PHYD_BASE_ADDR, v & !(0b11 << 12) | bb);
+    let v = read32(0x00BC + PHYD_BASE);
+    write32(0x00BC + PHYD_BASE, v & !(0b11 << 12) | bb);
 
     match lvl_mode {
         LvlMode::WdmLvl => {
@@ -1951,7 +1973,7 @@ fn cvx16_wdqlvl_req(data_mode: u32, lvl_mode: LvlMode) {
     }
 
     // param_phyd_dfi_wdqlvl
-    let v = read32(PHYD_BASE_ADDR + 0x018C);
+    let v = read32(PHYD_BASE + 0x018C);
     println!("      phyd_dfi_wdqlvl {v:08x}");
     // req
     let v = v | 0b1;
@@ -1965,7 +1987,7 @@ fn cvx16_wdqlvl_req(data_mode: u32, lvl_mode: LvlMode) {
     };
     let clr_mask = !((1 << 10) | (1 << 4));
     let v = (v & clr_mask) | (vref_train_en << 10) | (bist_data_en << 4);
-    write32(PHYD_BASE_ADDR + 0x018C, v);
+    write32(PHYD_BASE + 0x018C, v);
     println!("      phyd_dfi_wdqlvl {v:08x}");
 
     println!("    wait retraining finish ...");
@@ -1973,11 +1995,10 @@ fn cvx16_wdqlvl_req(data_mode: u32, lvl_mode: LvlMode) {
     //[1] param_phyd_dfi_rdglvl_done
     //[2] param_phyd_dfi_rdlvl_done
     //[3] param_phyd_dfi_wdqlvl_done
-    while read32(PHYD_BASE_ADDR + 0x3444) & (1 << 3) == 0 {}
+    while read32(PHYD_BASE + 0x3444) & (1 << 3) == 0 {}
 
     let v = read32(DDR_CFG_BASE + 0xC);
-    let v = v & !(1 << 7);
-    write32(DDR_CFG_BASE + 0xC, v);
+    write32(DDR_CFG_BASE + 0xC, v & !(1 << 7));
     // BIST clock disable
     write32(DDR_BIST_BASE + 0x0, 0x00040000);
 
@@ -2027,10 +2048,10 @@ fn ctrl_init_low_patch() {
     // write32(DDR_CFG_BASE + 0x0044, 0x14000000);
 }
 
-fn ctrl_init_detect_dram_size() -> u32 {
+fn ctrl_init_detect_dram_size(ddr_type: &DdrType) -> u32 {
     let mut cap_in_mbyte = 4;
 
-    if DDR3 || DDR2_3 && get_ddr_type() == DDR_TYPE_DDR3 {
+    if *ddr_type == DdrType::Ddr3 {
         fn bist_poll() -> u32 {
             // bist_enable
             write32(DDR_BIST_BASE + 0x0, 0x00010001);
@@ -2101,12 +2122,12 @@ fn ctrl_init_detect_dram_size() -> u32 {
         }
     }
 
-    if DDR2 || DDR2_3 && get_ddr_type() == DDR_TYPE_DDR2 {
+    if *ddr_type == DdrType::Ddr2 {
         cap_in_mbyte = 6;
     }
 
     // save dram_cap_in_mbyte
-    write32(PHYD_BASE_ADDR + 0x0208, cap_in_mbyte);
+    write32(PHYD_BASE + 0x0208, cap_in_mbyte);
 
     // clock gen: BIST clock disable
     write32(DDR_BIST_BASE + 0x0, 0x00040000);
@@ -2299,6 +2320,7 @@ const DDRC_RESET: usize = DDR_TOP_BASE + 0x20;
 
 // fsbl plat/cv181x/ddr/ddr_sys_bring_up.c ddr_sys_bring_up
 pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
+    let ddr_type = &get_ddr_type(dram_type);
     let (reg_set, reg_span, reg_step) = get_pll_settings(ddr_data_rate);
     // NOTE: cvx16_pll_init is called from within pll_init in the vendor code
     cvx16_pll_init(reg_set, reg_span, reg_step, dram_type);
@@ -2323,7 +2345,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     cvx16_setting_check();
     cvx16_pinmux(dram_type);
     ddr_patch_set();
-    cvx16_en_rec_vol_mode();
+    cvx16_en_rec_vol_mode(ddr_type);
     cvx16_set_dfi_init_start();
 
     cvx16_ddr_phy_power_on_seq1();
@@ -2383,8 +2405,8 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     println!("ctrl_low_patch finish");
 
     // CHECK
-    if !DDR2 {
-        cvx16_wrlvl_req();
+    if *ddr_type != DdrType::Ddr2 {
+        cvx16_wrlvl_req(ddr_type);
         println!("cvx16_wrlvl_req finish");
     }
 
@@ -2395,7 +2417,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         }
     }
 
-    cvx16_rdglvl_req();
+    cvx16_rdglvl_req(ddr_type);
     println!("cvx16_rdglvl_req finish");
 
     if DO_BIST {
@@ -2410,24 +2432,19 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
 
     if DBG_SHMOO {
         /*
-        // DPHY WDQ
-        // param_phyd_dfi_wdqlvl_vref_start [6:0]
-        // param_phyd_dfi_wdqlvl_vref_end [14:8]
-        // param_phyd_dfi_wdqlvl_vref_step [19:16]
-        write32(0x08000190, 0x00021E02);
-        // param_phyd_piwdqlvl_dly_step[23:20]
-        write32(0x080000a4, 0x01220504);
+        const DPHY_WDQ: usize = PHYD_BASE + 0x0190;
+        // dfi_wdq_lvl_vref_start [6:0]
+        // dfi_wdq_lvl_vref_end [14:8]
+        // dfi_wdq_lvl_vref_step [19:16]
+        write32(DPHY_WDQ, 0x00021E02);
+        // pi_wdq_lvl_dly_step[23:20]
+        const PI_WDQ_LVL_DELAY: usize = PHYD_BASE + 0x00a4;
+        write32(PI_WDQ_LVL_DELAY, 0x01220504);
         // write start   shift = 5  /  dline = 78
-        write32(0x080000a0, 0x0d400578);
-        //write
+        let r = PHYD_BASE + 0x00a0;
+        write32(r, 0x0d400578);
+        // write
         println!("wdqlvl_M1_ALL_DQ_DM\n");
-        // data_mode = 'h0 : phyd pattern
-        // data_mode = 'h1 : bist read/write
-        // data_mode = 'h11: with Error enject,  multi- bist write/read
-        // data_mode = 'h12: with Error enject,  multi- bist write/read
-        // lvl_mode  = 'h0 : wdmlvl
-        // lvl_mode  = 'h1 : wdqlvl
-        // lvl_mode  = 'h2 : wdqlvl and wdmlvl
         // cvx16_wdqlvl_req(data_mode, lvl_mode)
         println!("cvx16_wdqlvl_sw_req dq/dm");
         // console_getc();
@@ -2448,19 +2465,11 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         */
         println!("cvx16_wdqlvl_req dm finish");
     } else {
-        // cvx16_wdqlvl_req
         println!(" wdqlvl_M1_ALL_DQ_DM");
         // sso_8x1_c(5, 15, 0, 1, &sram_sp);
         // mode = write, input int fmin = 5, input int fmax = 15,
         // input int sram_st = 0, output int sram_sp
 
-        // data_mode = 'h0 : phyd pattern
-        // data_mode = 'h1 : bist read/write
-        // data_mode = 'h11: with Error enject,  multi- bist write/read
-        // data_mode = 'h12: with Error enject,  multi- bist write/read
-        // lvl_mode  = 'h0 : wdmlvl
-        // lvl_mode  = 'h1 : wdqlvl
-        // lvl_mode  = 'h2 : wdqlvl and wdmlvl
         cvx16_wdqlvl_req(1, LvlMode::WdqAndWdmLvl);
         println!("  cvx16_wdqlvl_req dq/dm finish");
         cvx16_wdqlvl_req(1, LvlMode::WdqLvl);
@@ -2469,8 +2478,8 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         println!("  cvx16_wdqlvl_req dm finish");
         if DO_BIST {
             cvx16_bist_wr_prbs_init();
-            if let Err(()) = bist() {
-                panic!("-- ERROR bist_fail");
+            if bist().is_err() {
+                panic!("BIST fail");
             }
         }
     }
@@ -2495,10 +2504,10 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         // mode = 'h2  : multi- bist write/read
         // mode = 'h10 : with Error enject,  multi- bist write/read
         // mode = 'h12 : with Error enject,  multi- bist write/read
-        let v = read32(PHYD_BASE_ADDR + 0x008c);
+        let v = read32(PHYD_BASE + 0x008c);
         // param_phyd_pirdlvl_capture_cnt
         let v = (v & (0b1111 << 4)) | 0x1;
-        write32(PHYD_BASE_ADDR + 0x008c + PHYD_BASE_ADDR, v);
+        write32(PHYD_BASE + 0x008c + PHYD_BASE, v);
 
         println!("mode multi- bist write/read");
         // mode multi- PRBS bist write/read
@@ -2544,7 +2553,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
 
     ctrl_init_high_patch();
 
-    let dram_cap_in_mbyte = ctrl_init_detect_dram_size();
+    let dram_cap_in_mbyte = ctrl_init_detect_dram_size(ddr_type);
     println!("dram_cap_in_mbyte: {dram_cap_in_mbyte}");
     ctrl_init_update_by_dram_size(dram_cap_in_mbyte);
     println!("ctrl_init_update_by_dram_size finish");
