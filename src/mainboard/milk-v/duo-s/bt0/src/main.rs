@@ -200,8 +200,6 @@ fn main() {
         util::memtest::mem_test(mem_map::DRAM_BASE, 0x1_0000);
     }
 
-    panic!("DRAM is sad");
-
     // Load extra code
 
     let v = read32(cv18xx::AXI_SRAM_RTOS_BASE);
