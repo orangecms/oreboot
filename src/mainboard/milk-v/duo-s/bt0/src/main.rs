@@ -17,8 +17,10 @@ use core::{
 use layoutflash::areas::{find_fdt, FdtIterator};
 use util::{dump, dump_block, read32, write32};
 
+mod axi_mon;
 mod cv18xx;
 mod ddr_bist;
+mod ddr_ctrl;
 mod ddr_phy;
 mod ddr_pll;
 mod dram;
