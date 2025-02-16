@@ -16,11 +16,13 @@ pub const RTC_SYS_BASE: usize = 0x0500_0000;
 // TODO: What is the difference between PHY_BASE and PHY_BASE_ADDR?
 // plat/cv181x/include/ddr/ddr_sys.h
 pub const DDR_SYS_BASE: usize = 0x0800_0000;
-pub const PI_BASE: usize = DDR_SYS_BASE; // same as PHYD_BASE_ADDR ... unused?
-pub const PHYD_BASE: usize = DDR_SYS_BASE; // ?? used in phy_init
+
+// called PHYD_BASE_ADDR in phy_init
+pub const PHYD_BASE: usize = DDR_SYS_BASE;
 pub const PHY_BASE: usize = DDR_SYS_BASE + 0x2000;
 pub const PHY_VERSION: usize = DDR_SYS_BASE + 0x3000;
 pub const DDR_CFG_BASE: usize = DDR_SYS_BASE + 0x4000;
+// aka CADENCE_PHYD_APB aka CV_DDR_PHYD_APB aka PHYD_BASE
 pub const PHYD_APB: usize = DDR_SYS_BASE + 0x6000;
 pub const AXI_MON_BASE: usize = DDR_SYS_BASE + 0x8000;
 pub const DDR_TOP_BASE: usize = DDR_SYS_BASE + 0xa000;
