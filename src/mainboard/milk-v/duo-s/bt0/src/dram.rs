@@ -8,7 +8,6 @@ use crate::mem_map::{
 use crate::{axi_mon, ddr_bist, ddr_ctrl, ddr_phy, ddr_pll};
 
 // TODO: All of this would be a build-time config.
-const DRAM_TEST: bool = true;
 const DO_BIST: bool = true;
 
 const DBG_SHMOO: bool = false;
@@ -548,36 +547,6 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     ddr_pll::cvx16_ddr_phy_power_on_seq3();
     ddr_pll::cvx16_wait_for_dfi_init_complete();
     ddr_ctrl::cvx16_polling_synp_normal_mode();
-
-    // a very simple write+read check
-    if DRAM_TEST {
-        println!("DRAM test start");
-        let offset1 = 0x3000;
-        let offset2 = 0x6000;
-        for i in (0..128).step_by(4) {
-            let a = DRAM_BASE + offset1 + i as usize;
-            let v = 0xff00_0000 | i as u32;
-            write32(a, v);
-            let a = DRAM_BASE + offset2 + i as usize;
-            let v = 0x0f0f_0000 | i as u32;
-            write32(a, v);
-        }
-        for i in (0..128).step_by(4) {
-            let a = DRAM_BASE + offset1 + i as usize;
-            let e = 0xff00_0000 | i as u32;
-            let v = read32(a);
-            if v != e {
-                panic!("@{a:08x} expected {e:08x} got {v:08x}");
-            }
-            let a = DRAM_BASE + offset2 + i as usize;
-            let e = 0x0f0f_0000 | i as u32;
-            let v = read32(a);
-            if v != e {
-                panic!("@{a:08x} expected {e:08x} got {v:08x}");
-            }
-        }
-        println!("DRAM test done");
-    }
 
     if DO_BIST {
         ddr_bist::cvx16_bist_wr_prbs_init();

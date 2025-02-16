@@ -11,25 +11,23 @@ pub const RTC_SYS_BASE: usize = 0x0500_0000;
 
 // NOTE: The vendor code has PHYD_BASE and PHYD_BASE_ADDR.
 // Those are not the same, looks like there was some confusion.
-// PHYD_BASE is really PHYD_APB. They also have that. We reduced it.
-// What is PHYD anyway?
-// TODO: What is the difference between PHY_BASE and PHY_BASE_ADDR?
+// Their PHYD_BASE is really PHYD_APB, for which they have two aliases. We reduced it.
+// What is PHYD anyway? It is the _Digital PHY_. In contrast, PHYA is the _Analog PHY_.
 // plat/cv181x/include/ddr/ddr_sys.h
 pub const DDR_SYS_BASE: usize = 0x0800_0000;
 
-// called PHYD_BASE_ADDR in phy_init
+// called PHYD_BASE_ADDR in phy_init, aka CADENCE_PHYD
 pub const PHYD_BASE: usize = DDR_SYS_BASE;
 pub const PHY_BASE: usize = DDR_SYS_BASE + 0x2000;
 pub const PHY_VERSION: usize = DDR_SYS_BASE + 0x3000;
 pub const DDR_CFG_BASE: usize = DDR_SYS_BASE + 0x4000;
-// aka CADENCE_PHYD_APB aka CV_DDR_PHYD_APB aka PHYD_BASE
+// aka CADENCE_PHYD_APB aka CV_DDR_PHYD_APB aka PHYD_BASE in vendor code (PHYD_BASE is wrong!)
 pub const PHYD_APB: usize = DDR_SYS_BASE + 0x6000;
 pub const AXI_MON_BASE: usize = DDR_SYS_BASE + 0x8000;
 pub const DDR_TOP_BASE: usize = DDR_SYS_BASE + 0xa000;
 pub const DDR_BIST_BASE: usize = DDR_SYS_BASE + 0x0001_0000;
 
 pub const TPU_SRAM_BASE: usize = 0x0c00_0000;
-
 pub const AXI_SRAM_BASE: usize = 0x0e00_0000;
 
 pub const DRAM_BASE: usize = 0x8000_0000;
