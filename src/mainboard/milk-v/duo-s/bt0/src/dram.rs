@@ -14,6 +14,12 @@ use crate::{axi_mon, ddr_bist, ddr_ctrl, ddr_phy, ddr_pll};
 const DO_BIST: bool = true;
 
 const DBG_SHMOO: bool = false;
+const DDR3_DBG: bool = false;
+
+const DDR2_512: bool = false;
+const DDR2_PINMUX: bool = false;
+const DDR3_PINMUX: bool = false;
+
 const DDR3: bool = true;
 const DDR3_1866: bool = true;
 
@@ -300,10 +306,6 @@ pub fn cvx16_pinmux(dram_type: &DramType) {
     }
     // The following are from within ifdefs in the vendor code.
     // Many of them were actually duplicates, omitted/deduped here.
-    const DDR2_512: bool = false;
-    const DDR2_PINMUX: bool = false;
-    const DDR3_PINMUX: bool = false;
-    const DDR3_DBG: bool = false;
     if DDR2_512 {
         println!("pin mux X16 mode DDR2 512 setting");
         write32(0x0000 + PHYD_BASE, 0x0C06080B);
@@ -357,97 +359,80 @@ pub fn cvx16_pinmux(dram_type: &DramType) {
 // plat/cv181x/ddr/ddr_config/ddr3_1866_x16/ddr_patch_regs.c
 fn ddr_patch_set() {
     println!("/ ddr_patch_set start");
-    if false {
-        // tune damp
-        write32(PHYD_BASE + 0x0150, 0x00000005);
-        // CSB & CA driving
-        write32(PHYD_BASE + 0x097c, 0x08080404);
-        // CLK driving
-        write32(PHYD_BASE + 0x0980, 0x08080808);
+    // tune damp
+    write32(PHYD_BASE + 0x0150, 0x00000005);
+    // CSB & CA driving
+    write32(PHYD_BASE + 0x097c, 0x08080404);
+    // CLK driving
+    write32(PHYD_BASE + 0x0980, 0x08080808);
+
+    let (dq, dqs) = if DDR3_1866 {
+        (0x00000606, 0x06060606)
+    } else {
+        (0x00000808, 0x04040404)
+    };
+    // DQ driving // BYTE0
+    write32(PHYD_BASE + 0x0a38, dq);
+    // DQS driving // BYTE0
+    write32(PHYD_BASE + 0x0a3c, dqs);
+    // DQ driving // BYTE1
+    write32(PHYD_BASE + 0x0a78, dq);
+    // DQS driving // BYTE1
+    write32(PHYD_BASE + 0x0a7c, dqs);
+
+    // trigger level
+    // BYTE0
+    write32(PHYD_BASE + 0x0b24, 0x00100010);
+    // BYTE1
+    write32(PHYD_BASE + 0x0b54, 0x00100010);
+
+    // APHY TX VREF DQ rangex2 [1]
+    write32(PHYD_BASE + 0x0410, 0x00120002);
+    // APHY TX VREF CA rangex2 [1]
+    write32(PHYD_BASE + 0x0414, 0x00100002);
+
+    // tx dline code
+    //  BYTE0 DQ
+    let dq0 = 0x08000a00;
+    let v = if DDR3_1866 { 0x06430643 } else { 0x06430644 };
+    for r in (0x00..0x10).step_by(4) {
+        write32(dq0 + r, v);
     }
-
-    if false {
-        if DDR3_1866 {
-            // DQ driving // BYTE0
-            write32(PHYD_BASE + 0x0a38, 0x00000606);
-            // DQS driving // BYTE0
-            write32(PHYD_BASE + 0x0a3c, 0x06060606);
-            // DQ driving // BYTE1
-            write32(PHYD_BASE + 0x0a78, 0x00000606);
-            // DQS driving // BYTE1
-            write32(PHYD_BASE + 0x0a7c, 0x06060606);
-        } else {
-            // DQ driving // BYTE0
-            write32(PHYD_BASE + 0x0a38, 0x00000808);
-            // DQS driving // BYTE0
-            write32(PHYD_BASE + 0x0a3c, 0x04040404);
-            // DQ driving // BYTE1
-            write32(PHYD_BASE + 0x0a78, 0x00000808);
-            // DQS driving // BYTE1
-            write32(PHYD_BASE + 0x0a7c, 0x04040404);
-        }
-
-        // trigger level
-        // BYTE0
-        write32(PHYD_BASE + 0x0b24, 0x00100010);
-        // BYTE1
-        write32(PHYD_BASE + 0x0b54, 0x00100010);
-
-        // APHY TX VREFDQ rangex2 [1]
-        // VREF DQ
-        write32(PHYD_BASE + 0x0410, 0x00120002);
-        //APHY TX VREFCA rangex2 [1]
-        // VREF CA
-        write32(PHYD_BASE + 0x0414, 0x00100002);
-
-        // tx dline code
-        //  BYTE0 DQ
-        let dq0 = 0x08000a00;
-        let v = if DDR3_1866 { 0x06430643 } else { 0x06430644 };
-        for r in (0x00..0x10).step_by(4) {
-            write32(dq0 + r, v);
-        }
-        let v = if DDR3_1866 { 0x00000643 } else { 0x00000644 };
-        write32(dq0 + 0x10, v);
-        let v = if DDR3_1866 { 0x0a7e007e } else { 0x0d000000 };
-        write32(dq0 + 0x14, v);
-        //  BYTE1 DQ
-        let dq1 = 0x08000a40;
-        let v = if DDR3_1866 { 0x06430648 } else { 0x06430644 };
-        for r in (0x00..0x10).step_by(4) {
-            write32(dq1 + r, v);
-        }
-        let v = if DDR3_1866 { 0x00000648 } else { 0x00000644 };
-        write32(dq1 + 0x10, v);
-        let v = if DDR3_1866 { 0x0a7e007e } else { 0x0d000000 };
-        write32(dq1 + 0x14, v);
-
-        //APHY RX TRIG rangex2[18] & disable lsmode[0]
-        //f0_param_phya_reg_rx_byte0_en_lsmode[0]
-        //f0_param_phya_reg_byte0_en_rec_vol_mode[12]
-        //f0_param_phya_reg_rx_byte0_force_en_lvstl_odt[16]
-        //f0_param_phya_reg_rx_byte0_sel_dqs_rec_vref_mode[8]
-        //param_phya_reg_rx_byte0_en_trig_lvl_rangex2[18]
-        // BYTE0 [0]
-        write32(PHYD_BASE + 0x0500, 0x00041001);
-        //f0_param_phya_reg_rx_byte1_en_lsmode[0]
-        //f0_param_phya_reg_byte1_en_rec_vol_mode[12]
-        //f0_param_phya_reg_rx_byte0_force_en_lvstl_odt[16]
-        //f0_param_phya_reg_rx_byte0_sel_dqs_rec_vref_mode[8]
-        //param_phya_reg_rx_byte0_en_trig_lvl_rangex2[18]
-        // BYTE1 [0]
-        write32(PHYD_BASE + 0x0540, 0x00041001);
-
-        ////////  FOR U02 ///////
-        /////////// U02 enable DQS voltage mode receiver
-        // f0_param_phya_reg_tx_byte0_en_tx_de_dqs[20]
-        write32(PHYD_BASE + 0x0504, 0x00100000);
-        // f0_param_phya_reg_tx_byte1_en_tx_de_dqs[20]
-        write32(PHYD_BASE + 0x0544, 0x00100000);
-        /////////// U02 enable MASK voltage mode receiver
-        // param_phya_reg_rx_sel_dqs_wo_pream_mode[2]
-        write32(PHYD_BASE + 0x0138, 0x00000014);
+    let v = if DDR3_1866 { 0x00000643 } else { 0x00000644 };
+    write32(dq0 + 0x10, v);
+    let v = if DDR3_1866 { 0x0a7e007e } else { 0x0d000000 };
+    write32(dq0 + 0x14, v);
+    //  BYTE1 DQ
+    let dq1 = 0x08000a40;
+    let v = if DDR3_1866 { 0x06430648 } else { 0x06430644 };
+    for r in (0x00..0x10).step_by(4) {
+        write32(dq1 + r, v);
     }
+    let v = if DDR3_1866 { 0x00000648 } else { 0x00000644 };
+    write32(dq1 + 0x10, v);
+    let v = if DDR3_1866 { 0x0a7e007e } else { 0x0d000000 };
+    write32(dq1 + 0x14, v);
+
+    // APHY RX TRIG rangex2[18] & disable lsmode[0]
+    // f0_param_phya_reg_rx_byteN_en_lsmode[0]
+    // f0_param_phya_reg_byteN_en_rec_vol_mode[12]
+    // f0_param_phya_reg_rx_byteN_force_en_lvstl_odt[16]
+    // f0_param_phya_reg_rx_byteN_sel_dqs_rec_vref_mode[8]
+    // f0_param_phya_reg_rx_byteN_en_trig_lvl_rangex2[18]
+    // BYTE0 [0]
+    write32(PHYD_BASE + 0x0500, 0x00041001);
+    // BYTE1 [0]
+    write32(PHYD_BASE + 0x0540, 0x00041001);
+
+    ////////  FOR U02 ///////
+    /////////// U02 enable DQS voltage mode receiver
+    // f0_param_phya_reg_tx_byte0_en_tx_de_dqs[20]
+    write32(PHYD_BASE + 0x0504, 0x00100000);
+    // f0_param_phya_reg_tx_byte1_en_tx_de_dqs[20]
+    write32(PHYD_BASE + 0x0544, 0x00100000);
+    /////////// U02 enable MASK voltage mode receiver
+    // param_phya_reg_rx_sel_dqs_wo_pream_mode[2]
+    write32(PHYD_BASE + 0x0138, 0x00000014);
 
     // BYTE0 RX DQ deskew
     let v = if DDR3_1866 { 0x00020402 } else { 0x02000202 };
@@ -467,18 +452,21 @@ fn ddr_patch_set() {
     let v = if DDR3_1866 { 0x00323900 } else { 0x00313503 };
     write32(PHYD_BASE + 0x0b38, v);
 
-    if false {
-        //Read gate TX dline + shift
-        let v = if DDR3_1866 { 0x00000a14 } else { 0x0000081e };
-        // BYTE0
-        write32(PHYD_BASE + 0x0b0c, v);
-        // BYTE1
-        write32(PHYD_BASE + 0x0b3c, v);
+    //Read gate TX dline + shift
+    let v = if DDR3_1866 { 0x00000a14 } else { 0x0000081e };
+    // BYTE0
+    write32(PHYD_BASE + 0x0b0c, v);
+    // BYTE1
+    write32(PHYD_BASE + 0x0b3c, v);
 
-        // CKE dline + shift CKE0 [6:0]+[13:8] ; CKE1 [22:16]+[29:24]
-        write32(PHYD_BASE + 0x0930, 0x04000400);
-        // CSB dline + shift CSB0 [6:0]+[13:8] ; CSB1 [22:16]+[29:24]
-        write32(PHYD_BASE + 0x0934, 0x04000400);
+    // CKE dline + shift CKE0 [6:0]+[13:8] ; CKE1 [22:16]+[29:24]
+    write32(PHYD_BASE + 0x0930, 0x04000400);
+    // CSB dline + shift CSB0 [6:0]+[13:8] ; CSB1 [22:16]+[29:24]
+    write32(PHYD_BASE + 0x0934, 0x04000400);
+
+    if DDR3_DBG {
+        //wrlvl response only DQ0
+        write32(PHYD_BASE + 0x005C, 0x00FE0000);
     }
 
     println!("\\ ddr_patch_set finish");
