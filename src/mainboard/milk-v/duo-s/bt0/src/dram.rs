@@ -1,6 +1,9 @@
 use oreboot_arch::riscv64::util::delay as opdelay;
 use util::{read32, read64, write32};
 
+// https://ddr-phy.org/
+// DFI = DDR PHY Interface
+
 use crate::mem_map::{
     CLK_GEN_PLL_CTRL_BASE, DDR_BIST_BASE, DDR_CFG_BASE, DDR_TOP_BASE, DRAM_BASE, PHYD_APB,
     PHYD_BASE, PHY_VERSION, TOP_BASE,
@@ -12,6 +15,7 @@ const DO_BIST: bool = true;
 
 const DBG_SHMOO: bool = false;
 const DDR3: bool = true;
+const DDR3_1866: bool = true;
 
 const DFITMG0: usize = DDR_CFG_BASE + 0x0190;
 const DFITMG1: usize = DDR_CFG_BASE + 0x0194;
@@ -83,33 +87,29 @@ fn cvx16_setting_check() {
     println!("  phy_reg_version {phy_reg_version:08x}");
 
     // NOTE: Those were commented out in the vendor code as well.
-    // write32(DDR_CFG_BASE + 0x190, 0x048a8305);
-    // write32(DDR_CFG_BASE + 0x194, 0x00070202);
+    // write32(DFITMG0, 0x048a8305);
+    // write32(DFITMG1, 0x00070202);
 
     let v = read32(DFITMG0);
     let dfi_tphy_wrlat = v & 0b11111;
     let dfi_tphy_wrdata = (v >> 8) & 0b111111;
     let dfi_t_rddata_en = (v >> 16) & 0b1111111;
     let dfi_t_ctrl_delay = (v >> 24) & 0b111111;
+    let v = read32(DFITMG1);
+    let dfi_t_wrdata_delay = (v >> 16) & 0b11111;
+
     println!("  dfi_t_ctrl_delay   {dfi_t_ctrl_delay}");
     println!("  dfi_t_rddata_en    {dfi_t_rddata_en}");
     println!("  dfi_tphy_wrlat     {dfi_tphy_wrlat}");
     println!("  dfi_tphy_wrdata    {dfi_tphy_wrdata}");
-
-    let v = read32(DFITMG1);
-    let dfi_t_wrdata_delay = (v >> 16) & 0b11111;
     println!("  dfi_t_wrdata_delay {dfi_t_wrdata_delay}");
 
     // TODO: other DRAM variants
     // 1866
     assert_eq!(dfi_tphy_wrlat, 0x5, "dfi_tphy_wrlat, wanted 0x5");
     assert_eq!(dfi_tphy_wrdata, 0x3, "dfi_tphy_wrdata, wanted 0x3");
-    if (dfi_t_rddata_en != 0xa) {
-        panic!("ERR !!! dfi_t_rddata_en not 0xa");
-    }
-    if (dfi_t_wrdata_delay != 0x7) {
-        panic!("ERR !!! dfi_t_wrdata_delay not 0x7");
-    }
+    assert_eq!(dfi_t_rddata_en, 0xa, "dfi_t_rddata_en, wanted 0xa");
+    assert_eq!(dfi_t_wrdata_delay, 0x7, "dfi_t_wrdata_delay, wanted 0x7");
     println!("\\ cvx16_setting_check finish");
 }
 
@@ -352,8 +352,6 @@ pub fn cvx16_pinmux(dram_type: &DramType) {
     println!("\\ cvx16_pinmux finish");
 }
 
-const DDR3_1866: bool = true;
-
 // This is a full duplicate in the vendor code:
 // plat/cv181x/ddr/ddr_config/ddr_auto_x16/ddr_patch_regs.c
 // plat/cv181x/ddr/ddr_config/ddr3_1866_x16/ddr_patch_regs.c
@@ -361,48 +359,46 @@ fn ddr_patch_set() {
     println!("/ ddr_patch_set start");
     if false {
         // tune damp
-        write32(0x08000150, 0x00000005);
-
+        write32(PHYD_BASE + 0x0150, 0x00000005);
         // CSB & CA driving
-        write32(0x0800097c, 0x08080404);
-
+        write32(PHYD_BASE + 0x097c, 0x08080404);
         // CLK driving
-        write32(0x08000980, 0x08080808);
+        write32(PHYD_BASE + 0x0980, 0x08080808);
     }
 
     if false {
         if DDR3_1866 {
             // DQ driving // BYTE0
-            write32(0x08000a38, 0x00000606);
+            write32(PHYD_BASE + 0x0a38, 0x00000606);
             // DQS driving // BYTE0
-            write32(0x08000a3c, 0x06060606);
+            write32(PHYD_BASE + 0x0a3c, 0x06060606);
             // DQ driving // BYTE1
-            write32(0x08000a78, 0x00000606);
+            write32(PHYD_BASE + 0x0a78, 0x00000606);
             // DQS driving // BYTE1
-            write32(0x08000a7c, 0x06060606);
+            write32(PHYD_BASE + 0x0a7c, 0x06060606);
         } else {
             // DQ driving // BYTE0
-            write32(0x08000a38, 0x00000808);
+            write32(PHYD_BASE + 0x0a38, 0x00000808);
             // DQS driving // BYTE0
-            write32(0x08000a3c, 0x04040404);
+            write32(PHYD_BASE + 0x0a3c, 0x04040404);
             // DQ driving // BYTE1
-            write32(0x08000a78, 0x00000808);
+            write32(PHYD_BASE + 0x0a78, 0x00000808);
             // DQS driving // BYTE1
-            write32(0x08000a7c, 0x04040404);
+            write32(PHYD_BASE + 0x0a7c, 0x04040404);
         }
 
-        //trigger level //////
+        // trigger level
         // BYTE0
-        write32(0x08000b24, 0x00100010);
+        write32(PHYD_BASE + 0x0b24, 0x00100010);
         // BYTE1
-        write32(0x08000b54, 0x00100010);
+        write32(PHYD_BASE + 0x0b54, 0x00100010);
 
-        //APHY TX VREFDQ rangex2 [1]
-        //VREF DQ   //
-        write32(0x08000410, 0x00120002);
+        // APHY TX VREFDQ rangex2 [1]
+        // VREF DQ
+        write32(PHYD_BASE + 0x0410, 0x00120002);
         //APHY TX VREFCA rangex2 [1]
-        //VREF CA  //
-        write32(0x08000414, 0x00100002);
+        // VREF CA
+        write32(PHYD_BASE + 0x0414, 0x00100002);
 
         // tx dline code
         //  BYTE0 DQ
@@ -433,56 +429,56 @@ fn ddr_patch_set() {
         //f0_param_phya_reg_rx_byte0_sel_dqs_rec_vref_mode[8]
         //param_phya_reg_rx_byte0_en_trig_lvl_rangex2[18]
         // BYTE0 [0]
-        write32(0x08000500, 0x00041001);
+        write32(PHYD_BASE + 0x0500, 0x00041001);
         //f0_param_phya_reg_rx_byte1_en_lsmode[0]
         //f0_param_phya_reg_byte1_en_rec_vol_mode[12]
         //f0_param_phya_reg_rx_byte0_force_en_lvstl_odt[16]
         //f0_param_phya_reg_rx_byte0_sel_dqs_rec_vref_mode[8]
         //param_phya_reg_rx_byte0_en_trig_lvl_rangex2[18]
         // BYTE1 [0]
-        write32(0x08000540, 0x00041001);
+        write32(PHYD_BASE + 0x0540, 0x00041001);
 
         ////////  FOR U02 ///////
         /////////// U02 enable DQS voltage mode receiver
         // f0_param_phya_reg_tx_byte0_en_tx_de_dqs[20]
-        write32(0x08000504, 0x00100000);
+        write32(PHYD_BASE + 0x0504, 0x00100000);
         // f0_param_phya_reg_tx_byte1_en_tx_de_dqs[20]
-        write32(0x08000544, 0x00100000);
+        write32(PHYD_BASE + 0x0544, 0x00100000);
         /////////// U02 enable MASK voltage mode receiver
         // param_phya_reg_rx_sel_dqs_wo_pream_mode[2]
-        write32(0x08000138, 0x00000014);
+        write32(PHYD_BASE + 0x0138, 0x00000014);
     }
 
     // BYTE0 RX DQ deskew
     let v = if DDR3_1866 { 0x00020402 } else { 0x02000202 };
-    write32(0x08000b00, v);
+    write32(PHYD_BASE + 0x0b00, v);
     let v = if DDR3_1866 { 0x05020401 } else { 0x00020000 };
-    write32(0x08000b04, v);
+    write32(PHYD_BASE + 0x0b04, v);
     // BYTE0  DQ8 deskew [6:0] neg DQS  [15:8]  ;  pos DQS  [23:16]
     let v = if DDR3_1866 { 0x00313902 } else { 0x002d3202 };
-    write32(0x08000b08, v);
+    write32(PHYD_BASE + 0x0b08, v);
 
     // BYTE1 RX DQ deskew
     let v = if DDR3_1866 { 0x06000100 } else { 0x04020603 };
-    write32(0x08000b30, v);
+    write32(PHYD_BASE + 0x0b30, v);
     let v = if DDR3_1866 { 0x02010303 } else { 0x00060203 };
-    write32(0x08000b34, v);
+    write32(PHYD_BASE + 0x0b34, v);
     // BYTE1  DQ8 deskew [6:0] neg DQS  [15:8]  ;  pos DQS  [23:16]
     let v = if DDR3_1866 { 0x00323900 } else { 0x00313503 };
-    write32(0x08000b38, v);
+    write32(PHYD_BASE + 0x0b38, v);
 
     if false {
         //Read gate TX dline + shift
         let v = if DDR3_1866 { 0x00000a14 } else { 0x0000081e };
         // BYTE0
-        write32(0x08000b0c, v);
+        write32(PHYD_BASE + 0x0b0c, v);
         // BYTE1
-        write32(0x08000b3c, v);
+        write32(PHYD_BASE + 0x0b3c, v);
 
         // CKE dline + shift CKE0 [6:0]+[13:8] ; CKE1 [22:16]+[29:24]
-        write32(0x08000930, 0x04000400);
+        write32(PHYD_BASE + 0x0930, 0x04000400);
         // CSB dline + shift CSB0 [6:0]+[13:8] ; CSB1 [22:16]+[29:24]
-        write32(0x08000934, 0x04000400);
+        write32(PHYD_BASE + 0x0934, 0x04000400);
     }
 
     println!("\\ ddr_patch_set finish");
@@ -642,7 +638,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     if DBG_SHMOO {
         // param_phyd_pirdlvl_dly_step [3:0]
         // param_phyd_pirdlvl_vref_step [11:8]
-        write32(0x08000088, 0x0A010212);
+        write32(PHYD_BASE + 0x0088, 0x0A010212);
 
         //read
         println!("cvx16_rdlvl_req start");
