@@ -656,7 +656,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         // mode multi- PRBS bist write/read
         // cvx16_rdlvl_req(2);
         // mode multi- SRAM bist write/read
-        ddr_bist::cvx16_rdlvl_req(1);
+        ddr_bist::cvx16_rdlvl_req(ddr_bist::XMode::SramWriteReadContinuousGoto);
         println!("cvx16_rdlvl_req finish");
 
         if DO_BIST {
@@ -722,37 +722,31 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         println!("DDR BIST PASS");
     }
 
-    /*
-    #ifdef FULL_MEM_BIST
-        //full memory
+    const FULL_MEM_BIST: bool = false;
+    if FULL_MEM_BIST {
         // sso_8x1_c(5, 15, 0, 1, &sram_sp);
         // sso_8x1_c(5, 15, sram_sp, 1, &sram_sp);
-
-        NOTICE("====FULL_MEM_BIST====\n");
+        /*
         bist_result = bist_all_dram(0, cap);
         if (bist_result == 0) {
             NOTICE("bist_all_dram(prbs): ERROR bist_fail\n");
         } else {
             NOTICE("bist_all_dram(prbs): BIST PASS\n");
         }
-
         bist_result = bist_all_dram(1, cap);
         if (bist_result == 0) {
             NOTICE("bist_all_dram(sram): ERROR bist_fail\n");
         } else {
             NOTICE("bist_all_dram(sram): BIST PASS\n");
         }
-
         bist_result = bist_all_dram(2, cap);
         if (bist_result == 0) {
             NOTICE("bist_all_dram(01): ERROR bist_fail\n");
         } else {
             NOTICE("bist_all_dram(01): BIST PASS\n");
         }
-
-        NOTICE("===== BIST END ======\n");
-    #endif //FULL_MEM_BIST
-    */
+        */
+    }
 
     /*
     if FULL_MEM_BIST_FOREVER {

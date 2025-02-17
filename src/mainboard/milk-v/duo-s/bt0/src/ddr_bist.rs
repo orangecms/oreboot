@@ -35,6 +35,41 @@ pub enum LvlMode {
     WdqAndWdmLvl,
 }
 
+pub enum XMode {
+    Mpr,
+    SramWriteReadContinuousGoto,
+    MultiBistWriteRead,
+    MultiBistReadWriteWithErrorInject1,
+    MultiBistReadWriteWithErrorInject2,
+}
+
+fn get_sram_sp_and_set_sso_period() -> u32 {
+    let fmax = 15;
+    let fmin = 5;
+    let fdiff = (fmax - fmin + 1);
+    // 8*f/4 -1
+    let sram_sp = 9 * (fmin + fmax) * fdiff / 2 / 4 + fdiff;
+
+    // bist sso_period
+    write32(DDR_BIST_BASE + 0x24, (fmax << 8) + fmin);
+
+    sram_sp
+}
+
+fn bist_cmd_rw() {
+    let sram_sp = get_sram_sp_and_set_sso_period();
+    let base1 = (511 << 12) | (5 << 9);
+    let base2 = (sram_sp << 12) | (6 << 9);
+    write32(DDR_BIST_BASE + 0x40, BIST_OP_WRITE | base1);
+    write32(DDR_BIST_BASE + 0x44, BIST_OP_READ | base1);
+    write32(DDR_BIST_BASE + 0x48, BIST_OP_WRITE | base2);
+    write32(DDR_BIST_BASE + 0x4c, BIST_OP_READ | base2);
+    //                                      addr_not_reset   loop_cnt
+    write32(DDR_BIST_BASE + 0x50, BIST_OP_GOTO | (0 << 20) | (1 << 0));
+    // NOP
+    write32(DDR_BIST_BASE + 0x54, 0);
+}
+
 fn bist_x_init_finish() {
     // specified DDR space
     write32(DDR_BIST_BASE + 0x10, 0x00000000);
@@ -49,7 +84,7 @@ pub fn cvx16_bist_wr_prbs_init() {
     // bist clock enable
     write32(DDR_BIST_BASE + 0x0, 0x00060006);
 
-    let base_cmd = (0 << 21) | (511 << 12) | (0b0101 << 9);
+    let base_cmd = (511 << 12) | (5 << 9);
     // W  1~17  prbs  repeat0
     let cmd1 = BIST_OP_WRITE | base_cmd;
     // R  1~17  prbs  repeat0
@@ -58,12 +93,31 @@ pub fn cvx16_bist_wr_prbs_init() {
     write32(DDR_BIST_BASE + 0x40, cmd1);
     write32(DDR_BIST_BASE + 0x44, cmd2);
     // NOP
-    for i in 0..4 {
-        write32(DDR_BIST_BASE + 0x48 + i * 4, 0);
+    for i in 2..6 {
+        write32(DDR_BIST_BASE + 0x40 + i * 4, 0);
     }
 
     bist_x_init_finish();
     println!("    bist_wr_prbs_init done");
+}
+
+fn cvx16_bist_rdlvl_init(mode: XMode) {
+    println!("    bist_rdlvl_init");
+    // bist clock enable
+    write32(DDR_BIST_BASE + 0x0, 0x00060006);
+
+    match mode {
+        XMode::Mpr => {
+            // MPR mode
+            // TODO
+        }
+        XMode::SramWriteReadContinuousGoto => bist_cmd_rw(),
+        // TODO
+        _ => {}
+    }
+
+    bist_x_init_finish();
+    println!("    bist_rdlvl_init done");
 }
 
 pub fn cvx16_bist_wrlvl_init() {
@@ -71,15 +125,15 @@ pub fn cvx16_bist_wrlvl_init() {
     // bist clock enable
     write32(DDR_BIST_BASE + 0x0, 0x00060006);
 
-    let cmd = BIST_OP_WRITE | (0b0101 << 9);
+    let cmd = BIST_OP_WRITE | (5 << 9);
     write32(DDR_BIST_BASE + 0x40, cmd);
     // NOP
-    for i in 0..5 {
-        write32(DDR_BIST_BASE + 0x44 + i * 4, 0);
+    for i in 1..6 {
+        write32(DDR_BIST_BASE + 0x40 + i * 4, 0);
     }
 
     bist_x_init_finish();
-    println!("     bist_wrlvl_init done");
+    println!("    bist_wrlvl_init done");
 }
 
 pub fn cvx16_bist_rdglvl_init() {
@@ -87,15 +141,15 @@ pub fn cvx16_bist_rdglvl_init() {
     // bist clock enable
     write32(DDR_BIST_BASE + 0x0, 0x00060006);
 
-    let cmd = BIST_OP_READ | (0 << 21) | (3 << 12) | (0b0101 << 9);
+    let cmd = BIST_OP_READ | (0 << 21) | (3 << 12) | (5 << 9);
     write32(DDR_BIST_BASE + 0x40, cmd);
     // NOP
-    for i in 0..5 {
-        write32(DDR_BIST_BASE + 0x44 + i * 4, 0);
+    for i in 1..6 {
+        write32(DDR_BIST_BASE + 0x40 + i * 4, 0);
     }
 
     bist_x_init_finish();
-    println!("     bist_rdglvl_init done");
+    println!("    bist_rdglvl_init done");
 }
 
 pub fn cvx16_bist_wdmlvl_init() {
@@ -103,25 +157,18 @@ pub fn cvx16_bist_wdmlvl_init() {
     // bist clock enable
     write32(DDR_BIST_BASE + 0x0, 0x00060006);
 
-    let fmax = 15;
-    let fmin = 5;
-    let fdiff = (fmax - fmin + 1);
-    // 8*f/4 -1
-    let sram_sp = 9 * (fmin + fmax) * fdiff / 2 / 4 + fdiff;
+    let sram_sp = get_sram_sp_and_set_sso_period();
     println!("      sram_sp = {sram_sp:08x}");
 
-    // bist sso_period
-    write32(DDR_BIST_BASE + 0x24, (fmax << 8) + fmin);
-
-    let cmd1 = BIST_OP_WRITE | (sram_sp << 12) | (0b0011 << 9);
-    let cmd2 = BIST_OP_WRITE | (sram_sp << 12) | (0b0111 << 9);
-    let cmd3 = BIST_OP_READ | (sram_sp << 12) | (0b0111 << 9);
+    let cmd1 = BIST_OP_WRITE | (sram_sp << 12) | (3 << 9);
+    let cmd2 = BIST_OP_WRITE | (sram_sp << 12) | (7 << 9);
+    let cmd3 = BIST_OP_READ | (sram_sp << 12) | (7 << 9);
     write32(DDR_BIST_BASE + 0x40, cmd1);
     write32(DDR_BIST_BASE + 0x44, cmd2);
     write32(DDR_BIST_BASE + 0x48, cmd3);
     // NOP
-    for i in 0..5 {
-        write32(DDR_BIST_BASE + 0x4c + i * 4, 0);
+    for i in 3..6 {
+        write32(DDR_BIST_BASE + 0x40 + i * 4, 0);
     }
 
     bist_x_init_finish();
@@ -145,27 +192,7 @@ fn cvx16_bist_wdqlvl_init(mode: &DataMode) {
                 write32(DDR_BIST_BASE + 0x48 + i * 4, 0);
             }
         }
-        DataMode::BistReadWrite => {
-            let fmin = 5;
-            let fmax = 15;
-            let fdiff = fmax - fmin + 1;
-            // 8*f/4 -1
-            let sram_sp = 9 * (fmin + fmax) * fdiff / 2 / 4 + fdiff;
-            println!("      sram_sp = {sram_sp:08x}");
-
-            // bist sso_period
-            write32(DDR_BIST_BASE + 0x24, (fmax << 8) + fmin);
-            let base1 = (511 << 12) | (0b0101 << 9);
-            let base2 = (sram_sp << 12) | (0b0110 << 9);
-            write32(DDR_BIST_BASE + 0x40, BIST_OP_WRITE | base1);
-            write32(DDR_BIST_BASE + 0x44, BIST_OP_READ | base1);
-            write32(DDR_BIST_BASE + 0x48, BIST_OP_WRITE | base2);
-            write32(DDR_BIST_BASE + 0x4c, BIST_OP_READ | base2);
-            //       GOTO      addr_not_reset loop_cnt
-            write32(DDR_BIST_BASE + 0x50, BIST_OP_GOTO | (0 << 20) | (1 << 0));
-            // NOP
-            write32(DDR_BIST_BASE + 0x54, 0);
-        }
+        DataMode::BistReadWrite => bist_cmd_rw(),
         DataMode::MultiBistReadWriteWithErrorInject1 => {
             // TODO
         }
@@ -405,7 +432,8 @@ pub fn cvx16_bist_wr_sram_init() {
     // TODO
 }
 
-pub fn cvx16_rdlvl_req(mode: u32) {
+pub fn cvx16_rdlvl_req(mode: XMode) {
+    // Note: training need ctrl_low_patch first
     let (
         selfref_sw,
         en_dfi_dram_clk_disable,
@@ -450,7 +478,8 @@ pub fn cvx16_rdlvl_req(mode: u32) {
         let v = v | (1 << 2);
         ddr_ctrl::cvx16_synp_mrw(0x3, v & 0xffff);
     }
-    cvx16_bist_rdglvl_init();
+    // bist setting for dfi rdglvl
+    cvx16_bist_rdlvl_init(mode);
     let v = read32(PHYD_BASE + 0x0188);
     // param_phyd_dfi_rdlvl_req
     write32(PHYD_BASE + 0x0188, v | 1);
