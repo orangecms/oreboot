@@ -21,39 +21,18 @@ pub fn init() -> PlatSbi {
     }
 }
 
-/**
- * from stock vendor OpenSBI:
- * PMP0    : 0x0000000040000000-0x000000004001ffff (A)
- * PMP1    : 0x0000000040000000-0x000000007fffffff (A,R,W,X)
- * PMP2    : 0x0000000000000000-0x0000000007ffffff (A,R,W)
- * PMP3    : 0x0000000009000000-0x000000000901ffff (
- */
 // see privileged spec v1.10 p44 ff
 // https://riscv.org/wp-content/uploads/2017/05/riscv-privileged-v1.10.pdf
 fn init_pmp() {
     // TODO
-    if false {
-        let cfg = 0x0f0f0f0f0fusize; // pmpaddr0-1 and pmpaddr2-3 are read-only
-        reg::pmpcfg0::write(cfg);
-        reg::pmpcfg2::write(0); // nothing active here
-        reg::pmpaddr0::write(0x40000000usize >> 2);
-        reg::pmpaddr1::write(0x40200000usize >> 2);
-        reg::pmpaddr2::write(0x80000000usize >> 2);
-        reg::pmpaddr3::write(0x80200000usize >> 2);
-    }
     // A: address matching; 0x01 means TOR (Top of range)
     // [ L  x  x  A1   A0  X  W  R ]
     // let cfg = 0x0000_0000_0f08_0f0f;
     let cfg = 0x0000_0000_0f0f_0f0f;
     reg::pmpaddr0::write(0x0);
-    reg::pmpaddr1::write(0x0000_0000_4000_0000 >> 2);
-    reg::pmpaddr2::write(0x0000_0000_4020_0000 >> 2);
+    reg::pmpaddr1::write(0x0000_0000_8000_0000 >> 2);
+    reg::pmpaddr2::write(0x0000_0000_8020_0000 >> 2);
     reg::pmpaddr3::write(0x00ff_ffff_ffff_ffff >> 2);
-    reg::pmpaddr4::write(0);
-    reg::pmpaddr5::write(0);
-    reg::pmpaddr6::write(0);
-    reg::pmpaddr7::write(0);
-    reg::pmpaddr8::write(0);
     reg::pmpcfg0::write(cfg);
     reg::pmpcfg2::write(0); // nothing active here
 }

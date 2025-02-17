@@ -446,7 +446,7 @@ pub fn low_patch() {
     // write32(DDR_CFG_BASE + 0x0044, 0x14000000);
 }
 
-pub fn update_by_dram_size(size: u32) {
+pub fn update_by_dram_size(size: u32) -> u32 {
     let v = read32(DDR_CFG_BASE + 0x0);
     let s1 = (v >> 12) & 0b11;
     let s2 = (v >> 30) & 0b11;
@@ -459,24 +459,6 @@ pub fn update_by_dram_size(size: u32) {
     let dram_cap_in_mbyte = dram_cap_in_mbyte >> (2 - s2);
     println!("   DRAM cap in MB per dev: {dram_cap_in_mbyte}");
     match dram_cap_in_mbyte {
-        5 => {
-            write32(DDR_CFG_BASE + 0x64, 0x00510019);
-            write32(DDR_CFG_BASE + 0x100, 0x0B011610);
-            write32(DDR_CFG_BASE + 0x120, 0x00000502);
-
-            write32(DDR_CFG_BASE + 0x200, 0x00001F1F);
-            write32(DDR_CFG_BASE + 0x204, 0x003F0606);
-            write32(DDR_CFG_BASE + 0x208, 0x00000000);
-            write32(DDR_CFG_BASE + 0x20c, 0x1F1F0000);
-            write32(DDR_CFG_BASE + 0x210, 0x00001F1F);
-            write32(DDR_CFG_BASE + 0x214, 0x040F0404);
-            write32(DDR_CFG_BASE + 0x218, 0x04040404);
-            write32(DDR_CFG_BASE + 0x21c, 0x00000404);
-            write32(DDR_CFG_BASE + 0x220, 0x00003F3F);
-            write32(DDR_CFG_BASE + 0x224, 0x04040404);
-            write32(DDR_CFG_BASE + 0x228, 0x04040404);
-            write32(DDR_CFG_BASE + 0x22c, 0x001F1F04);
-        }
         6 => {
             write32(DDR_CFG_BASE + 0x64, 0x0071002A);
             write32(DDR_CFG_BASE + 0x120, 0x00000903);
@@ -505,4 +487,5 @@ pub fn update_by_dram_size(size: u32) {
     // toggle refresh_update_level
     write32(REFRESH_CONTROL3, 0x00000002);
     write32(REFRESH_CONTROL3, 0x00000000);
+    dram_cap_in_mbyte
 }

@@ -717,6 +717,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     // size detection
     let dram_cap_in_mbyte = ddr_bist::detect_dram_size(ddr_type);
     println!("dram_cap_in_mbyte: {dram_cap_in_mbyte}");
+    let dram_cap_in_mbyte = 8;
     ddr_ctrl::update_by_dram_size(dram_cap_in_mbyte);
     println!("ctrl_init_update_by_dram_size finish");
     println!("dram_cap_in_mbyte: {dram_cap_in_mbyte}");
