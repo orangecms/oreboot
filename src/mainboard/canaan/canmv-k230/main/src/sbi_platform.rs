@@ -16,8 +16,8 @@ pub fn init() -> PlatSbi {
     enable_mtimer_clock();
     init_pmp();
     PlatSbi {
-        //    ipi: Ipi,
-        //    reset: Reset,
+        // ipi: Ipi,
+        // reset: Reset,
         timer: Timer,
     }
 }
@@ -68,14 +68,6 @@ pub fn get_mtime_compare_reg() -> usize {
 
 pub fn get_mtime_reg() -> usize {
     get_clint_base() + MTIME_OFFSET
-}
-
-fn get_time() -> u64 {
-    let mtime: u64;
-    unsafe {
-        asm!("csrr {}, time", out(reg) mtime);
-    }
-    mtime
 }
 
 const DEBUG: bool = false;
