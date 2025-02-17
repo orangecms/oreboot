@@ -1,3 +1,5 @@
+use core::fmt::Display;
+
 use oreboot_arch::riscv64::rustsbi::spec::base::impl_id::BBL;
 use oreboot_arch::riscv64::util::delay as opdelay;
 use util::{read32, read64, write32};
@@ -60,6 +62,12 @@ impl From<u8> for DramType {
             10 => Self::ESMTN251GbitDDR3,
             _ => panic!(),
         }
+    }
+}
+
+impl Display for DramType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{self:?}")
     }
 }
 
@@ -483,13 +491,22 @@ fn cvx16_en_rec_vol_mode(ddr_type: &DdrType) {
     println!("\\ cvx16_en_rec_vol_mode finish");
 }
 
-fn cvx16_dram_cap_check(size: u32) {
+fn cvx16_dram_cap_check(dram_type: &DramType, size: u32) {
     // TODO
     // size should be 8 for 2Gbit DDR3...
     println!("DRAM cap check: size is {size}");
-    if size != 8 {
-        panic!()
-    }
+    // NOTE: This seems to be depending on the DRAM size, really.
+    let expected_size = match dram_type {
+        DramType::ETRON512MbitDDR2 | DramType::ESMTN25512MbitDDR2 => 6,
+        DramType::ESMT1GbitDDR3 | DramType::ESMTN251GbitDDR3 | DramType::ETRON1Gbit => 7,
+        DramType::ESMT2GbitDDR3 | DramType::NY2GbitDDR3 => 8,
+        DramType::NY4GbitDDR3 => 9,
+        _ => 8,
+    };
+    assert_eq!(
+        size, expected_size,
+        "DRAM type {dram_type} should have cap size {expected_size}"
+    );
 }
 
 const DEBUG: bool = true;
@@ -703,7 +720,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     ddr_ctrl::update_by_dram_size(dram_cap_in_mbyte);
     println!("ctrl_init_update_by_dram_size finish");
     println!("dram_cap_in_mbyte: {dram_cap_in_mbyte}");
-    cvx16_dram_cap_check(dram_cap_in_mbyte);
+    cvx16_dram_cap_check(dram_type, dram_cap_in_mbyte);
     println!("cvx16_dram_cap_check finish");
 
     ddr_pll::cvx16_clk_gating_enable();
