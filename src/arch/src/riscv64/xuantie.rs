@@ -60,59 +60,82 @@ pub fn dump_csrs() {
     println!("====================");
 }
 
+// NOTE: Linux relies on detecting errata via mvendorid, marchid and mipmid.
+// If that detection fails, and we enable MAEE, Linux won't come up.
+// With D-cache enabled and detection failing, we run into coherency issues.
+// Welcome to the minefield! :)
+// See also XuanTie C906 and C908 manuals; they detail all of the CSRs.
+// The program examples chapter provides the values for optimal operation.
+pub fn init_csrs() {
+    println!("Set up extension CSRs");
+    unsafe {
+        // MXSTATUS: XuanTie ISA extension register
+        if false {
+            reg::mxstatus::set_maee();
+            reg::mxstatus::set_mm();
+            reg::mxstatus::set_ucme();
+            reg::mxstatus::set_clintee();
+        } else {
+            asm!("csrs 0x7c0, {}", in(reg) 0x00638000);
+        }
+        // MHCR: hardware control register
+        // NOTE: The C908 manual recommends 0x11ff, but only those low bits are defined
+        // in the xuantie crate. Bit 12 is L0BTB (C908 only), bit 8 is WBR (C906+C908).
+        if false {
+            reg::mhcr::set_ie();
+            reg::mhcr::set_de();
+            reg::mhcr::set_wa();
+            reg::mhcr::set_wb();
+            reg::mhcr::set_rs();
+            reg::mhcr::set_bpe();
+            reg::mhcr::set_btb();
+            reg::mhcr::set_wbr();
+        } else {
+            asm!("csrw 0x7c1, {}", in(reg) 0x0000_11ff);
+        }
+        // MCOR: cache operation register
+        // FIXME: This currently goes boom on SG200x.
+        if false {
+            reg::mcor::cache(reg::mcor::Cache::BOTH, reg::mcor::Operation::INVALIDATE);
+        }
+        if true {
+            reg::mcor::btb_inv();
+            reg::mcor::bht_inv();
+        } else {
+            asm!("csrw 0x7c2, {}", in(reg) 0x00070013);
+        }
+        // MHINT: implicit operation register
+        // TODO: XuanTie crate is not yet complete.
+        if false {
+            reg::mhint::set_dpld();
+            reg::mhint::set_amr(reg::mhint::AMR::After3Lines);
+            reg::mhint::set_ipld();
+        } else {
+            asm!("csrw 0x7c5, {}", in(reg) 0x0016_e30c);
+        }
+    }
+}
+
+const DEBUG: bool = false;
+
+use riscv::register::mhartid;
+pub fn init() {
+    let hartid = mhartid::read();
+    if DEBUG && hartid == 0 {
+        dump_csrs();
+    }
+    init_csrs();
+    if DEBUG && hartid == 0 {
+        dump_csrs();
+    }
+}
+
 struct Cpuid;
 
 impl Cpuid {
     pub fn read() -> usize {
         riscv::read_csr!(0xfc0);
         unsafe { _read() }
-    }
-}
-
-pub fn init() {
-    dump_csrs();
-    init_csrs();
-    dump_csrs();
-}
-
-fn dump_csrs() {
-    let mut v: usize;
-    unsafe {
-        println!("==== platform CSRs ====");
-        asm!("csrr {}, 0x7c0", out(reg) v);
-        println!("   MXSTATUS  {v:08x}");
-        asm!("csrr {}, 0x7c1", out(reg) v);
-        println!("   MHCR      {v:08x}");
-        asm!("csrr {}, 0x7c2", out(reg) v);
-        println!("   MCOR      {v:08x}");
-        asm!("csrr {}, 0x7c5", out(reg) v);
-        println!("   MHINT     {v:08x}");
-        println!("see C906 manual p581 ff");
-        println!("=======================");
-    }
-}
-
-fn init_csrs() {
-    println!("Set up extension CSRs");
-    if false {
-        unsafe {
-            asm!("csrs 0x7c0, {}", in(reg) 0x00018000);
-        }
-    }
-    unsafe {
-        // MXSTATUS: T-Head ISA extension enable, MAEE, MM, UCME, CLINTEE
-        // NOTE: Linux relies on detecting errata via mvendorid, marchid and
-        // mipmid. If that detection fails, and we enable MAEE, Linux won't come
-        // up. When D-cache is enabled, and the detection fails, we run into
-        // cache coherency issues. Welcome to the minefield! :)
-        // NOTE: We already set part of this in bt0, but it seems to get lost?
-        asm!("csrs 0x7c0, {}", in(reg) 0x00638000);
-        // MCOR: invalidate ICACHE/DCACHE/BTB/BHT
-        asm!("csrw 0x7c2, {}", in(reg) 0x00070013);
-        // MHCR
-        asm!("csrw 0x7c1, {}", in(reg) 0x000011ff);
-        // MHINT
-        asm!("csrw 0x7c5, {}", in(reg) 0x0016e30c);
     }
 }
 

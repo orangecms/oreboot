@@ -188,39 +188,41 @@ pub fn execute_supervisor<S: RustSBI>(
                     // dump context on breakpoints for debugging
                     // TODO: how would we allow for "real" debugging?
                     if DEBUG && DEBUG_EBREAK {
-                        println!("[SBI] Take an EBREAK!");
                         dump_mstate();
-                        panic!("{ctx:#04X?}");
+                        println!("{ctx:#04X?}");
+                        panic!("[SBI] Take an EBREAK!");
                     }
                     // skip instruction; this will likely cause the OS to crash
                     // use DEBUG to get actual information
                     ctx.mepc = ctx.mepc.wrapping_add(2);
                 } else if !emulate_instruction(ctx, ins, mtime) {
                     if DEBUG_ILLEGAL {
-                        println!("[SBI] Illegal instruction {ins:08x} not emulated");
                         dump_mstate();
                         println!("{ctx:#04X?}");
+                        println!("[SBI] Illegal instruction {ins:08x} not emulated");
                     }
-                    unsafe {
-                        if feature::should_transfer_trap(ctx) {
-                            feature::do_transfer_trap(ctx, ILLEGAL_INSTRUCTION)
-                        } else {
-                            fail_illegal_instruction(ctx, ins)
-                        }
+                    if feature::should_transfer_trap(ctx) {
+                        feature::do_transfer_trap(ctx, ILLEGAL_INSTRUCTION)
+                    } else {
+                        fail_illegal_instruction(ctx, ins)
                     }
                 }
             }
             CoroutineState::Yielded(Trap::InstructionFault) => {
                 let ctx = rt.context_mut();
-                unsafe {
-                    if feature::should_transfer_trap(ctx) {
-                        feature::do_transfer_trap(ctx, INSTRUCTION_FAULT)
-                    } else {
-                        println!("[SBI] Instruction fault");
-                        dump_mstate();
-                        panic!("{ctx:#04X?}");
-                    }
+                if feature::should_transfer_trap(ctx) {
+                    feature::do_transfer_trap(ctx, INSTRUCTION_FAULT)
+                } else {
+                    dump_mstate();
+                    println!("{ctx:#04X?}");
+                    panic!("[SBI] Instruction fault");
                 }
+            }
+            CoroutineState::Yielded(Trap::LoadFault) => {
+                let ctx = rt.context_mut();
+                dump_mstate();
+                println!("{ctx:#04X?}");
+                panic!("[SBI] Load fault");
             }
             CoroutineState::Yielded(Trap::MachineExternal) => {
                 // TODO
@@ -277,8 +279,8 @@ fn emulate_instruction(ctx: &mut SupervisorContext, ins: usize, mtime: Option<us
 // Real illegal instruction happening in M-mode
 fn fail_illegal_instruction(ctx: &mut SupervisorContext, ins: usize) -> ! {
     let mepc = ctx.mepc;
-    println!("[SBI] Invalid instruction from M-mode");
     println!("  mepc:        {mepc:016x?}");
     println!("  instruction: {ins:04x?}");
-    panic!("{ctx:04x?}");
+    println!("{ctx:#04X?}");
+    panic!("[SBI] Invalid instruction from M-mode");
 }

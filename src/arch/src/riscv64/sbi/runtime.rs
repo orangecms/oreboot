@@ -5,14 +5,13 @@ use core::{
 };
 use log::println;
 use riscv::register::{
-    mcause, medeleg, mepc, mideleg, mie, mip,
+    mcause, medeleg, mideleg, mie, mip,
     mstatus::{self, Mstatus, MPP},
     mtval,
     mtvec::{self, TrapMode},
 };
 
 const DEBUG: bool = true;
-const DEBUG_MTIMER: bool = false;
 const DEBUG_RESUME: bool = false;
 
 // mideleg: 0x222
@@ -133,6 +132,7 @@ impl Coroutine for Runtime {
             T::Exception(E::SupervisorEnvCall) => Trap::SbiCall,
             T::Exception(E::IllegalInstruction) => Trap::IllegalInstruction,
             T::Exception(E::InstructionFault) => Trap::InstructionFault,
+            T::Exception(E::LoadFault) => Trap::LoadFault,
             T::Interrupt(I::MachineExternal) => Trap::MachineExternal,
             T::Interrupt(I::MachineSoft) => Trap::MachineSoft,
             T::Interrupt(I::MachineTimer) => Trap::MachineTimer,
@@ -152,6 +152,7 @@ pub enum Trap {
     SbiCall,
     IllegalInstruction,
     InstructionFault,
+    LoadFault,
     MachineExternal,
     MachineSoft,
     MachineTimer,

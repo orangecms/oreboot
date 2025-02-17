@@ -7,41 +7,43 @@ use riscv::register::{
 
 /// # Safety
 /// YOLO
-pub unsafe fn should_transfer_trap(ctx: &mut SupervisorContext) -> bool {
+pub fn should_transfer_trap(ctx: &mut SupervisorContext) -> bool {
     ctx.mstatus.mpp() != MPP::Machine
 }
 
 /// # Safety
 /// YOLO
-pub unsafe fn do_transfer_trap<
+pub fn do_transfer_trap<
     I: riscv::CoreInterruptNumber + core::fmt::Debug,
     E: riscv::ExceptionNumber + core::fmt::Debug,
 >(
     ctx: &mut SupervisorContext,
     cause: scause::Trap<I, E>,
 ) {
-    // 设置S层异常原因为：非法指令
-    // The reason for setting S-layer exception is: illegal instruction
-    scause::set(cause);
-    // 填写异常指令的指令内容
-    // Fill in the instruction content of the abnormal instruction
-    let ins = mtval::read();
-    println!("[SBI] It's a trap!\n\tSCAUSE: {cause:x?}\n\tINSTRUCTION: 0x{ins:x?}");
-    // println!("[SBI] STATE: {ctx:#04X?}\r");
-    stval::write(ins);
-    // 填写S层需要返回到的地址，这里的mepc会被随后的代码覆盖掉
-    // Fill in the address that the S layer needs to return to, the mepc here
-    // will be overwritten by the subsequent code.
-    sepc::write(ctx.mepc);
-    // 设置中断位
-    // Set the interrupt bit
-    mstatus::set_mpp(MPP::Supervisor);
-    mstatus::set_spp(SPP::Supervisor);
-    if mstatus::read().sie() {
-        mstatus::set_spie()
+    unsafe {
+        // 设置S层异常原因为：非法指令
+        // The reason for setting S-layer exception is: illegal instruction
+        scause::set(cause);
+        // 填写异常指令的指令内容
+        // Fill in the instruction content of the abnormal instruction
+        let ins = mtval::read();
+        println!("[SBI] It's a trap!\n\tSCAUSE: {cause:x?}\n\tINSTRUCTION: 0x{ins:x?}");
+        // println!("[SBI] STATE: {ctx:#04X?}\r");
+        stval::write(ins);
+        // 填写S层需要返回到的地址，这里的mepc会被随后的代码覆盖掉
+        // Fill in the address that the S layer needs to return to, the mepc here
+        // will be overwritten by the subsequent code.
+        sepc::write(ctx.mepc);
+        // 设置中断位
+        // Set the interrupt bit
+        mstatus::set_mpp(MPP::Supervisor);
+        mstatus::set_spp(SPP::Supervisor);
+        if mstatus::read().sie() {
+            mstatus::set_spie()
+        }
+        mstatus::clear_sie();
+        // mstatus::set_sum();
     }
-    mstatus::clear_sie();
-    // mstatus::set_sum();
     ctx.mstatus = mstatus::read();
     // 设置返回地址，返回到S层
     // Set the return address and return to the S layer
