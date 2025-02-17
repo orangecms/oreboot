@@ -7,6 +7,8 @@ use crate::mem_map::{
     CLK_GEN_PLL_CTRL_BASE, DDR_CFG_BASE, DDR_TOP_BASE, PHYD_APB, PHYD_BASE, PHY_VERSION,
 };
 
+const DEBUG: bool = true;
+
 // NOTE: SSC_EN is commented out in plat/cv18{0,1}x/ddr/ddr.mk
 const SSC_EN: bool = false;
 // NOTE: SSC_BYPASS is never set
@@ -58,7 +60,20 @@ const DFI_CA_1: usize = DDR_TOP_BASE + 0x0004;
 const DFI_CA_2: usize = DDR_TOP_BASE + 0x0008;
 const DFI_CA_3: usize = DDR_TOP_BASE + 0x000c;
 
-pub fn cvx16_dll_cal() {
+pub fn cvx16_dll_cal_status() {
+    let v = read32(PHYD_BASE + 0x3014);
+    let m = 0xff;
+    let rx_dll_code = (v >> 8) & m;
+    let tx_dll_code = (v >> 24) & m;
+    if (!((rx_dll_code > 0x2b) && (rx_dll_code < 0x30))) {
+        println!("ERROR! rx_dll_code dly_sel result fail, not 0x2b~0x30 {rx_dll_code:02x}");
+    }
+    if (!((tx_dll_code > 0x2b) && (tx_dll_code < 0x30))) {
+        println!("ERROR! tx_dll_code dly_sel result fail, not 0x2b~0x30 {tx_dll_code:02x}");
+    }
+}
+
+fn cvx16_dll_cal() {
     println!("/ cvx16_dll_cal start");
     let v = read32(PHYD_SPEED);
     let (en_pll_speed_chg, curr_pll_speed, next_pll_speed) = get_pll_speed_change(v);
@@ -71,11 +86,13 @@ pub fn cvx16_dll_cal() {
         let v = read32(PHYD_DLL_CTRL);
         let v = v | PHYD_DLL_RX_START_CAL | PHYD_DLL_TX_START_CAL;
         write32(PHYD_DLL_CTRL, v);
-        while read32(PHYD_DLL_STATUS) & !PHYD_DLL_STATUS_DONE == 0 {}
+        while read32(PHYD_DLL_STATUS) & PHYD_DLL_STATUS_DONE == 0 {}
         println!("  DLL lock");
         // opdelay(1000);
         println!("  DLL UPD");
-        // cvx16_dll_cal_status();
+        if DEBUG {
+            cvx16_dll_cal_status();
+        }
     }
     println!("\\ cvx16_dll_cal finish");
 }
@@ -413,8 +430,8 @@ pub fn get_pll_speed_change(v: u32) -> (bool, u32, u32) {
     // TOP_REG_NEXT_PLL_SPEED  [1:0]
     // <= #RD (~pwstrb_mask[9:8] & TOP_REG_NEXT_PLL_SPEED[1:0]) |  pwstrb_mask_pwdata[9:8];
     let en_pll_speed = v & 0b1 == 1;
-    let curr_pll_speed = (v & (0b11 << 4)) >> 4;
-    let next_pll_speed = (v & (0b11 << 8)) >> 8;
+    let curr_pll_speed = (v >> 4) & 0b11;
+    let next_pll_speed = (v >> 8) & 0b11;
     println!("  en_pll_speed     {en_pll_speed}");
     println!("  curr_pll_speed   {curr_pll_speed}");
     println!("  next_pll_speed   {next_pll_speed}");

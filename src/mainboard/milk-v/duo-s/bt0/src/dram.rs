@@ -492,6 +492,8 @@ fn cvx16_dram_cap_check(size: u32) {
     }
 }
 
+const DEBUG: bool = true;
+
 // fsbl plat/cv181x/ddr/ddr_sys_bring_up.c ddr_sys_bring_up
 // NOTE: Similar flows exist in ddr_sys.c (e.g. ddr_sys_init), do not let them confuse you!
 // Those are debugging attempts, gated behind ifdefs for DBG_SHMOO*.
@@ -683,9 +685,9 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     }
     */
 
-    if DBG_SHMOO {
+    if DEBUG {
+        ddr_pll::cvx16_dll_cal_status();
         /*
-        cvx16_dll_cal_status();
         cvx16_wrlvl_status();
         cvx16_rdglvl_status();
         cvx16_rdlvl_status();
