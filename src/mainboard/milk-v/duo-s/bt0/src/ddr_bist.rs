@@ -382,8 +382,8 @@ pub fn cvx16_wrlvl_req(ddr_type: &DdrType) {
     // param_phyd_dfi_wrlvl_odt_en
     let v = v & !(1 << 4) | (wr_odt_en << 4);
     write32(PHYD_BASE + 0x0180, v);
-    println!("wait retraining finish ...");
 
+    println!("wait retraining finish ...");
     //[0] param_phyd_dfi_wrlvl_done
     //[1] param_phyd_dfi_rdglvl_done
     //[2] param_phyd_dfi_rdlvl_done
@@ -478,45 +478,37 @@ pub fn cvx16_rdlvl_req(mode: XMode) {
         let v = v | (1 << 2);
         ddr_ctrl::cvx16_synp_mrw(0x3, v & 0xffff);
     }
+
     // bist setting for dfi rdglvl
     cvx16_bist_rdlvl_init(mode);
-    let v = read32(PHYD_BASE + 0x0188);
-    // param_phyd_dfi_rdlvl_req
-    write32(PHYD_BASE + 0x0188, v | 1);
-    println!("dfi_rdlvl_req 1");
 
-    println!("wait retraining finish ...");
-    //[0] param_phyd_dfi_wrlvl_done
-    //[1] param_phyd_dfi_rdglvl_done
-    //[2] param_phyd_dfi_rdlvl_done
-    //[3] param_phyd_dfi_wdqlvl_done
-    while read32(PHYD_BASE + 0x3444) & (1 << 2) == 0 {}
-
-    if vref_training_en {
-        // TODO
-        println!("  VREF training");
-        let v = read32(PHYD_BASE + 0x008c);
-        // param_phyd_pirdlvl_vref_training_en
-        write32(PHYD_BASE + 0x008c, v & !(1 << 2));
-        println!("  final training, keep rx trig_lvl");
-
+    fn train(i: u32) {
+        println!("  dfi rdlvl req {i}");
         let v = read32(PHYD_BASE + 0x0188);
         // param_phyd_dfi_rdlvl_req
         write32(PHYD_BASE + 0x0188, v | 1);
-        println!("dfi_rdlvl_req 2");
-
-        println!("wait retraining finish ...");
+        println!("  wait retraining finish ...");
         //[0] param_phyd_dfi_wrlvl_done
         //[1] param_phyd_dfi_rdglvl_done
         //[2] param_phyd_dfi_rdlvl_done
         //[3] param_phyd_dfi_wdqlvl_done
         while read32(PHYD_BASE + 0x3444) & (1 << 2) == 0 {}
+    }
+    train(1);
 
-        let v = read32(PHYD_BASE + 0x008c);
-        // restore
-        write32(PHYD_BASE + 0x008c, v | 1 << 2);
+    if vref_training_en {
+        println!("  VREF training");
+        let v = read32(PI_READ_LEVEL_X);
+        // disable Vref training enable
+        write32(PI_READ_LEVEL_X, v & !PI_READ_LEVEL_VREF_TRAINING_EN);
+        println!("  final training, keep rx trig_lvl");
+        train(2);
+        let v = read32(PI_READ_LEVEL_X);
+        // restore Vref training enable
+        write32(PI_READ_LEVEL_X, v | PI_READ_LEVEL_VREF_TRAINING_EN);
     }
 
+    // if ddr3 &&
     if ddr3_mpr_mode {
         // MR3
         let v = read32(DDR_CFG_BASE + 0xe0);
@@ -542,7 +534,7 @@ pub fn cvx16_rdlvl_req(mode: XMode) {
         selfref_en,
     );
 
-    // cvx16_radlvl_status();
+    // cvx16_rdlvl_status();
     ddr_pll::cvx16_clk_gating_enable();
 }
 
