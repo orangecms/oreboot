@@ -1,3 +1,4 @@
+use oreboot_arch::riscv64::rustsbi::spec::base::impl_id::BBL;
 use oreboot_arch::riscv64::util::delay as opdelay;
 use util::{read32, read64, write32};
 
@@ -11,7 +12,7 @@ use crate::mem_map::{
 use crate::{axi_mon, ddr_bist, ddr_ctrl, ddr_phy, ddr_pll};
 
 // TODO: All of this would be a build-time config.
-const DO_BIST: bool = true;
+const DO_BIST: bool = false;
 
 const DBG_SHMOO: bool = false;
 const DDR3_DBG: bool = false;
@@ -484,9 +485,16 @@ fn cvx16_en_rec_vol_mode(ddr_type: &DdrType) {
 
 fn cvx16_dram_cap_check(size: u32) {
     // TODO
+    // size should be 8 for 2Gbit DDR3...
+    println!("DRAM cap check: size is {size}");
+    if size != 8 {
+        panic!()
+    }
 }
 
 // fsbl plat/cv181x/ddr/ddr_sys_bring_up.c ddr_sys_bring_up
+// NOTE: Similar flows exist in ddr_sys.c (e.g. ddr_sys_init), do not let them confuse you!
+// Those are debugging attempts, gated behind ifdefs for DBG_SHMOO*.
 pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     let ddr_type = &get_ddr_type(dram_type);
     let (reg_set, reg_span, reg_step) = ddr_pll::get_pll_settings(ddr_data_rate);
@@ -568,39 +576,36 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     //ERROR("AXI mon setting for latency histogram.\n");
     //axi_mon_set_lat_bin_size(0x5);
 
+    const DPHY_DFI_WDQ: usize = PHYD_BASE + 0x0190;
+    const PI_WDQ_LVL_DELAY: usize = PHYD_BASE + 0x00a4;
     if DBG_SHMOO {
-        /*
-        const DPHY_WDQ: usize = PHYD_BASE + 0x0190;
         // dfi_wdq_lvl_vref_start [6:0]
         // dfi_wdq_lvl_vref_end [14:8]
         // dfi_wdq_lvl_vref_step [19:16]
-        write32(DPHY_WDQ, 0x00021E02);
+        write32(DPHY_DFI_WDQ, 0x00021E02);
         // pi_wdq_lvl_dly_step[23:20]
-        const PI_WDQ_LVL_DELAY: usize = PHYD_BASE + 0x00a4;
         write32(PI_WDQ_LVL_DELAY, 0x01220504);
         // write start   shift = 5  /  dline = 78
-        let r = PHYD_BASE + 0x00a0;
-        write32(r, 0x0d400578);
+        write32(PHYD_BASE + 0x00a0, 0x0d400578);
         // write
-        println!("wdqlvl_M1_ALL_DQ_DM\n");
+        println!("wdqlvl_M1_ALL_DQ_DM");
         // cvx16_wdqlvl_req(data_mode, lvl_mode)
         println!("cvx16_wdqlvl_sw_req dq/dm");
         // console_getc();
-        cvx16_wdqlvl_sw_req(1, 2);
+        ddr_bist::cvx16_wdqlvl_sw_req(1, 2);
         // cvx16_wdqlvl_status();
         println!("cvx16_wdqlvl_req dq/dm finish");
 
         println!("cvx16_wdqlvl_sw_req dq");
         // console_getc();
-        cvx16_wdqlvl_sw_req(1, 1);
+        ddr_bist::cvx16_wdqlvl_sw_req(1, 1);
         // cvx16_wdqlvl_status();
         println!("cvx16_wdqlvl_req dq finish");
 
         println!("cvx16_wdqlvl_sw_req dm");
         // console_getc();
-        cvx16_wdqlvl_sw_req(1, 0);
+        ddr_bist::cvx16_wdqlvl_sw_req(1, 0);
         // cvx16_wdqlvl_status();
-        */
         println!("cvx16_wdqlvl_req dm finish");
     } else {
         println!(" wdqlvl_M1_ALL_DQ_DM");
@@ -608,11 +613,12 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         // mode = write, input int fmin = 5, input int fmax = 15,
         // input int sram_st = 0, output int sram_sp
 
-        ddr_bist::cvx16_wdqlvl_req(1, ddr_bist::LvlMode::WdqAndWdmLvl);
+        use ddr_bist::{DataMode, LvlMode};
+        ddr_bist::cvx16_wdqlvl_req(&DataMode::BistReadWrite, LvlMode::WdqAndWdmLvl);
         println!("  cvx16_wdqlvl_req dq/dm finish");
-        ddr_bist::cvx16_wdqlvl_req(1, ddr_bist::LvlMode::WdqLvl);
+        ddr_bist::cvx16_wdqlvl_req(&DataMode::BistReadWrite, LvlMode::WdqLvl);
         println!("  cvx16_wdqlvl_req dq finish");
-        ddr_bist::cvx16_wdqlvl_req(1, ddr_bist::LvlMode::WdmLvl);
+        ddr_bist::cvx16_wdqlvl_req(&DataMode::BistReadWrite, LvlMode::WdmLvl);
         println!("  cvx16_wdqlvl_req dm finish");
         if DO_BIST {
             ddr_bist::cvx16_bist_wr_prbs_init();
@@ -622,7 +628,6 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         }
     }
 
-    /*
     if DBG_SHMOO {
         // param_phyd_pirdlvl_dly_step [3:0]
         // param_phyd_pirdlvl_vref_step [11:8]
@@ -632,7 +637,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         println!("cvx16_rdlvl_req start");
         // console_getc();
         println!("SW mode 1, sram write/read continuous goto");
-        cvx16_rdlvl_sw_req(1);
+        ddr_bist::cvx16_rdlvl_sw_req(1);
         // cvx16_rdlvl_status();
         println!("cvx16_rdlvl_req finish");
     } else {
@@ -644,24 +649,23 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
         // mode = 'h12 : with Error enject,  multi- bist write/read
         let v = read32(PHYD_BASE + 0x008c);
         // param_phyd_pirdlvl_capture_cnt
-        let v = (v & (0b1111 << 4)) | 0x1;
+        let v = (v & !(0b1111 << 4)) | (0x1 << 4);
         write32(PHYD_BASE + 0x008c + PHYD_BASE, v);
 
         println!("mode multi- bist write/read");
         // mode multi- PRBS bist write/read
         // cvx16_rdlvl_req(2);
         // mode multi- SRAM bist write/read
-        cvx16_rdlvl_req(1);
+        ddr_bist::cvx16_rdlvl_req(1);
         println!("cvx16_rdlvl_req finish");
 
         if DO_BIST {
-            cvx16_bist_wr_prbs_init();
-            if let Err(()) = bist() {
+            ddr_bist::cvx16_bist_wr_prbs_init();
+            if let Err(()) = ddr_bist::bist() {
                 panic!("ERROR bist_fail");
             }
         }
     }
-    */
 
     /*
     if DBG_SHMOO_CA {
@@ -691,6 +695,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
 
     ddr_ctrl::high_patch();
 
+    // size detection
     let dram_cap_in_mbyte = ddr_bist::detect_dram_size(ddr_type);
     println!("dram_cap_in_mbyte: {dram_cap_in_mbyte}");
     ddr_ctrl::update_by_dram_size(dram_cap_in_mbyte);
@@ -699,9 +704,7 @@ pub fn init(ddr_data_rate: usize, dram_type: &DramType) {
     cvx16_dram_cap_check(dram_cap_in_mbyte);
     println!("cvx16_dram_cap_check finish");
 
-    // clk_gating_enable
     ddr_pll::cvx16_clk_gating_enable();
-    println!("cvx16_clk_gating_enable finish");
 
     if DO_BIST {
         ddr_bist::cvx16_bist_wr_prbs_init();

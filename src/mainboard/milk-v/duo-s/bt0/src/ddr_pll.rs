@@ -161,33 +161,31 @@ pub fn cvx16_ddr_phy_power_on_seq1() {
     println!("/ ddr_phy_power_on_seq1 start");
     // RESETZ/CKE PD=0
     let v = read32(PHYA_CA_PD);
-    // TOP_REG_TX_CA_PD_CKE0
-    let v = v & !(1 << 24);
-    // TOP_REG_TX_CA_PD_RESETZ
-    let v = v & !(1 << 30);
-    write32(PHYA_CA_PD, v);
-    println!("  RESET PD !!!");
+    const TX_CA_PD_CKE0: u32 = 1 << 24;
+    const TX_CA_PD_RESETZ: u32 = 1 << 30;
+    write32(PHYA_CA_PD, v & !TX_CA_PD_CKE0 & !TX_CA_PD_RESETZ);
+    println!("  Reset PD");
 
-    // let v = read32(PHYA_CA_PD);
-    // write32(PHYA_CA_PD, v & !(1 << 31));
+    _ = read32(PHYA_CA_PD);
     write32(PHYA_CA_PD, 0);
-    println!("  All PHYA CA PD=0 ...");
+    println!("  Set PHYA CA PD to all 0");
 
     // TOP_REG_TX_SEL_GPIO = 1 (DQ)
+    const TX_SEL_GPIO: u32 = 1 << 7;
     let v = read32(PHYD_TX_SEL);
-    write32(PHYD_TX_SEL, v | (1 << 7));
-    println!("  TOP_REG_TX_SEL_GPIO = 1");
+    write32(PHYD_TX_SEL, v | TX_SEL_GPIO);
+    println!("  TX sel GPIO = 1");
 
     // DQ PD=0
     // TOP_REG_TX_BYTE0_PD
     // TOP_REG_TX_BYTE1_PD
     write32(PHYD_TX_BYTE, 0);
-    println!("  TX_BYTE PD=0 ...");
+    println!("  TX BYTE PD = 0");
 
     // TOP_REG_TX_SEL_GPIO = 0 (DQ)
     let v = read32(PHYD_TX_SEL);
-    write32(PHYD_TX_SEL, v & !(1 << 7));
-    println!("  TOP_REG_TX_SEL_GPIO = 0");
+    write32(PHYD_TX_SEL, v & !TX_SEL_GPIO);
+    println!("  TX sel GPIO = 0");
 
     println!("\\ ddr_phy_power_on_seq1 finish");
 }
@@ -565,6 +563,7 @@ pub fn cvx16_int_isr_08() {
 }
 
 pub fn cvx16_clk_gating_enable() {
+    println!("/ cvx16_clk_gating_enable");
     // TOP_REG_CG_EN_PHYD_TOP      0
     // TOP_REG_CG_EN_CALVL         1
     // TOP_REG_CG_EN_WRLVL         2
@@ -594,11 +593,11 @@ pub fn cvx16_clk_gating_enable() {
     // dfi read/write clock gatting
     let v = read32(DDR_CFG_BASE + 0x148);
     write32(DDR_CFG_BASE + 0x148, v | (1 << 23) | (1 << 31));
-    println!("clk_gating_enable");
 
     // disable clock gating
     // write32(CLOCK_GATING_CONTROL , 0x00000fff);
     // println!("axi disable clock gating");
+    println!("\\ cvx16_clk_gating_enable finish");
 }
 
 pub fn cvx16_clk_gating_disable() {
