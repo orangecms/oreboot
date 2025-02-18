@@ -148,7 +148,7 @@ fn main() -> ! {
 }
 
 fn exec_payload() -> ! {
-    oreboot_arch::riscv64::xuantie::init();
+    oreboot_arch::riscv64::xuantie::init_csrs();
 
     let payload_addr = LOAD_ADDR;
     let dtb_addr = DTB_ADDR;
