@@ -1,7 +1,9 @@
 use core::arch::asm;
-use riscv::register::{self as reg, mie, mip};
-use rustsbi::spec::binary::SbiRet;
-use rustsbi::{HartMask, RustSBI};
+use riscv::register::{self as reg, mhartid, mie, mip};
+use rustsbi::{HartMask, RustSBI, SbiRet};
+
+use oreboot_arch::riscv64::xuantie;
+use util::{read64x, write64x};
 
 #[derive(RustSBI)]
 pub struct PlatSbi {
@@ -12,6 +14,7 @@ pub struct PlatSbi {
 }
 
 pub fn init() -> PlatSbi {
+    xuantie::init_plic();
     init_pmp();
     PlatSbi {
         ipi: Ipi,
@@ -21,34 +24,25 @@ pub fn init() -> PlatSbi {
     }
 }
 
+const DRAM_BASE: usize = 0x8000_0000;
+const PAYLOAD_BASE: usize = DRAM_BASE + 0x20_0000;
+const END: usize = 0x00ff_ffff_ffff_ffff;
+
 // see privileged spec v1.10 p44 ff
 // https://riscv.org/wp-content/uploads/2017/05/riscv-privileged-v1.10.pdf
 fn init_pmp() {
+    reg::pmpaddr0::write(0x0);
+    reg::pmpaddr1::write(DRAM_BASE >> 2);
+    reg::pmpaddr2::write(PAYLOAD_BASE >> 2);
+    reg::pmpaddr3::write(END >> 2);
     // TODO
     // A: address matching; 0x01 means TOR (Top of range)
     // [ L  x  x  A1   A0  X  W  R ]
     // let cfg = 0x0000_0000_0f08_0f0f;
     let cfg = 0x0000_0000_0f0f_0f0f;
-    reg::pmpaddr0::write(0x0);
-    reg::pmpaddr1::write(0x0000_0000_8000_0000 >> 2);
-    reg::pmpaddr2::write(0x0000_0000_8020_0000 >> 2);
-    reg::pmpaddr3::write(0x00ff_ffff_ffff_ffff >> 2);
+    // reg::pmpcfg0::set_pmp(0, range, permission, locked);
     reg::pmpcfg0::write(cfg);
     reg::pmpcfg2::write(0); // nothing active here
-}
-
-fn init_plic() {
-    let mut addr: usize;
-    unsafe {
-        // What? 0xfc1 is BADADDR as per C906 manual; this seems to work though
-        asm!("csrr {}, 0xfc1", out(reg) addr); // 0x1000_0000, RISC-V PLIC
-        let a = addr + 0x001ffffc; // 0x101f_fffc
-        if false {
-            println!("BADADDR {addr:x} SOME ADDR {a:x}");
-        }
-        // allow S-mode to access PLIC regs, D1 manual p210
-        core::ptr::write_volatile(a as *mut u8, 0x1);
-    }
 }
 
 struct Ipi;
@@ -83,10 +77,36 @@ impl rustsbi::Fence for Rfence {
     }
 }
 
+const DEBUG: bool = false;
+
 struct Timer;
 impl rustsbi::Timer for Timer {
-    fn set_timer(&self, stime_value: u64) {
-        // TODO
+    fn set_timer(&self, value: u64) {
+        if DEBUG {
+            let t = riscv::register::time::read();
+            println!("[SBI] current time: {t:016x} {t:020}");
+            println!("[SBI] set timer to: {value:016x} {value:020}");
+        }
+        // Clear any pending timer
+        unsafe { mip::clear_stimer() };
+
+        // Set new value for this hart
+        let hartid = mhartid::read();
+        let mtime_cmp = xuantie::get_mtime_compare_reg() + 4 * hartid;
+        if DEBUG {
+            let mtime_val = read64x(mtime_cmp);
+            println!("hart: {hartid}");
+            println!("compare register: {mtime_cmp:016x}");
+            println!("current value:    {mtime_val:016x}");
+        }
+        write64x(mtime_cmp, value);
+        if DEBUG {
+            let mtime_val = read64x(mtime_cmp);
+            println!("new value:        {mtime_val:016x}");
+        }
+
+        // Reenable the interrupt
+        unsafe { mie::set_mtimer() }
     }
 }
 

@@ -197,7 +197,7 @@ fn main() {
 
     // FIXME: DRAM on SG2002 is not stable and loses data :(
     if DRAM_TEST {
-        util::memtest::mem_test(mem_map::DRAM_BASE, 0x1_0000);
+        util::memtest::mem_test(mem_map::DRAM_BASE, 0x20_0000);
     }
 
     // Load extra code

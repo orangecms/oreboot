@@ -1,11 +1,8 @@
 #![feature(naked_functions)]
-#![feature(fn_align)]
 #![no_std]
 #![no_main]
 // TODO: remove when done debugging crap
 #![allow(unused)]
-
-use embedded_hal_nb::serial::Write;
 
 #[macro_use]
 extern crate log;
@@ -27,7 +24,7 @@ mod uart;
 
 pub type EntryPoint = unsafe extern "C" fn() -> !;
 
-static PLATFORM: &str = "Milk-V Duo S";
+static PLATFORM: &str = "SG200x";
 static VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USE_SBI: bool = true;
@@ -146,14 +143,16 @@ fn main() -> ! {
 
     oreboot_arch::riscv64::ids::print_ids();
     oreboot_arch::riscv64::xuantie::print_cpuid();
-    oreboot_arch::riscv64::xuantie::init();
 
     exec_payload()
 }
 
 fn exec_payload() -> ! {
+    oreboot_arch::riscv64::xuantie::init();
+
     let payload_addr = LOAD_ADDR;
     let dtb_addr = DTB_ADDR;
+
     // TODO: make feature, see Nezha/D1
     if USE_SBI {
         use oreboot_arch::riscv64::sbi as ore_sbi;
@@ -165,7 +164,7 @@ fn exec_payload() -> ! {
         println!("[main] Launch SBI...");
 
         let (reset_type, reset_reason) =
-            ore_sbi::execute::execute_supervisor(sbi, payload_addr, hartid, dtb_addr, 0);
+            ore_sbi::execute::execute_supervisor(sbi, payload_addr, hartid, dtb_addr, None);
         println!("[main] oreboot: reset, type = {reset_type}, reason = {reset_reason}");
         unsafe { reset() }
     } else {
