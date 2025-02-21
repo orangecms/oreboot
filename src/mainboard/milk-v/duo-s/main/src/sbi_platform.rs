@@ -7,9 +7,9 @@ use util::{read64x, write64x};
 
 #[derive(RustSBI)]
 pub struct PlatSbi {
-    ipi: Ipi,
-    reset: Reset,
-    rfence: Rfence,
+    // ipi: Ipi,
+    // reset: Reset,
+    // rfence: Rfence,
     timer: Timer,
 }
 
@@ -17,9 +17,9 @@ pub fn init() -> PlatSbi {
     xuantie::init_plic();
     init_pmp();
     PlatSbi {
-        ipi: Ipi,
-        reset: Reset,
-        rfence: Rfence,
+        // ipi: Ipi,
+        // reset: Reset,
+        // rfence: Rfence,
         timer: Timer,
     }
 }
@@ -39,7 +39,9 @@ fn init_pmp() {
     // A: address matching; 0x01 means TOR (Top of range)
     // [ L  x  x  A1   A0  X  W  R ]
     // let cfg = 0x0000_0000_0f08_0f0f;
-    let cfg = 0x0000_0000_0f0f_0f0f;
+    let cfg = 0x0000_0000_0000_0000_0000_0000_0f0f_0f0f;
+    // pmpaddr0-1 is read-only
+    let cfg = 0x0000_0000_0000_0000_0000_0000_0f0f_090f;
     // reg::pmpcfg0::set_pmp(0, range, permission, locked);
     reg::pmpcfg0::write(cfg);
     reg::pmpcfg2::write(0); // nothing active here

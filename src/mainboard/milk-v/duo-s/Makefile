@@ -11,3 +11,4 @@ run_main:
 
 run_payload:
 	$(SG_BOOT) run --main $(PAYLOAD)
+	$(SG_BOOT) run --main $(DTB)

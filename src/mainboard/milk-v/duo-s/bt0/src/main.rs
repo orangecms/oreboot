@@ -216,12 +216,19 @@ fn main() {
     rom::load_image(load_addr, 0x0, size, 0);
 
     // https://github.com/orangecms/sbitest
-    let size = 0x1000;
-    println!(">> load SBI test (max size: {size} bytes) over USB");
+    let size = 16 * 1024 * 1024; // 0x1000;
+    println!(">> load payload (max size: {size} bytes) over USB");
     println!();
 
-    let test_addr = mem_map::DRAM_BASE + 0x0020_0000;
-    rom::load_image(test_addr, 0x0, size, 0);
+    let payload_addr = mem_map::DRAM_BASE + 0x0020_0000;
+    rom::load_image(payload_addr, 0x0, size, 0);
+    dump_block(payload_addr, 0x60, 0x20);
+
+    println!(">> load DTB");
+    let dtb_addr = mem_map::DRAM_BASE + size;
+    let dtb_size = 256 * 1024;
+    rom::load_image(dtb_addr, 0x0, dtb_size, 0);
+    dump_block(dtb_addr, 0x60, 0x20);
 
     println!("[bt0] Jump to main stage @{load_addr:08x}");
     dump_block(load_addr, 0x60, 0x20);

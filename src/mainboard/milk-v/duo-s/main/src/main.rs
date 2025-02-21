@@ -30,7 +30,7 @@ static VERSION: &str = env!("CARGO_PKG_VERSION");
 const USE_SBI: bool = true;
 const DRAM_BASE: usize = 0x8000_0000;
 const LOAD_ADDR: usize = DRAM_BASE + 0x0020_0000;
-const DTB_ADDR: usize = LOAD_ADDR + 0x2000;
+const DTB_ADDR: usize = LOAD_ADDR + 16 * 1024 * 1024;
 
 const DEBUG: bool = false;
 
