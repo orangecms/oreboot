@@ -32,9 +32,18 @@ mod uart;
 
 pub type ExternFn0 = unsafe extern "C" fn() -> !;
 
-const DRAM_TEST: bool = true;
 const PRINT_LOG: bool = false;
 const DUMP_MASK_ROM: bool = false;
+const DRAM_TEST: bool = true;
+const BOOT_MAIN: bool = true;
+
+// TODO: get from DTFS
+const LOAD_SIZE: usize = 0x2_0000;
+const LOAD_ADDR: usize = mem_map::DRAM_BASE;
+const PAYLOAD_ADDR: usize = LOAD_ADDR + 0x0020_0000;
+const PAYLOAD_SIZE: usize = 32 * 1024 * 1024;
+const DTB_ADDR: usize = PAYLOAD_ADDR + PAYLOAD_SIZE;
+const DTB_SIZE: usize = 256 * 1024;
 
 const STACK_SIZE: usize = 512;
 
@@ -208,38 +217,35 @@ fn main() {
     println!("RTOS base: 0x{v:08x}");
 
     // `make run` in main
-    let size = 0x2_0000;
-    println!(">> load main stage (max size: {size} bytes) over USB");
+    println!(
+        ">> load main stage (max size: {} KB) over USB",
+        LOAD_SIZE / 1024
+    );
     println!();
 
-    let load_addr = mem_map::DRAM_BASE;
-    rom::load_image(load_addr, 0x0, size, 0);
+    rom::load_image(LOAD_ADDR, 0x0, LOAD_SIZE, 0);
 
-    // https://github.com/orangecms/sbitest
-    let size = 16 * 1024 * 1024; // 0x1000;
-    println!(">> load payload (max size: {size} bytes) over USB");
+    println!(
+        ">> load payload (max size: {} MB) over USB",
+        PAYLOAD_SIZE / 1024 / 1024
+    );
     println!();
-
-    let payload_addr = mem_map::DRAM_BASE + 0x0020_0000;
-    rom::load_image(payload_addr, 0x0, size, 0);
-    dump_block(payload_addr, 0x60, 0x20);
+    rom::load_image(PAYLOAD_ADDR, 0x0, PAYLOAD_SIZE, 0);
+    dump_block(PAYLOAD_ADDR, 0x60, 0x20);
 
     println!(">> load DTB");
-    let dtb_addr = mem_map::DRAM_BASE + size;
-    let dtb_size = 256 * 1024;
-    rom::load_image(dtb_addr, 0x0, dtb_size, 0);
-    dump_block(dtb_addr, 0x60, 0x20);
+    rom::load_image(DTB_ADDR, 0x0, DTB_SIZE, 0);
+    dump_block(DTB_ADDR, 0x60, 0x20);
 
-    println!("[bt0] Jump to main stage @{load_addr:08x}");
-    dump_block(load_addr, 0x60, 0x20);
+    println!("[bt0] Jump to main stage @{LOAD_ADDR:08x}");
+    dump_block(LOAD_ADDR, 0x60, 0x20);
 
-    const BOOT_MAIN: bool = true;
     if BOOT_MAIN {
         // RV64ACDFIMSUVX
-        next_stage(load_addr);
+        next_stage(LOAD_ADDR);
     } else {
         // RV64ACDFIMSUX
-        cv18xx::exec_hartl(load_addr);
+        cv18xx::exec_hartl(LOAD_ADDR);
     }
 }
 

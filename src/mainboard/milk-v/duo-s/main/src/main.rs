@@ -29,8 +29,8 @@ static VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USE_SBI: bool = true;
 const DRAM_BASE: usize = 0x8000_0000;
-const LOAD_ADDR: usize = DRAM_BASE + 0x0020_0000;
-const DTB_ADDR: usize = LOAD_ADDR + 16 * 1024 * 1024;
+const PAYLOAD_ADDR: usize = DRAM_BASE + 0x0020_0000;
+const DTB_ADDR: usize = PAYLOAD_ADDR + 32 * 1024 * 1024;
 
 const DEBUG: bool = false;
 
@@ -102,13 +102,9 @@ pub unsafe extern "C" fn reset() -> ! {
     if false {
         let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
         ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
-    }
-    write32(0x04140000, 0x30);
-    if false {
         let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
         ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
     }
-    write32(0x04140000, 0x31);
     // Call user entry point
     extern "Rust" {
         fn main() -> !;
@@ -129,18 +125,14 @@ fn init_logger(s: uart::SGSerial) {
 
 #[no_mangle]
 fn main() -> ! {
-    write32(0x04140000, 0x32);
-
     let mut ini_pc: usize = 0;
     unsafe { asm!("mv {}, s4", out(reg) ini_pc) };
 
     let s = uart::SGSerial::new();
     init_logger(s);
-    // WE GET HERE
     println!();
     println!("oreboot 🦀 main");
     println!("initial program counter (PC) {ini_pc:016x}");
-
     oreboot_arch::riscv64::ids::print_ids();
     oreboot_arch::riscv64::xuantie::print_cpuid();
 
@@ -150,7 +142,8 @@ fn main() -> ! {
 fn exec_payload() -> ! {
     oreboot_arch::riscv64::xuantie::init_csrs();
 
-    let payload_addr = LOAD_ADDR;
+    // TODO: get from DTFS
+    let payload_addr = PAYLOAD_ADDR;
     let dtb_addr = DTB_ADDR;
 
     // TODO: make feature, see Nezha/D1

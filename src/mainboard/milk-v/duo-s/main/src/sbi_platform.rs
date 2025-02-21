@@ -30,21 +30,30 @@ const END: usize = 0x00ff_ffff_ffff_ffff;
 
 // see privileged spec v1.10 p44 ff
 // https://riscv.org/wp-content/uploads/2017/05/riscv-privileged-v1.10.pdf
+// TODO: get ranges from DTFS
 fn init_pmp() {
-    reg::pmpaddr0::write(0x0);
-    reg::pmpaddr1::write(DRAM_BASE >> 2);
-    reg::pmpaddr2::write(PAYLOAD_BASE >> 2);
-    reg::pmpaddr3::write(END >> 2);
-    // TODO
-    // A: address matching; 0x01 means TOR (Top of range)
-    // [ L  x  x  A1   A0  X  W  R ]
-    // let cfg = 0x0000_0000_0f08_0f0f;
-    let cfg = 0x0000_0000_0000_0000_0000_0000_0f0f_0f0f;
-    // pmpaddr0-1 is read-only
-    let cfg = 0x0000_0000_0000_0000_0000_0000_0f0f_090f;
-    // reg::pmpcfg0::set_pmp(0, range, permission, locked);
-    reg::pmpcfg0::write(cfg);
-    reg::pmpcfg2::write(0); // nothing active here
+    if true {
+        reg::pmpaddr0::write(0x0);
+        reg::pmpaddr1::write(DRAM_BASE >> 2);
+        reg::pmpaddr2::write(PAYLOAD_BASE >> 2);
+        reg::pmpaddr3::write(END >> 2);
+        // TODO
+        // A: 2 bits for address matching; 1 means TOR (Top of range)
+        // [ L  x  x  A1   A0  X  W  R ]
+        // let cfg = 0x0000_0000_0f08_0f0f;
+        let cfg = 0x0000_0000_0000_0000_0000_000f_0f0f_0f0f;
+        // pmpaddr0-1 is read-only
+        // let cfg = 0x0000_0000_0000_0000_0000_0000_0f0f_090f;
+        // reg::pmpcfg0::set_pmp(0, range, permission, locked);
+        reg::pmpcfg0::write(cfg);
+        reg::pmpcfg2::write(0); // nothing active here
+    } else {
+        reg::pmpaddr0::write(DRAM_BASE >> 2);
+        reg::pmpaddr1::write(PAYLOAD_BASE >> 2);
+        let cfg = 0x0f0f0f0f0fusize; // pmpaddr0-1 and pmpaddr2-3 are read-only
+        reg::pmpcfg0::write(cfg);
+        reg::pmpcfg2::write(0); // nothing active here
+    }
 }
 
 struct Ipi;
