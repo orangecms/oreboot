@@ -2,7 +2,7 @@ use core::fmt::Display;
 
 use oreboot_arch::riscv64::rustsbi::spec::base::impl_id::BBL;
 use oreboot_arch::riscv64::util::delay as opdelay;
-use util::{read32, read64, write32};
+use util::mmio::{read32, read64le, write32};
 
 // https://ddr-phy.org/
 // DFI = DDR PHY Interface

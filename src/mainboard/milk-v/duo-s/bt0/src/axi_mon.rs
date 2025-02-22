@@ -1,4 +1,4 @@
-use util::{read32, write32};
+use util::mmio::{read32, write32};
 
 use crate::mem_map::{AXI_MON_BASE, DDR_TOP_BASE};
 

@@ -3,7 +3,7 @@ use riscv::register::{self as reg, mhartid, mie, mip};
 use rustsbi::{HartMask, RustSBI, SbiRet};
 
 use oreboot_arch::riscv64::xuantie;
-use util::{read64x, write64x};
+use util::mmio::{read64le, write64le};
 
 #[derive(RustSBI)]
 pub struct PlatSbi {
@@ -105,14 +105,14 @@ impl rustsbi::Timer for Timer {
         let hartid = mhartid::read();
         let mtime_cmp = xuantie::get_mtime_compare_reg() + 4 * hartid;
         if DEBUG {
-            let mtime_val = read64x(mtime_cmp);
+            let mtime_val = read64le(mtime_cmp);
             println!("hart: {hartid}");
             println!("compare register: {mtime_cmp:016x}");
             println!("current value:    {mtime_val:016x}");
         }
-        write64x(mtime_cmp, value);
+        write64le(mtime_cmp, value);
         if DEBUG {
-            let mtime_val = read64x(mtime_cmp);
+            let mtime_val = read64le(mtime_cmp);
             println!("new value:        {mtime_val:016x}");
         }
 

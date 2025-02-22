@@ -1,4 +1,4 @@
-use util::{read32, write32};
+use util::mmio::{read32, write32};
 
 use crate::efuse;
 use crate::mem_map::{AXI_SRAM_BASE, MASK_ROM_FN_BASE, SEC_SUBSYS_BASE, TOP_BASE};
@@ -197,9 +197,10 @@ pub fn print_boot_info() {
 }
 
 const BOOT_SRC_USB: [u8; 4] = *b"MGN1";
+use util::mem::dump_block;
 pub fn dump_mask_rom() {
     println!(">>> mask ROM dump");
-    util::dump_block(MASK_ROM_FN_BASE, 96 * 1024, 32);
+    dump_block(MASK_ROM_FN_BASE, 96 * 1024, 32);
     println!("<<< mask ROM dump");
     panic!("DO NOT PANIC! EVERYTHING IS OKAY!");
 }

@@ -1,5 +1,5 @@
 use oreboot_arch::riscv64::util::delay;
-use util::{read32, write32};
+use util::mmio::{read32, write32};
 
 use crate::mem_map::RTC_SYS_BASE;
 

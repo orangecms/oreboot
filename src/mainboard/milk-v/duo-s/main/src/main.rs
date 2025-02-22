@@ -17,7 +17,7 @@ use core::{
 use riscv::register::{marchid, mhartid, mimpid, mtvec, mvendorid};
 
 use layoutflash::areas::{find_fdt, FdtIterator};
-use util::write32;
+use util::mmio::write32;
 
 mod sbi_platform;
 mod uart;
@@ -100,11 +100,18 @@ pub unsafe extern "C" fn reset() -> ! {
     }
     // PROBLEMO
     if false {
+        use core::ptr::{self, addr_of, addr_of_mut};
+        // zero out BSS
+        let sbss = addr_of_mut!(_sbss);
         let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-        ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
+        ptr::write_bytes(sbss, 0, bss_size);
+        // copy over data
+        let sidata = addr_of!(_sidata);
+        let sdata = addr_of_mut!(_sdata);
         let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
-        ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
+        ptr::copy_nonoverlapping(sidata, sdata, data_size);
     }
+
     // Call user entry point
     extern "Rust" {
         fn main() -> !;
@@ -127,6 +134,8 @@ fn init_logger(s: uart::SGSerial) {
 fn main() -> ! {
     let mut ini_pc: usize = 0;
     unsafe { asm!("mv {}, s4", out(reg) ini_pc) };
+
+    util::mmio::write32(0x04140000, 0x32);
 
     let s = uart::SGSerial::new();
     init_logger(s);

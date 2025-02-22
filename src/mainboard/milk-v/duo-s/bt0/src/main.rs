@@ -15,7 +15,8 @@ use core::{
 };
 
 use layoutflash::areas::{find_fdt, FdtIterator};
-use util::{dump, dump_block, read32, write32};
+use util::mem::{dump, dump_block};
+use util::mmio::read32;
 
 mod axi_mon;
 mod cv18xx;
@@ -127,11 +128,16 @@ pub unsafe extern "C" fn reset() {
     }
 
     use core::ptr::{self, addr_of, addr_of_mut};
+    // zero out BSS
+    let sbss = addr_of_mut!(_sbss);
     let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-    ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
-
+    ptr::write_bytes(sbss, 0, bss_size);
+    // copy over data
+    let sidata = addr_of!(_sidata);
+    let sdata = addr_of_mut!(_sdata);
     let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
-    ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
+    ptr::copy_nonoverlapping(sidata, sdata, data_size);
+
     // Call user entry point
     main();
 }
@@ -206,7 +212,7 @@ fn main() {
 
     // FIXME: DRAM on SG2002 is not stable and loses data :(
     if DRAM_TEST {
-        util::memtest::mem_test(mem_map::DRAM_BASE, 0x20_0000);
+        util::mem::test(mem_map::DRAM_BASE, 0x20_0000);
     }
 
     // Load extra code
@@ -229,11 +235,10 @@ fn main() {
         ">> load payload (max size: {} MB) over USB",
         PAYLOAD_SIZE / 1024 / 1024
     );
-    println!();
     rom::load_image(PAYLOAD_ADDR, 0x0, PAYLOAD_SIZE, 0);
     dump_block(PAYLOAD_ADDR, 0x60, 0x20);
 
-    println!(">> load DTB");
+    println!(">> load DTB (max size: {} KB) over USB", DTB_SIZE / 1024);
     rom::load_image(DTB_ADDR, 0x0, DTB_SIZE, 0);
     dump_block(DTB_ADDR, 0x60, 0x20);
 

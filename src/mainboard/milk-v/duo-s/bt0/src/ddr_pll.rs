@@ -1,5 +1,5 @@
 use oreboot_arch::riscv64::util::delay as opdelay;
-use util::{read32, write32};
+use util::mmio::{read32, write32};
 
 use crate::ddr_ctrl::POWER_CONTROL;
 use crate::dram::DramType;

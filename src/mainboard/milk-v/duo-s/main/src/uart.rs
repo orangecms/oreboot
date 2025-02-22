@@ -1,6 +1,6 @@
 use core::ptr::{read_volatile, write_volatile};
 use log::{Error, Serial};
-use util::{read32, write32};
+use util::mmio::{read32, write32};
 
 const UART0_BASE: usize = 0x0414_0000;
 const UART0_THR: usize = UART0_BASE + 0x0000; /* Transmitter holding reg. */

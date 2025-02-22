@@ -1,4 +1,4 @@
-use util::{read32, read64, write32};
+use util::mmio::{read32, read64le, write32};
 
 use crate::dram::DdrType;
 use crate::mem_map::{DDR_BIST_BASE, DDR_CFG_BASE, PHYD_BASE, PHY_BASE};
@@ -646,8 +646,8 @@ pub fn bist() -> Result<(), ()> {
     let success = res & (1 << 3) == 0;
     let (odd, even) = if success {
         // read err_data
-        let o = read64(DDR_BIST_BASE + 0x0088);
-        let e = read64(DDR_BIST_BASE + 0x0090);
+        let o = read64le(DDR_BIST_BASE + 0x0088);
+        let e = read64le(DDR_BIST_BASE + 0x0090);
         (o, e)
     } else {
         (0, 0)
