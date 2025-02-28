@@ -1,12 +1,16 @@
 #![doc = include_str!("../README.md")]
-#![feature(maybe_uninit_uninit_array)]
 #![no_std]
 #![no_main]
 
 use core::arch::global_asm;
 use core::panic::PanicInfo;
+global_asm!(include_str!("bootblock.S"));
+global_asm!(include_str!("init.S"));
 
 use oreboot_arch::riscv64::riscv::register::mhartid;
+
+static PLATFORM: &str = "QEMU RISC-V";
+static VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[macro_use]
 extern crate log;
@@ -15,18 +19,6 @@ mod mem_map;
 mod sbi_platform;
 mod uart;
 mod util;
-
-static PLATFORM: &str = "QEMU RISC-V";
-static VERSION: &str = env!("CARGO_PKG_VERSION");
-
-global_asm!(include_str!("bootblock.S"));
-global_asm!(include_str!("init.S"));
-
-const PAYLOAD_ADDR: usize = 0x8020_0000;
-const PAYLOAD_SIZE: usize = 32 * 1024 * 1024;
-
-const COMPRESSED_ADDR: usize = 0x8600_0000;
-const COMPRESSED_SIZE: usize = 16 * 1024 * 1024;
 
 static mut SERIAL: Option<uart::QEMUSerial> = None;
 
@@ -39,10 +31,6 @@ fn init_logger(s: uart::QEMUSerial) {
     }
 }
 
-const DEBUG: bool = true;
-
-use core::mem::MaybeUninit;
-
 #[no_mangle]
 pub extern "C" fn _start(dtb_address: usize) -> ! {
     let s = uart::QEMUSerial::new();
@@ -54,33 +42,14 @@ pub extern "C" fn _start(dtb_address: usize) -> ! {
     ore_sbi::runtime::init();
     ore_sbi::info::print_info(PLATFORM, VERSION);
 
-    let mut buf = unsafe { core::slice::from_raw_parts_mut(PAYLOAD_ADDR as *mut u8, PAYLOAD_SIZE) };
-
-    let compressed =
-        unsafe { core::slice::from_raw_parts(COMPRESSED_ADDR as *const u8, COMPRESSED_SIZE) };
-
-    let config = zlib_rs::inflate::InflateConfig::default();
-    let (uncompressed, err) = zlib_rs::inflate::uncompress_slice(&mut buf, compressed, config);
-
-    let addr = &raw const uncompressed as usize;
-    // let addr = PAYLOAD_ADDR;
-
-    if DEBUG {
-        util::dump_block(COMPRESSED_ADDR, 0x80, 0x20);
-        util::dump_block(addr, 0x80, 0x20);
-    }
-
-    // We get StreamError, which means that we have no allocator.
-    // How do we do this without an allocator?!
-    // No way yet, it seems; see zlib-rs' `init`.
-    if err != zlib_rs::ReturnCode::Ok {
-        panic!("{err:?}");
+    if false {
+        util::dump_block(mem_map::PAYLOAD_ADDR, 0x80, 0x20);
     }
 
     let hart_id = mhartid::read();
     let (reset_type, reset_reason) = ore_sbi::execute::execute_supervisor(
         sbi,
-        addr,
+        mem_map::PAYLOAD_ADDR,
         hart_id,
         dtb_address,
         Some(mem_map::CLINT_BASE),
@@ -92,20 +61,7 @@ pub extern "C" fn _start(dtb_address: usize) -> ! {
     }
 }
 
-#[cfg_attr(not(test), panic_handler)]
-fn panic(info: &PanicInfo) -> ! {
-    if let Some(location) = info.location() {
-        println!(
-            "[main] panic in '{}' line {}",
-            location.file(),
-            location.line(),
-        );
-    } else {
-        println!("[main] panic at unknown location");
-    };
-    let msg = info.message();
-    println!("[main]   {msg}");
-    loop {
-        core::hint::spin_loop();
-    }
+#[panic_handler]
+fn panic(_info: &PanicInfo) -> ! {
+    loop {}
 }
