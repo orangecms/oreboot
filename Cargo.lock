@@ -444,6 +444,7 @@ dependencies = [
  "oreboot-arch",
  "oreboot_compression",
  "rustsbi 0.4.0",
+ "zlib-rs",
 ]
 
 [[package]]
@@ -1740,3 +1741,9 @@ dependencies = [
  "encoding_rs",
  "hashlink",
 ]
+
+[[package]]
+name = "zlib-rs"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b20717f0917c908dc63de2e44e97f1e6b126ca58d0e391cee86d504eb8fbd05"

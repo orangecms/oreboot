@@ -22,9 +22,9 @@ objdump: nop
 mainboard:
 	cargo build --release
 	cargo objcopy -- -O binary $(IMAGE)
-	truncate -s 32M $(IMAGE)
+	# truncate -s 32M $(IMAGE)
 	# cargo xtask make --release $(VERBOSE)
 
 run: mainboard
 	$(QEMU) -m 1g -machine virt -nographic -bios $(IMAGE) \
-		-device loader,addr=0x80200000,file=$(PAYLOAD)
+		-device loader,addr=0x86000000,file=$(PAYLOAD)

@@ -15,3 +15,4 @@ layoutflash = { path = "../../../../lib/layoutflash" }
 log = { path = "../../../../lib/log" }
 oreboot-arch = { path = "../../../../arch", features = ["riscv64"] }
 oreboot_compression = { path = "../../../../lib/compression" }
+zlib-rs = { version = "0.4.2", default-features = false }
