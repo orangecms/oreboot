@@ -24,7 +24,7 @@ run: build
 	$(KENDRYTE_BOOT) run -a 0x1000 $(RELEASE_BIN)
 
 objdump:
-	cargo objdump -D
+	cargo objdump -- -D
 
 hexdump: build
 	xxd $(RELEASE_BIN)

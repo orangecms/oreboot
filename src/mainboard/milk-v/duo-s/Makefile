@@ -10,5 +10,5 @@ run_main:
 	$(MAKE) -C main run
 
 load_payload:
-	$(SG_BOOT) run --main $(PAYLOAD)
-	$(SG_BOOT) run --main $(DTB)
+	$(SG_BOOT) run $(PAYLOAD)
+	$(SG_BOOT) run $(DTB)

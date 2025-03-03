@@ -15,12 +15,12 @@ use core::{
 use embedded_hal_nb::serial::Write;
 use riscv::register::{marchid, mhartid, mimpid, mvendorid};
 
-use util::{dump, dump_block, read32, write32};
+use util::mem::{dump, dump_block};
+use util::mmio::{read32, write32};
 
 mod mem_map;
 mod sbi_platform;
 mod uart;
-mod util;
 
 const DEBUG: bool = false;
 
@@ -70,81 +70,14 @@ pub unsafe extern "C" fn start() -> ! {
         "call   {payload}",
 
         ".boothart:",
-        "call   {reset}",
+        "call   {main}",
         boothart   = const BOOT_HART_ID,
         stack      = sym BT0_STACK,
         stack_size = const STACK_SIZE,
         payload    = sym exec_payload,
-        reset      = sym reset,
+        main       = sym main,
         start      = sym start,
     )
-}
-
-/// Initialize RAM: Clear BSS and set up data.
-/// See https://docs.rust-embedded.org/embedonomicon/main.html
-///
-/// # Safety
-/// :shrug:
-#[no_mangle]
-pub unsafe extern "C" fn reset() {
-    extern "C" {
-        static mut _sbss: u8;
-        static mut _ebss: u8;
-
-        static mut _sdata: u8;
-        static mut _edata: u8;
-        static _sidata: u8;
-    }
-
-    let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-    // FIXME: why is this broken now, Rust?!
-    if false {
-        ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
-    }
-    let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
-    ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
-    // Call user entry point
-    main();
-}
-
-fn vendorid_to_name<'a>(vendorid: usize) -> &'a str {
-    match vendorid {
-        0x0489 => "SiFive",
-        0x05b7 => "T-Head",
-        0x0710 => "SpacemiT",
-        _ => "unknown",
-    }
-}
-
-// FIXME: This really depends on the vendor first!
-fn impid_to_name<'a>(impid: usize) -> &'a str {
-    match impid {
-        0x0000_0000_0000_0000 => "C910 or something",
-        0x0000_0000_0421_0427 => "21G1.02.00 / llama.02.00-general",
-        0x1000_0000_4977_2200 => "SpacemiT X60",
-        0x0000_0000_0005_0000 => "C908 (Kendryte K230)",
-        _ => "unknown",
-    }
-}
-
-/// Print RISC-V core information:
-/// - vendor
-/// - arch
-/// - implementation
-/// - hart ID
-fn print_ids() {
-    let vid = mvendorid::read().map(|r| r.bits()).unwrap_or(0);
-    let aid = marchid::read().map(|r| r.bits()).unwrap_or(0);
-    let iid = mimpid::read().map(|r| r.bits()).unwrap_or(0);
-    // TODO: This prints 8000000000000007, but should be 80000007.
-    // See U74-MC core complex manual 21G3.
-    println!("RISC-V arch {aid:08x}");
-    let vendor_name = vendorid_to_name(vid);
-    println!("RISC-V core vendor: {vendor_name} (0x{vid:04x})");
-    let imp_name = impid_to_name(iid);
-    println!("RISC-V implementation: {imp_name} (0x{iid:08x})");
-    let hart_id = mhartid::read();
-    println!("RISC-V hart ID {hart_id}");
 }
 
 static mut SERIAL: Option<uart::K230Serial> = None;
@@ -158,78 +91,34 @@ fn init_logger(s: uart::K230Serial) {
     }
 }
 
-fn copy(source: usize, target: usize, size: usize) {
-    for b in (0..size).step_by(4) {
-        write32(target + b, read32(source + b));
-        if b % 0x4_0000 == 0 {
-            print!(".");
-        }
-    }
-    println!(" done.");
-}
-
-fn dump_csrs() {
-    let mut v: usize;
-    unsafe {
-        println!("==== platform CSRs ====");
-        asm!("csrr {}, 0x7c0", out(reg) v);
-        println!("   MXSTATUS  {v:08x}");
-        asm!("csrr {}, 0x7c1", out(reg) v);
-        println!("   MHCR      {v:08x}");
-        asm!("csrr {}, 0x7c2", out(reg) v);
-        println!("   MCOR      {v:08x}");
-        asm!("csrr {}, 0x7c5", out(reg) v);
-        println!("   MHINT     {v:08x}");
-        println!("see C906 manual p581 ff");
-        println!("=======================");
-    }
+// TODO: move to SoC lib crate
+const STC2_CFG: usize = mem_map::STC_BASE + 0x0020;
+const STC3_CFG: usize = mem_map::STC_BASE + 0x0030;
+// This enables the mtimer clock and is specific to the K230 SoC.
+// It is apparently backed by the STC, which probably means System Time Clock.
+// The manual says:
+// > K230 provides 9 timers (six general timer and three stc timer).
+// > Six general-purpose timers can be used as system clock of operating system
+// > and used to count external sinal input. Stc0 timer can be used for
+// > video-input/video-output and audio synchronization.
+// > STC2 timer is used for cpu0 and STC3 timer is used for cpu1.
+// see k230_linux_sdk
+// buildroot-overlay/boot/uboot/u-boot-2022.10-overlay/arch/riscv/cpu/k230/cpu.c
+// harts_early_init
+fn enable_system_time_clock() {
+    write32(STC2_CFG, 1);
+    write32(STC3_CFG, 1);
 }
 
 fn init_csrs() {
-    println!("Set up extension CSRs");
     if DEBUG {
-        dump_csrs();
+        oreboot_arch::riscv64::xuantie::dump_csrs();
     }
-    unsafe {
-        // MXSTATUS: T-Head ISA extension enable, MAEE, MM, UCME, CLINTEE
-        // NOTE: Linux relies on detecting errata via mvendorid, marchid and
-        // mipmid. If that detection fails, and we enable MAEE, Linux won't come
-        // up. When D-cache is enabled, and the detection fails, we run into
-        // cache coherency issues. Welcome to the minefield! :)
-        // NOTE: We already set part of this in bt0, but it seems to get lost?
-        asm!("csrs 0x7c0, {}", in(reg) 0x00638000);
-        // MCOR: invalidate ICACHE/DCACHE/BTB/BHT
-        asm!("csrw 0x7c2, {}", in(reg) 0x00070013);
-        // MHCR
-        asm!("csrw 0x7c1, {}", in(reg) 0x000011ff);
-        // MHINT
-        asm!("csrw 0x7c5, {}", in(reg) 0x0016e30c);
-    }
+    oreboot_arch::riscv64::xuantie::init_csrs();
     if DEBUG {
-        dump_csrs();
+        oreboot_arch::riscv64::xuantie::dump_csrs();
     }
 }
-
-// The machine mode processor model register (MCPUID) stores the processor
-// model information. Its reset value is determined by the product itself and
-// complies with the Pingtouge product definition specifications to facilitate
-// software identification. By continuously reading the MCPUID register, up to
-// 7 different return values can be obtained to represent C906 product
-// information, as shown in Figure ??.
-
-// T-Head CPU model register
-const MCPUID: u32 = 0xfc0;
-fn print_cpuid() {
-    let mut id: u32;
-    for i in 0..7 {
-        unsafe { asm!("csrr {}, 0xfc0", out(reg) id) };
-        println!("MCPUID {i}: {id:08x}");
-    }
-}
-
-const MASK_ROM_LOADER: usize = mem_map::MASK_ROM_BASE;
-
-const CPU0_RESET_CONTROL: usize = mem_map::RMU_BASE + 0x0004;
 
 #[no_mangle]
 fn main() {
@@ -240,19 +129,50 @@ fn main() {
     init_logger(s);
     println!("oreboot 🦀 main");
     println!("initial program counter (PC) {ini_pc:016x}");
-    print_ids();
-    print_cpuid();
-    init_csrs();
+    oreboot_arch::riscv64::ids::print_ids();
+    oreboot_arch::riscv64::xuantie::print_cpuid();
 
     exec_payload();
 }
 
+const PAYLOAD_ADDR: usize = mem_map::DRAM_BASE_ADDR + 0x0020_0000;
+const PAYLOAD_SIZE: usize = 32 * 1024 * 1024;
+const DTB_ADDR: usize = PAYLOAD_ADDR + PAYLOAD_SIZE;
+
+const CONFIG_MSECCFG_MENVCFG: bool = false;
+
 fn exec_payload() {
-    let payload_addr = mem_map::DRAM_BASE_ADDR + 0x20_0000;
+    let payload_addr = PAYLOAD_ADDR;
+    let dtb_addr = DTB_ADDR;
+    // NOTE: The system time clock _must_ be enabled for mtime to work.
+    // We already enable it in bt0, but keep it here as well to ensure
+    // that it won't get lost. Otherwise, we never get mtime interrupts.
+    // TODO: maybe move the timer init somewhere else
+    enable_system_time_clock();
+    init_csrs();
+
+    // TODO
+    if CONFIG_MSECCFG_MENVCFG {
+        unsafe {
+            // mseccfg
+            const MSECCFG_USEED: u64 = 1 << 9;
+            const MSECCFG_SSEED: u64 = 1 << 8;
+            let v = MSECCFG_SSEED | MSECCFG_USEED;
+            asm!("csrw 0x747, {}", in(reg) v);
+            // S-mode time compare enable
+            const MENVCFG_STCE: u64 = 1 << 63;
+            // counter delegation enable
+            const MENVCFG_CDE: u64 = 1 << 60;
+            let v = MENVCFG_STCE | MENVCFG_CDE;
+            asm!("csrw 0x30a, {}", in(reg) v);
+        }
+    }
 
     if DEBUG {
         println!("Payload @ {payload_addr:08x}");
         dump_block(payload_addr, 0x50, 0x10);
+        println!("DTB @ {dtb_addr:08x}");
+        dump_block(dtb_addr, 0x50, 0x10);
     }
 
     let use_sbi = true;
@@ -264,14 +184,16 @@ fn exec_payload() {
         ore_sbi::info::print_info(PLATFORM, VERSION);
 
         let hart_id = mhartid::read();
-        let dtb_addr = 0;
+        riscv::asm::fence_i();
+        riscv::asm::fence();
         let (reset_type, reset_reason) =
             ore_sbi::execute::execute_supervisor(sbi, payload_addr, hart_id, dtb_addr, None);
         println!("[oreboot] reset reason: {reset_reason}");
     } else {
         unsafe {
             let f: EntryPoint = transmute(payload_addr);
-            asm!("fence.i");
+            riscv::asm::fence_i();
+            riscv::asm::fence();
             f();
         }
     }

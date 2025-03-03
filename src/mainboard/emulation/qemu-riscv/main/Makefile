@@ -22,7 +22,7 @@ objdump: nop
 mainboard:
 	cargo build --release
 	cargo objcopy -- -O binary $(IMAGE)
-	truncate -s 32M $(IMAGE)
+	# truncate -s 32M $(IMAGE)
 	# cargo xtask make --release $(VERBOSE)
 
 run: mainboard

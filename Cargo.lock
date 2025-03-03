@@ -872,6 +872,7 @@ dependencies = [
  "rustsbi 0.4.0",
  "sbi-spec 0.0.4",
  "spin",
+ "util",
 ]
 
 [[package]]

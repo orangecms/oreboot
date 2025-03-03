@@ -98,6 +98,7 @@ pub unsafe extern "C" fn reset() -> ! {
         static mut _edata: u8;
         static _sidata: u8;
     }
+    util::mmio::write32(0x04140000, 0x30);
     // PROBLEMO
     if false {
         use core::ptr::{self, addr_of, addr_of_mut};
@@ -105,6 +106,9 @@ pub unsafe extern "C" fn reset() -> ! {
         let sbss = addr_of_mut!(_sbss);
         let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
         ptr::write_bytes(sbss, 0, bss_size);
+    }
+    util::mmio::write32(0x04140000, 0x31);
+    if false {
         // copy over data
         let sidata = addr_of!(_sidata);
         let sdata = addr_of_mut!(_sdata);

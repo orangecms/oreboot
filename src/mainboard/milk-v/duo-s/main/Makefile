@@ -23,7 +23,7 @@ build:
 	cargo objcopy -- -O binary $(RELEASE_BIN)
 
 run: build
-	$(SG_BOOT) run --main $(RELEASE_BIN)
+	$(SG_BOOT) run $(RELEASE_BIN)
 
 objdump: build
 	cargo objdump -- -D

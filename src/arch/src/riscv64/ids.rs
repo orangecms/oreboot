@@ -6,6 +6,7 @@ fn vendorid_to_name<'a>(vendorid: usize) -> &'a str {
     match vendorid {
         0x0489 => "SiFive",
         0x05b7 => "T-Head",
+        0x0710 => "SpacemiT",
         _ => "unknown",
     }
 }
@@ -13,7 +14,10 @@ fn vendorid_to_name<'a>(vendorid: usize) -> &'a str {
 // FIXME: This really depends on the vendor first!
 fn impid_to_name<'a>(impid: usize) -> &'a str {
     match impid {
-        0x0421_0427 => "21G1.02.00 / llama.02.00-general",
+        0x0000_0000_0000_0000 => "C910 or something",
+        0x0000_0000_0421_0427 => "21G1.02.00 / llama.02.00-general",
+        0x1000_0000_4977_2200 => "SpacemiT X60",
+        0x0000_0000_0005_0000 => "C908 (Kendryte K230)",
         _ => "unknown",
     }
 }

@@ -67,17 +67,32 @@ pub fn dump_csrs() {
 // See also XuanTie C906 and C908 manuals; they detail all of the CSRs.
 // The program examples chapter provides the values for optimal operation.
 pub fn init_csrs() {
-    println!("Set up extension CSRs");
+    println!("Set up XuanTie extended CSRs");
     unsafe {
-        // MXSTATUS: XuanTie ISA extension register
+        // MCOR: cache operation register
+        // FIXME: This currently goes boom on SG200x.
         if false {
-            reg::mxstatus::set_maee();
-            reg::mxstatus::set_mm();
-            reg::mxstatus::set_ucme();
-            reg::mxstatus::set_clintee();
-        } else {
-            asm!("csrs 0x7c0, {}", in(reg) 0x00638000);
+            reg::mcor::cache(reg::mcor::Cache::BOTH, reg::mcor::Operation::INVALIDATE);
         }
+        if true {
+            reg::mcor::btb_inv();
+            reg::mcor::bht_inv();
+        }
+        // DANGER
+        if false {
+            asm!("csrw 0x7c2, {}", in(reg) 0x00070013);
+        }
+
+        // MCCR2
+        // asm!("csrs 0x7c3, {}", in(reg) 0xe000_0009);
+        // taken from manual and vendor U-Boot code arch/riscv/cpu/k230/cpu.c
+        if false {
+            asm!(
+                "li x3, 0xe0000009", //
+                "csrs 0x7c3, x3"
+            );
+        }
+
         // MHCR: hardware control register
         // NOTE: The C908 manual recommends 0x11ff, but only those low bits are defined
         // in the xuantie crate. Bit 12 is L0BTB (C908 only), bit 8 is WBR (C906+C908).
@@ -90,28 +105,31 @@ pub fn init_csrs() {
             reg::mhcr::set_bpe();
             reg::mhcr::set_btb();
             reg::mhcr::set_wbr();
-        } else {
-            asm!("csrw 0x7c1, {}", in(reg) 0x0000_11ff);
-        }
-        // MCOR: cache operation register
-        // FIXME: This currently goes boom on SG200x.
-        if false {
-            reg::mcor::cache(reg::mcor::Cache::BOTH, reg::mcor::Operation::INVALIDATE);
         }
         if true {
-            reg::mcor::btb_inv();
-            reg::mcor::bht_inv();
-        } else {
-            asm!("csrw 0x7c2, {}", in(reg) 0x00070013);
+            asm!("csrw 0x7c1, {}", in(reg) 0x0000_11ff);
         }
+
+        // MXSTATUS: XuanTie ISA extension register
+        if false {
+            reg::mxstatus::set_maee();
+            reg::mxstatus::set_mm();
+            reg::mxstatus::set_ucme();
+            reg::mxstatus::set_clintee();
+        }
+        if true {
+            asm!("csrs 0x7c0, {}", in(reg) 0x0063_8000);
+        }
+
         // MHINT: implicit operation register
         // TODO: XuanTie crate is not yet complete.
         if false {
             reg::mhint::set_dpld();
             reg::mhint::set_amr(reg::mhint::AMR::After3Lines);
             reg::mhint::set_ipld();
-        } else {
-            asm!("csrw 0x7c5, {}", in(reg) 0x0016_e30c);
+        }
+        if true {
+            asm!("csrw 0x7c5, {}", in(reg) 0x0006_e30c);
         }
     }
 }

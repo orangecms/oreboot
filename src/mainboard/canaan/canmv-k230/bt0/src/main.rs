@@ -104,46 +104,6 @@ pub unsafe extern "C" fn reset() {
     main();
 }
 
-fn vendorid_to_name<'a>(vendorid: usize) -> &'a str {
-    match vendorid {
-        0x0489 => "SiFive",
-        0x05b7 => "T-Head",
-        0x0710 => "SpacemiT",
-        _ => "unknown",
-    }
-}
-
-// FIXME: This really depends on the vendor first!
-fn impid_to_name<'a>(impid: usize) -> &'a str {
-    match impid {
-        0x0000_0000_0000_0000 => "C910 or something",
-        0x0000_0000_0421_0427 => "21G1.02.00 / llama.02.00-general",
-        0x1000_0000_4977_2200 => "SpacemiT X60",
-        0x0000_0000_0005_0000 => "C908 (Kendryte K230)",
-        _ => "unknown",
-    }
-}
-
-/// Print RISC-V core information:
-/// - vendor
-/// - arch
-/// - implementation
-/// - hart ID
-fn print_ids() {
-    let vid = mvendorid::read().map(|r| r.bits()).unwrap_or(0);
-    let aid = marchid::read().map(|r| r.bits()).unwrap_or(0);
-    let iid = mimpid::read().map(|r| r.bits()).unwrap_or(0);
-    // TODO: This prints 8000000000000007, but should be 80000007.
-    // See U74-MC core complex manual 21G3.
-    println!("RISC-V arch {aid:08x}");
-    let vendor_name = vendorid_to_name(vid);
-    println!("RISC-V core vendor: {vendor_name} (0x{vid:04x})");
-    let imp_name = impid_to_name(iid);
-    println!("RISC-V implementation: {imp_name} (0x{iid:08x})");
-    let hart_id = mhartid::read();
-    println!("RISC-V hart ID {hart_id}");
-}
-
 static mut SERIAL: Option<uart::K230Serial> = None;
 
 fn init_logger(s: uart::K230Serial) {
@@ -152,33 +112,6 @@ fn init_logger(s: uart::K230Serial) {
         if let Some(m) = SERIAL.as_mut() {
             log::init(m);
         }
-    }
-}
-
-fn copy(source: usize, target: usize, size: usize) {
-    for b in (0..size).step_by(4) {
-        write32(target + b, read32(source + b));
-        if b % 0x4_0000 == 0 {
-            print!(".");
-        }
-    }
-    println!(" done.");
-}
-
-// The machine mode processor model register (MCPUID) stores the processor
-// model information. Its reset value is determined by the product itself and
-// complies with the Pingtouge product definition specifications to facilitate
-// software identification. By continuously reading the MCPUID register, up to
-// 7 different return values can be obtained to represent C906 product
-// information, as shown in Figure ??.
-
-// T-Head CPU model register
-const MCPUID: u32 = 0xfc0;
-fn print_cpuid() {
-    let mut id: u32;
-    for i in 0..7 {
-        unsafe { asm!("csrr {}, 0xfc0", out(reg) id) };
-        println!("MCPUID {i}: {id:08x}");
     }
 }
 
@@ -220,8 +153,8 @@ fn main() {
     // hart 1
     write32(mem_map::CMU_BASE + 0x0004, 0x8019_9805);
 
-    print_ids();
-    print_cpuid();
+    oreboot_arch::riscv64::ids::print_ids();
+    oreboot_arch::riscv64::xuantie::print_cpuid();
 
     let start = time::read64();
     dram::init();

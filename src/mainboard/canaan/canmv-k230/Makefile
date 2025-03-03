@@ -22,5 +22,6 @@ run_main:
 load_payload:
 	sleep 2
 	$(KENDRYTE_BOOT) load -a 0x200000 $(PAYLOAD)
+	$(KENDRYTE_BOOT) load -a 0x2200000 $(DTB)
 
 run: run_bt0 load_payload run_main
