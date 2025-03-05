@@ -52,6 +52,7 @@ make run DRAM_SIZE=8G PORT=/dev/ttyUSB0 && picocom -b 115200 /dev/ttyUSB0
 See <kernel.md> for preparation.
 When building oreboot, point to your DTB, and it will be added to the image.
 It will then contain
+
 - oreboot `bt0`
 - oreboot DTFS
 - oreboot `main`
