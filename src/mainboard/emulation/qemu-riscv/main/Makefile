@@ -27,4 +27,4 @@ mainboard:
 
 run: mainboard
 	$(QEMU) -m 1g -machine virt -nographic -bios $(IMAGE) \
-		-device loader,addr=0x80200000,file=$(PAYLOAD)
+		-device loader,addr=0x82200000,file=$(PAYLOAD)

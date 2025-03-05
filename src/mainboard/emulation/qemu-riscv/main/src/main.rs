@@ -21,7 +21,14 @@ static VERSION: &str = env!("CARGO_PKG_VERSION");
 global_asm!(include_str!("bootblock.S"));
 global_asm!(include_str!("init.S"));
 
+// This is the extracted payload.
 const PAYLOAD_ADDR: usize = 0x8020_0000;
+const PAYLOAD_SIZE: usize = 32 * 1024 * 1024;
+
+// This is the compressed payload. We put it after PAYLOAD_ADDR in memory, so
+// that enough space is reserved for the resulting decompressed payload.
+const COMPRESSED_ADDR: usize = PAYLOAD_ADDR + 0x0200_0000;
+const COMPRESSED_SIZE: usize = 16 * 1024 * 1024;
 
 static mut SERIAL: Option<uart::QEMUSerial> = None;
 
@@ -34,7 +41,7 @@ fn init_logger(s: uart::QEMUSerial) {
     }
 }
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 #[no_mangle]
 pub extern "C" fn _start(dtb_address: usize) -> ! {
@@ -42,12 +49,22 @@ pub extern "C" fn _start(dtb_address: usize) -> ! {
     init_logger(s);
     println!("oreboot 🦀 main");
 
+    unsafe {
+        oreboot_compression::decompress(
+            COMPRESSED_ADDR,
+            PAYLOAD_ADDR,
+            COMPRESSED_SIZE,
+            PAYLOAD_SIZE,
+        );
+    }
+
     use oreboot_arch::riscv64::sbi as ore_sbi;
     let sbi = sbi_platform::init();
     ore_sbi::runtime::init();
     ore_sbi::info::print_info(PLATFORM, VERSION);
 
     if DEBUG {
+        util::dump_block(COMPRESSED_ADDR, 0x80, 0x20);
         util::dump_block(PAYLOAD_ADDR, 0x80, 0x20);
     }
 
