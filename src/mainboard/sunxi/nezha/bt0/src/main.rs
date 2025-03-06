@@ -438,22 +438,6 @@ extern "C" fn main() {
     }
     println!("cpu_axi {cpu_axi:x}"); // 0xFA00_1000
 
-    let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
-    println!("peri0_ctrl was: {peri0_ctrl:x}"); // f8216300
-
-    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, 0x63 << 8) };
-    // println!("peri0_ctrl default");
-    // enable lock
-    let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, peri0_ctrl | (1 << 29)) };
-    println!("peri0_ctrl lock en");
-    // enabe PLL: 600M(1X)  1200M(2x)
-    let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, peri0_ctrl | (1 << 31)) };
-    println!("peri0_ctrl PLLs");
-    let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
-    println!("peri0_ctrl set: {:x}", peri0_ctrl);
-
     /* Initialize RISCV_CFG. */
     unsafe {
         write_volatile(RISCV_CFG_BGR as *mut u32, 0x0001_0001);
