@@ -421,35 +421,35 @@ extern "C" fn main() {
     // dma_bgr::RST_W::set_bit(dma_bgr::RST_A::ASSERT);
     //  DMA_BGR::write(|w| w.reset().set_bit());
     let dma_bgr = unsafe { read_volatile(CCMU_DMA_BGR_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_DMA_BGR_REG as *mut u32, dma_bgr | 1 << 16) };
+    unsafe { write_volatile(CCMU_DMA_BGR_REG as *mut u32, dma_bgr | (1 << 16)) };
     let dma_bgr = unsafe { read_volatile(CCMU_DMA_BGR_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_DMA_BGR_REG as *mut u32, dma_bgr | 1 << 0) };
+    unsafe { write_volatile(CCMU_DMA_BGR_REG as *mut u32, dma_bgr | (1 << 0)) };
 
     for _ in 0..1000 {
         core::hint::spin_loop();
     }
     let mut cpu_axi = unsafe { read_volatile(CCMU_CPUX_AXI_CFG_REG as *mut u32) };
     println!("cpu_axi {:x}", cpu_axi); // 0xFA00_1000
-    cpu_axi &= 0x07 << 24 | 0x3 << 8 | 0xf << 0;
-    cpu_axi |= 0x05 << 24 | 0x1 << 8;
+    cpu_axi &= (0x07 << 24) | (0x3 << 8) | (0xf << 0);
+    cpu_axi |= (0x05 << 24) | (0x1 << 8);
     unsafe { write_volatile(CCMU_CPUX_AXI_CFG_REG as *mut u32, cpu_axi) };
     for _ in 0..1000 {
         core::hint::spin_loop();
     }
-    println!("cpu_axi {:x}", cpu_axi); // 0xFA00_1000
+    println!("cpu_axi {cpu_axi:x}"); // 0xFA00_1000
 
     let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
-    println!("peri0_ctrl was: {:x}", peri0_ctrl); // f8216300
+    println!("peri0_ctrl was: {peri0_ctrl:x}"); // f8216300
 
-    // unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, 0x63 << 8) };
+    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, 0x63 << 8) };
     // println!("peri0_ctrl default");
     // enable lock
     let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, peri0_ctrl | 1 << 29) };
+    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, peri0_ctrl | (1 << 29)) };
     println!("peri0_ctrl lock en");
     // enabe PLL: 600M(1X)  1200M(2x)
     let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
-    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, peri0_ctrl | 1 << 31) };
+    unsafe { write_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32, peri0_ctrl | (1 << 31)) };
     println!("peri0_ctrl PLLs");
     let peri0_ctrl = unsafe { read_volatile(CCMU_PLL_PERI0_CTRL_REG as *mut u32) };
     println!("peri0_ctrl set: {:x}", peri0_ctrl);
