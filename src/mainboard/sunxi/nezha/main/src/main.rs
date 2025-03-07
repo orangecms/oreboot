@@ -302,8 +302,8 @@ extern "C" fn main() -> usize {
 
     let serial = D1Serial::new(p.UART0, (tx, rx), config, &clocks);
     init_logger(serial);
-
-    print!("oreboot: serial uart0 initialized\n");
+    println!("oreboot 🦀 main");
+    xuantie::print_cpuid();
 
     // how we figured out https://github.com/rust-embedded/riscv/pull/107
     if true {
