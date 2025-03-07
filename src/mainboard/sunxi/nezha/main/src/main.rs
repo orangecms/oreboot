@@ -349,13 +349,9 @@ extern "C" fn main() -> usize {
         println!("Enter supervisor at {PAYLOAD_ADDR:08x} with DTB from {DTB_ADDR:08x}");
 
         let hart_id = riscv::register::mhartid::read();
-        let (reset_type, reset_reason) = ore_sbi::execute::execute_supervisor(
-            sbi,
-            PAYLOAD_ADDR,
-            hart_id,
-            DTB_ADDR,
-            Some(CLINT_BASE),
-        );
+        let (reset_type, reset_reason) =
+            ore_sbi::execute::execute_supervisor(sbi, PAYLOAD_ADDR, hart_id, DTB_ADDR, None, None);
+        println!("oreboot: reset reason = {reset_reason}");
         println!("[oreboot] reset reason: {reset_reason}");
         reset_type
     } else {

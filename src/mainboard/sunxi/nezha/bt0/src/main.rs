@@ -35,14 +35,23 @@ use flash::SpiNor;
 use mctl::RAM_BASE;
 
 // TODO: determine offets/sizes at build time
-// memory load addresses
-const LIN_ADDR: usize = RAM_BASE + 0x0400_0000; // Linux will be decompressed in payloader
-const DTB_ADDR: usize = RAM_BASE + 0x0220_0000; // dtb must be 2MB aligned and behind Linux
+const BT0_SIZE: usize = 0x8000;
+
 const ORE_ADDR: usize = RAM_BASE;
 const ORE_SIZE: usize = 0x1_8000; // 96K
+
 const DTF_SIZE: usize = 0x1_0000; // 64K
-const LIN_SIZE: usize = 0x00fc_0000;
+
+// target location for decompressed image
+const PAYLOAD_OFFSET: usize = 0x0020_0000;
+const PAYLOAD_ADDR: usize = RAM_BASE + PAYLOAD_OFFSET;
+const PAYLOAD_SIZE: usize = 0x0200_0000;
+
+const DTB_ADDR: usize = PAYLOAD_ADDR + PAYLOAD_SIZE;
 const DTB_SIZE: usize = 0x0001_0000;
+
+const COMPRESSED_ADDR: usize = DTB_ADDR + DTB_SIZE;
+const COMPRESSED_SIZE: usize = 0x00fc_0000;
 
 const STACK_SIZE: usize = 2 * 1024;
 
@@ -454,7 +463,7 @@ extern "C" fn main() {
     }
 
     let ram_size = mctl::init();
-    println!("{}M 🐏", ram_size);
+    println!("{ram_size}M 🐏");
 
     #[cfg(feature = "nor")]
     let spi_speed = 48_000_000.hz();
@@ -483,15 +492,15 @@ extern "C" fn main() {
         // TODO: Either read sizes from dtfs at runtime or at build time
 
         // println!("💾");
-        let skip = 0x1 << 15; // 32K, the size of boot0
+        let skip = BT0_SIZE;
         load(skip, ORE_ADDR, ORE_SIZE, &mut flash);
 
-        // 32K + oreboot + dtfs, see oreboot dtfs
+        // bt0 + oreboot main + dtfs, see oreboot dtfs
         let skip = skip + ORE_SIZE + DTF_SIZE;
-        load(skip, LIN_ADDR, LIN_SIZE, &mut flash);
+        load(skip, COMPRESSED_ADDR, COMPRESSED_SIZE, &mut flash);
 
-        // 32K + oreboot + dtfs + payload
-        let skip = skip + LIN_SIZE;
+        // bt0 + oreboot main + dtfs + payload
+        let skip = skip + COMPRESSED_SIZE;
         load(skip, DTB_ADDR, DTB_SIZE, &mut flash);
 
         let _ = flash.free().free();
@@ -551,9 +560,10 @@ extern "C" fn main() {
         }
     }
 
-    println!("Running payload at 0x{:x}", RAM_BASE);
+    let addr = ORE_ADDR;
+    println!("Running payload at 0x{:x}", addr);
     unsafe {
-        let f: unsafe extern "C" fn() = transmute(RAM_BASE);
+        let f: unsafe extern "C" fn() = transmute(addr);
         f();
 
         loop {
