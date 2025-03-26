@@ -1,6 +1,5 @@
-use crate::util::{read32, write32};
-use core::ptr::{read_volatile, write_volatile};
 use log::{Error, Serial};
+use util::mmio::{read32, write32};
 
 // https://www.lammertbies.nl/comm/info/serial-uart
 // U-Boot arch/riscv/dts/k1-x.dtsi
@@ -65,54 +64,10 @@ const UART_CLK: u32 = 100_000_000;
 const UART_BAUDRATE_32MCLK_115200: u32 = 115200;
 const DIVISOR: u32 = (UART_CLK / UART_BAUDRATE_32MCLK_115200) >> 4;
 
-fn read_8(reg: usize) -> u8 {
-    unsafe { read_volatile(reg as *mut u8) }
-}
-
-fn write_8(reg: usize, val: u8) {
-    unsafe {
-        write_volatile(reg as *mut u8, val);
-    }
-}
-
 #[derive(Debug)]
 pub struct K1XSerial();
 
 impl K1XSerial {
-    #[inline]
-    pub fn new() -> Self {
-        let lcr_cache = read_8(UART0_LCR);
-        /* clear DLAB */
-        write_8(UART0_LCR, LCR_DLAB | lcr_cache);
-        /* NOTE: Setting the divisor requires knowing the clock. */
-        /*
-        write_8(UART0_BRDL, DIVISOR as u8);
-        write_8(UART0_BRDH, (DIVISOR >> 8) as u8);
-        */
-        /* restore the DLAB to access the baud rate divisor registers */
-        write_8(UART0_LCR, lcr_cache);
-
-        /* 8 data bits, 1 stop bit, no parity */
-        write_8(UART0_LCR, LCR_CS8 | LCR_1_STB | LCR_PDIS);
-
-        /* disable flow control */
-        write_8(UART0_MDC, 0);
-
-        /*
-         * Program FIFO: enabled, mode 0 (set for compatibility with quark),
-         * generate the interrupt at 8th byte
-         * Clear TX and RX FIFO
-         */
-        write_8(
-            UART0_FCR,
-            FCR_FIFO | FCR_MODE0 | FCR_FIFO_8 | FCR_RCVRCLR | FCR_XMITCLR,
-        );
-
-        write_8(UART0_IER, 0); // disable the serial interrupt
-
-        Self()
-    }
-
     #[inline]
     pub fn noinit() -> Self {
         Self()
@@ -128,7 +83,7 @@ impl embedded_hal_nb::serial::ErrorType for K1XSerial {
 impl embedded_hal_nb::serial::Write<u8> for K1XSerial {
     #[inline]
     fn write(&mut self, c: u8) -> nb::Result<(), self::Error> {
-        if read_8(UART0_LSR) & LSR_THRE == 0 {
+        if read32(UART0_LSR) as u8 & LSR_THRE == 0 {
             return Err(nb::Error::WouldBlock);
         }
         write32(UART0_THR, c as u32);

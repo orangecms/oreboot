@@ -4,8 +4,6 @@
 // TODO: remove when done debugging crap
 #![allow(unused)]
 
-use embedded_hal_nb::serial::Write;
-
 #[macro_use]
 extern crate log;
 
@@ -16,15 +14,15 @@ use core::{
     ptr::{self, addr_of, addr_of_mut},
     slice::from_raw_parts as slice_from,
 };
-use riscv::register::{marchid, mimpid, mvendorid};
-use riscv::register::{mhartid, mip};
+
+use embedded_hal_nb::serial::Write;
+use riscv::register::{marchid, mhartid, mimpid, mip, mvendorid};
 
 mod dram;
 mod uart;
-mod util;
 
 use uart::K1XSerial;
-use util::{read32, write32};
+use util::mmio::{read32, write32};
 
 pub type EntryPoint = unsafe extern "C" fn();
 
@@ -32,11 +30,6 @@ const SRAM0_BASE: usize = 0x0020_0000;
 const SRAM0_SIZE: usize = 0x0002_0000;
 
 const DRAM_BASE: usize = 0x0000_0000;
-
-// octacore, 2 clusters of 4x X60
-const BOOT_HART_ID: usize = 0;
-
-const STACK_SIZE: usize = 8 * 1024;
 
 const STORAGE_API_P_ADDR: usize = 0xC083_8498;
 const USB_BOOT_ENTRY: usize = 0xc083_81a0;
@@ -55,6 +48,11 @@ const PAD_1V8_DS2: u32 = (2 << 11);
 const EDGE_NONE: u32 = (1 << 6);
 const MUX_MODE2: u32 = 2;
 
+// octacore, 2 clusters of 4x X60
+const BOOT_HART_ID: usize = 0;
+
+const STACK_SIZE: usize = 8 * 1024;
+
 #[link_section = ".bss.uninit"]
 static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
@@ -69,6 +67,8 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 #[allow(named_asm_labels)]
 pub unsafe extern "C" fn start() -> ! {
     naked_asm!(
+        "auipc  s4, 0",
+
         "csrw   mstatus, zero",
         "csrw   mie, zero",
         "ld     t0, {start}",
@@ -117,8 +117,10 @@ pub unsafe extern "C" fn reset() {
     }
 
     let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-    ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
-
+    // FIXME: why is this broken now, Rust?!
+    if false {
+        ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
+    }
     let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
     ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
     // Call user entry point
@@ -151,8 +153,6 @@ fn print_ids() {
     let vid = mvendorid::read().map(|r| r.bits()).unwrap_or(0);
     let aid = marchid::read().map(|r| r.bits()).unwrap_or(0);
     let iid = mimpid::read().map(|r| r.bits()).unwrap_or(0);
-    // TODO: This prints 8000000000000007, but should be 80000007.
-    // See U74-MC core complex manual 21G3.
     println!("RISC-V arch {aid:08x}");
     let vendor_name = vendorid_to_name(vid);
     println!("RISC-V core vendor: {vendor_name} (0x{vid:04x})");
@@ -173,63 +173,15 @@ fn init_logger(s: uart::K1XSerial) {
     }
 }
 
-fn copy(source: usize, target: usize, size: usize) {
-    for b in (0..size).step_by(4) {
-        write32(target + b, read32(source + b));
-        if b % 0x4_0000 == 0 {
-            print!(".");
-        }
-    }
-    println!(" done.");
-}
-
-fn dram_test() {
-    let limit = 0x8000_0000;
-    let range = DRAM_BASE..limit;
-    let steps = 0x1000;
-
-    println!("DRAM test: write patterns...");
-
-    for i in range.clone().step_by(steps) {
-        write32(i + 0x0, 0x2233_ccee | i as u32);
-        write32(i + 0x4, 0x5577_aadd | i as u32);
-        write32(i + 0x8, 0x1144_bbff | i as u32);
-        write32(i + 0xc, 0x6688_9900 | i as u32);
-    }
-
-    println!("DRAM test: reading back...");
-
-    for i in range.clone().step_by(steps) {
-        let v = read32(i + 0x0);
-        let e = 0x2233_ccee | i as u32;
-        if v != e {
-            println!("Error: {i:08x} != {e:08x}, got {v:08x}");
-        }
-        let v = read32(i + 0x4);
-        let e = 0x5577_aadd | i as u32;
-        if v != e {
-            println!("Error: {i:08x} != {e:08x}, got {v:08x}");
-        }
-        let v = read32(i + 0x8);
-        let e = 0x1144_bbff | i as u32;
-        if v != e {
-            println!("Error: {i:08x} != {e:08x}, got {v:08x}");
-        }
-        let v = read32(i + 0xc);
-        let e = 0x6688_9900 | i as u32;
-        if v != e {
-            println!("Error: {i:08x} != {e:08x}, got {v:08x}");
-        }
-    }
-
-    println!("DRAM test: done :)");
-}
-
 #[no_mangle]
 fn main() {
+    let mut ini_pc: usize = 0;
+    unsafe { asm!("mv {}, s4", out(reg) ini_pc) };
+
     let s = uart::K1XSerial::noinit();
     init_logger(s);
     println!("oreboot 🦀 bt0");
+    println!("initial program counter (PC) {ini_pc:016x}");
 
     print_ids();
 
@@ -240,18 +192,18 @@ fn main() {
 
     dram::init();
 
-    dram_test();
-
-    unsafe { riscv::asm::wfi() }
+    // util::mem::test(DRAM_BASE + 0x10, 0x7fff_fff0);
+    util::mem::test(DRAM_BASE + 0x1000, 0x002f_f000);
 
     // GO!
-    let load_addr = 0x0; // TODO
+    let load_addr = DRAM_BASE + 0x1000;
     println!("[bt0] Jump to main stage @{load_addr:08x}");
+    unsafe { riscv::asm::wfi() }
+
     exec_payload(load_addr);
     println!("[bt0] Exit from main stage, resetting...");
     unsafe {
         // udelay(0x0100_0000);
-        reset();
         riscv::asm::wfi()
     };
 }

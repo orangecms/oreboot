@@ -1,4 +1,6 @@
 use log::{print, println};
+use util::mem::dump_block;
+use util::mmio::{read32, write32};
 
 const DDR_TRAINING_INFO: usize = 0xC080_0000;
 
@@ -22,8 +24,6 @@ const SUBPHY_B_OFFSET: usize = 0x0200;
 const FREQ_POINT_OFFSET: usize = 0x4000;
 
 const OTHER_CONTROL_OFFSET: usize = 0x10000;
-
-use crate::util::{dump_block, read32, write32};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -1534,17 +1534,6 @@ fn top_training_fp_all(
 }
 
 pub fn init() {
-    // the header is injected during the build process
-    // this whole thing doesn't really makes sense, starts in the middle of the
-    // root PK and while there are indeed a magic etc, they come later, and the
-    // struct is somewhat different...
-    let header_info: &HeaderInfo = mem_read(DDR_TRAINING_INFO);
-    println!("{header_info:#08x?}");
-
-    // TODO
-    let mut info_para = DDR_TRAINING_INFO;
-    dump_block(info_para, 1024, 32);
-
     // NOTE: This comes from the DT in U-Boot. Default is 1 otherwise.
     let cs_num = 2;
 
