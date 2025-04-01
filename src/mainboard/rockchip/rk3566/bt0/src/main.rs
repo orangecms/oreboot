@@ -18,10 +18,14 @@ use log::println;
 use util::mmio::write32;
 
 mod arm;
+mod dram;
+mod i2c;
 mod mem_map;
+mod otp;
 mod uart;
 
 const DUMP_ROM: bool = false;
+const DEBUG: bool = true;
 
 pub const MASK_ROM_SIZE: usize = 32 * 1024;
 
@@ -117,11 +121,9 @@ extern "C" fn main() -> usize {
         println!("<<< mask ROM dump");
     }
 
-    // TODO
-    // dram::init();
-    println!("TODO: DRAM init");
+    dram::init();
 
-    exec_payload(0);
+    exec_payload(mem_map::MASK_ROM_BASE);
 
     panic!("DO NOT PANIC! EVERYTHING IS OKAY!");
     0

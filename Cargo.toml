@@ -1,4 +1,5 @@
 [workspace]
+package.edition = "2021"
 # in general, avoid wildcards, to make sure we get only what we want.
 members = [
   "src/arch",
