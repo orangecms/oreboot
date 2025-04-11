@@ -66,7 +66,8 @@ pub extern "C" fn _start(dtb_address: usize) -> ! {
         mem_map::PAYLOAD_ADDR,
         hart_id,
         dtb_address,
-        Some(mem_map::CLINT_BASE),
+        None,
+        None,
     );
     println!("[oreboot] reset; reason: {reset_reason}, type: {reset_type}");
 

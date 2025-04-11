@@ -30,8 +30,8 @@ const PAYLOAD_SIZE: usize = 0x0200_0000; // 32 MB
 const DTB_ADDR: usize = PAYLOAD_ADDR + PAYLOAD_SIZE;
 const DTB_SIZE: usize = 0x0001_0000;
 
-const COMPRESSED_ADDR: usize = RAM_BASE + 0x0400_0000;
-const COMPRESSED_SIZE: usize = 0x00fe_0000;
+const COMPRESSED_ADDR: usize = DTB_ADDR + DTB_SIZE;
+const COMPRESSED_SIZE: usize = 0x00fc_0000;
 
 fn decompress() {
     use miniz_oxide::inflate as moi;
