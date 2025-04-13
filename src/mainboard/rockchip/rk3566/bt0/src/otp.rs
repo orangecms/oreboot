@@ -8,7 +8,7 @@ const SYS_SGRF_0008: usize = SYS_SGRF_BASE + 0x0008;
 // OTP_NS = non-secure, OTP_S = secure
 // TODO: Why non-secure vs secure OTP?
 
-/* --- Controller --- */
+/* --- "Non-secure" --- */
 // Register names as per Linux driver; the vendor manual calls it OTP_NS.
 // https://github.com/torvalds/linux/blob/master/drivers/nvmem/rockchip-otp.c
 const OTP_NS_SBPI_CTRL: usize = OTP_NS_BASE + 0x0020;
@@ -24,7 +24,7 @@ const OTP_NS_INT_STATUS: usize = OTP_NS_BASE + 0x0304;
 const OTP_NS_SBPI_CMD0_OFFSET: usize = OTP_NS_BASE + 0x1000;
 const OTP_NS_SBPI_CMD1_OFFSET: usize = OTP_NS_BASE + 0x1004;
 
-/* ------- ?S? ------ */
+/* ----- "Secure" ----- */
 const OTP_S_SBPI_CTRL: usize = OTP_S_BASE + 0x0020;
 const OTP_S_SBPI_CMD_VALID_PRE: usize = OTP_S_BASE + 0x0024;
 
@@ -37,7 +37,7 @@ const OTP_S_INT_STATUS: usize = OTP_S_BASE + 0x0304;
 const OTP_S_SBPI_CMD0_OFFSET: usize = OTP_S_BASE + 0x1000;
 const OTP_S_SBPI_CMD1_OFFSET: usize = OTP_S_BASE + 0x1004;
 
-/* ------- PHY ------ */
+/* -------- PHY ------- */
 const OTP_PHY_0000: usize = OTP_PHY_BASE + 0x0000;
 const OTP_PHY_0004: usize = OTP_PHY_BASE + 0x0004;
 
