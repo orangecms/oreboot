@@ -5,35 +5,37 @@ use crate::mem_map::{CRU_NS_BASE, OTP_NS_BASE, OTP_PHY_BASE, OTP_S_BASE, SYS_SGR
 
 const SYS_SGRF_0008: usize = SYS_SGRF_BASE + 0x0008;
 
+// OTP_NS = non-secure, OTP_S = secure
+// TODO: Why non-secure vs secure OTP?
+
 /* --- Controller --- */
-// as per Linux driver; vendor manual calls it OTP_NS
-const OTPC_SBPI_CTRL: usize = OTP_NS_BASE + 0x0020;
-const OTPC_SBPI_CMD_VALID_PRE: usize = OTP_NS_BASE + 0x0024;
-const OTPC_SBPI_CS_VALID_PRE: usize = OTP_NS_BASE + 0x0028;
-const OTPC_SBPI_STATUS: usize = OTP_NS_BASE + 0x002C;
-const OTPC_USER_CTRL: usize = OTP_NS_BASE + 0x0100;
-const OTPC_USER_ADDR: usize = OTP_NS_BASE + 0x0104;
-const OTPC_USER_ENABLE: usize = OTP_NS_BASE + 0x0108;
-const OTPC_0120: usize = OTP_NS_BASE + 0x0120;
-const OTPC_USER_Q: usize = OTP_NS_BASE + 0x0124;
-const OTPC_INT_STATUS: usize = OTP_NS_BASE + 0x0304;
-const OTPC_SBPI_CMD0_OFFSET: usize = OTP_NS_BASE + 0x1000;
-const OTPC_SBPI_CMD1_OFFSET: usize = OTP_NS_BASE + 0x1004;
+// Register names as per Linux driver; the vendor manual calls it OTP_NS.
+// https://github.com/torvalds/linux/blob/master/drivers/nvmem/rockchip-otp.c
+const OTP_NS_SBPI_CTRL: usize = OTP_NS_BASE + 0x0020;
+const OTP_NS_SBPI_CMD_VALID_PRE: usize = OTP_NS_BASE + 0x0024;
+const OTP_NS_SBPI_CS_VALID_PRE: usize = OTP_NS_BASE + 0x0028;
+const OTP_NS_SBPI_STATUS: usize = OTP_NS_BASE + 0x002C;
+const OTP_NS_USER_CTRL: usize = OTP_NS_BASE + 0x0100;
+const OTP_NS_USER_ADDR: usize = OTP_NS_BASE + 0x0104;
+const OTP_NS_USER_ENABLE: usize = OTP_NS_BASE + 0x0108;
+const OTP_NS_0120: usize = OTP_NS_BASE + 0x0120;
+const OTP_NS_USER_Q: usize = OTP_NS_BASE + 0x0124;
+const OTP_NS_INT_STATUS: usize = OTP_NS_BASE + 0x0304;
+const OTP_NS_SBPI_CMD0_OFFSET: usize = OTP_NS_BASE + 0x1000;
+const OTP_NS_SBPI_CMD1_OFFSET: usize = OTP_NS_BASE + 0x1004;
 
 /* ------- ?S? ------ */
-const OTP_S_0020: usize = OTP_S_BASE + 0x0020;
-const OTP_S_0024: usize = OTP_S_BASE + 0x0024;
+const OTP_S_SBPI_CTRL: usize = OTP_S_BASE + 0x0020;
+const OTP_S_SBPI_CMD_VALID_PRE: usize = OTP_S_BASE + 0x0024;
 
-const OTP_S_0100: usize = OTP_S_BASE + 0x0100;
-const OTP_S_0104: usize = OTP_S_BASE + 0x0104;
-const OTP_S_0108: usize = OTP_S_BASE + 0x0108;
+const OTP_S_USER_CTRL: usize = OTP_S_BASE + 0x0100;
+const OTP_S_USER_ADDR: usize = OTP_S_BASE + 0x0104;
+const OTP_S_USER_ENABLE: usize = OTP_S_BASE + 0x0108;
 const OTP_S_0120: usize = OTP_S_BASE + 0x0120;
-const OTP_S_0124: usize = OTP_S_BASE + 0x0124;
-// some status register
-const OTP_S_0304: usize = OTP_S_BASE + 0x0304;
-
-const OTP_S_1000: usize = OTP_S_BASE + 0x1000;
-const OTP_S_1004: usize = OTP_S_BASE + 0x1004;
+const OTP_S_USER_Q: usize = OTP_S_BASE + 0x0124;
+const OTP_S_INT_STATUS: usize = OTP_S_BASE + 0x0304;
+const OTP_S_SBPI_CMD0_OFFSET: usize = OTP_S_BASE + 0x1000;
+const OTP_S_SBPI_CMD1_OFFSET: usize = OTP_S_BASE + 0x1004;
 
 /* ------- PHY ------ */
 const OTP_PHY_0000: usize = OTP_PHY_BASE + 0x0000;
@@ -57,8 +59,8 @@ pub fn otp_read() {
 fn otpc_status(bit: u32) -> Result<(), ()> {
     let b = 1 << bit;
     for _ in 0..10000 {
-        if read32(OTPC_INT_STATUS) & b != 0 {
-            write32(OTPC_INT_STATUS, 0xffff_0000 | b);
+        if read32(OTP_NS_INT_STATUS) & b != 0 {
+            write32(OTP_NS_INT_STATUS, 0xffff_0000 | b);
             return Ok(());
         }
         udelay(1);
@@ -69,7 +71,7 @@ fn otpc_status(bit: u32) -> Result<(), ()> {
 fn otp_s_status(bit: u32) -> Result<(), ()> {
     let b = 1 << bit;
     for _ in 0..10000 {
-        if read32(OTP_S_0304) & b != 0 {
+        if read32(OTP_S_INT_STATUS) & b != 0 {
             write32(OTP_S_0304, 0xffff_0000 | b);
             return Ok(());
         }
@@ -79,12 +81,12 @@ fn otp_s_status(bit: u32) -> Result<(), ()> {
 }
 
 fn s_init(x: bool) {
-    write32(OTP_S_0024, 0xffff_0001);
-    write32(OTP_S_1000, 0x0000_00fa);
+    write32(OTP_S_SBPI_CMD_VALID_PRE, 0xffff_0001);
+    write32(OTP_S_SBPI_CMD1_OFFSET, 0x0000_00fa);
     // NOTE: semantics unknown, and always true in vendor code
     let v = if x { 0 } else { 9 };
-    write32(OTP_S_1004, v);
-    write32(OTP_S_0020, 0x0001_0001);
+    write32(OTP_S_SBPI_CMD1_OFFSET, v);
+    write32(OTP_S_SBPI_CTRL, 0x0001_0001);
     if otp_s_status(1).is_err() {
         panic!("OTP S error");
     }
@@ -112,11 +114,13 @@ fn ns_xx_status(xx: u32) -> u32 {
 // NOTE: The vendor code has another, last param that is always set to true and
 // condition for doing s_init() in pre().
 // The vendor code returns 0, which means run the next part, or non-0.
-fn s_phy_smth(p1: u32, max_reg: usize) -> bool {
+fn secure_init(p1: u32, max_reg: usize) -> bool {
+    println!("secure_init {p1:08x} {max_reg} start");
+
     write32(SYS_SGRF_0008, 0x0002_0002);
     pre();
 
-    write32(OTP_S_0100, 0x0001_0001);
+    write32(OTP_S_USER_CTRL, 0x0001_0001);
     udelay(2);
 
     // registers are 4 bytes wide, so shift register number by << 2, i.e., *4.
@@ -128,14 +132,16 @@ fn s_phy_smth(p1: u32, max_reg: usize) -> bool {
         let mut cond = 0;
         let mut val = 0;
         while cond != 0x20 {
-            write32(OTP_S_0104, 0xffff_0000 | p1_shifted);
-            write32(OTP_S_0108, 0x0001_0001);
+            write32(OTP_S_USER_ADDR, 0xffff_0000 | p1_shifted);
+            write32(OTP_S_USER_ENABLE, 0x0001_0001);
             let _ = otp_s_status(2);
-            let v = read32(OTP_S_0124);
+            let v = read32(OTP_S_USER_Q);
             let xx = read32(OTP_S_0120);
-            if ns_xx_status(xx) != 0 {
-                write32(OTP_S_0100, 0x0001_0000);
+            let s = ns_xx_status(xx);
+            if s != 0 {
+                write32(OTP_S_USER_CTRL, 0x0001_0000);
                 write32(SYS_SGRF_0008, 0x0002_0000);
+                println!("secure_init {p1:08x} {max_reg}: {xx}: {s}");
                 return false;
             }
             p1_shifted += 1;
@@ -147,8 +153,9 @@ fn s_phy_smth(p1: u32, max_reg: usize) -> bool {
         write32(OTP_PHY_BASE + offset, val);
     }
 
-    write32(OTP_S_0100, 0x0001_0000);
+    write32(OTP_S_USER_CTRL, 0x0001_0000);
     write32(SYS_SGRF_0008, 0x0002_0000);
+    println!("secure_init {p1:08x} {max_reg} okay");
     true
 }
 
@@ -156,7 +163,7 @@ pub fn init(p1: u32, max_reg: usize) -> Result<(), ()> {
     write32(SYS_SGRF_0008, 0x0002_0000);
     pre();
 
-    write32(OTPC_USER_CTRL, 0x0001_0001);
+    write32(OTP_NS_USER_CTRL, 0x0001_0001);
     udelay(2);
 
     // registers are 4 bytes wide, so shift register number by << 2, i.e., *4.
@@ -168,14 +175,14 @@ pub fn init(p1: u32, max_reg: usize) -> Result<(), ()> {
         let mut cond = 0;
         let mut val = 0;
         while cond != 0x20 {
-            write32(OTPC_USER_ADDR, 0xffff_0000 | p1_shifted);
-            write32(OTPC_USER_ENABLE, 0x0001_0001);
+            write32(OTP_NS_USER_ADDR, 0xffff_0000 | p1_shifted);
+            write32(OTP_NS_USER_ENABLE, 0x0001_0001);
             let _ = otpc_status(2);
-            let v = read32(OTPC_USER_Q);
-            let xx = read32(OTPC_0120);
+            let v = read32(OTP_NS_USER_Q);
+            let xx = read32(OTP_NS_0120);
             let s = ns_xx_status(xx);
             if s != 0 {
-                write32(OTPC_USER_CTRL, 0x0001_0000);
+                write32(OTP_NS_USER_CTRL, 0x0001_0000);
                 println!("ns_xx_status got {xx:08x} and returned {s:08x}");
                 return Err(());
             }
@@ -187,8 +194,9 @@ pub fn init(p1: u32, max_reg: usize) -> Result<(), ()> {
         // TODO: How is the base passed in the vendor code?
         write32(OTP_PHY_BASE + offset, val);
     }
-    write32(OTPC_USER_CTRL, 0x0001_0000);
 
+    write32(OTP_NS_USER_CTRL, 0x0001_0000);
+    println!("OTP init done");
     Ok(())
 }
 
@@ -197,20 +205,20 @@ pub fn otp_phy_init() {
     for reg in (OTP_PHY_0000..OTP_PHY_0000 + 0x80).step_by(4) {
         write32(reg, 0xffff_ffff);
     }
-    if s_phy_smth(0x0a, 1) {
+    if secure_init(0x0a, 1) {
         write32(OTP_PHY_0004, 0xffff_f00f);
     }
-    if s_phy_smth(0x20, 1) {
+    if secure_init(0x20, 1) {
         write32(OTP_PHY_0010, 0xffff_00fc);
         write32(OTP_PHY_0014, 0xffff_ff00);
     }
     write32(OTP_PHY_0018, 0xffff_00ff);
     write32(OTP_PHY_001C, 0xffff_ff00);
-    if s_phy_smth(0x3c, 1) {
+    if secure_init(0x3c, 1) {
         write32(OTP_PHY_001C, 0xffff_0000);
         write32(OTP_PHY_0020, 0xffff_ff00);
     }
-    if s_phy_smth(0x44, 1) {
+    if secure_init(0x44, 1) {
         write32(OTP_PHY_0020, 0xfffffcff);
     }
     for reg in (OTP_PHY_0050..OTP_PHY_0050 + 0x20).step_by(4) {
