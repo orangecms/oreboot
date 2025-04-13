@@ -60,7 +60,7 @@ const PMIC_ADDR: u8 = 0x20;
 
 pub fn init() {
     // dram_init_start
-    if crate::otp::init(0, 2).is_err() {
+    if crate::otp::read_ns(0, 24).is_err() {
         panic!("OTP setup error");
     }
     println!("OTP setup done");
@@ -90,6 +90,8 @@ pub fn init() {
 
     let v0208 = read32(PMU_GRF_OS_0208);
     println!("PMU_GRF_OS_0208: {v0208:08x}");
+
+    crate::otp::otp_phy_init();
 
     // we get 0, should be non-zero though...
     if v0208 != 0 {

@@ -72,7 +72,7 @@ fn otp_s_status(bit: u32) -> Result<(), ()> {
     let b = 1 << bit;
     for _ in 0..10000 {
         if read32(OTP_S_INT_STATUS) & b != 0 {
-            write32(OTP_S_0304, 0xffff_0000 | b);
+            write32(OTP_S_INT_STATUS, 0xffff_0000 | b);
             return Ok(());
         }
         udelay(1);
@@ -102,10 +102,14 @@ pub fn pre() {
     s_init(true);
 }
 
+const DEBUG: bool = false;
+
 fn ns_xx_status(xx: u32) -> u32 {
     // ubfx, sbfx
     if (xx >> 6) & 3 != 3 {
-        println!("we got this");
+        if DEBUG {
+            println!("  we got this");
+        }
         return (xx >> 5) & 1;
     }
     return 0xffffffff;
@@ -114,8 +118,8 @@ fn ns_xx_status(xx: u32) -> u32 {
 // NOTE: The vendor code has another, last param that is always set to true and
 // condition for doing s_init() in pre().
 // The vendor code returns 0, which means run the next part, or non-0.
-fn secure_init(p1: u32, max_reg: usize) -> bool {
-    println!("secure_init {p1:08x} {max_reg} start");
+fn read_s(p1: u32, max_reg: usize) -> bool {
+    println!("  OTP S read {p1:08x} {max_reg} start");
 
     write32(SYS_SGRF_0008, 0x0002_0002);
     pre();
@@ -129,37 +133,37 @@ fn secure_init(p1: u32, max_reg: usize) -> bool {
     let mut p1_shifted = p1 << 1;
 
     for offset in (0..max_offset).step_by(4) {
-        let mut cond = 0;
         let mut val = 0;
-        while cond != 0x20 {
+        for sv in (0x00..0x20).step_by(0x10) {
             write32(OTP_S_USER_ADDR, 0xffff_0000 | p1_shifted);
             write32(OTP_S_USER_ENABLE, 0x0001_0001);
             let _ = otp_s_status(2);
             let v = read32(OTP_S_USER_Q);
+            if DEBUG {
+                println!("  OTP S: {v:08x}");
+            }
             let xx = read32(OTP_S_0120);
             let s = ns_xx_status(xx);
             if s != 0 {
                 write32(OTP_S_USER_CTRL, 0x0001_0000);
                 write32(SYS_SGRF_0008, 0x0002_0000);
-                println!("secure_init {p1:08x} {max_reg}: {xx}: {s}");
+                println!("OTP S init {p1:08x} {max_reg}: {xx}: {s}");
                 return false;
             }
             p1_shifted += 1;
-            let s = cond & 0x1f;
-            cond = cond + 0x10;
-            val = (val | (v & 0xffff)) << s;
+            val = val | ((v & 0xffff) << sv);
         }
-        // NOTE: the PHY base is passed as a param in the vendor code
-        write32(OTP_PHY_BASE + offset, val);
+        println!("OTP S @{offset:02x}: {val:08x}");
     }
 
     write32(OTP_S_USER_CTRL, 0x0001_0000);
     write32(SYS_SGRF_0008, 0x0002_0000);
-    println!("secure_init {p1:08x} {max_reg} okay");
+    println!("  OTP S {p1:08x} {max_reg} okay");
     true
 }
 
-pub fn init(p1: u32, max_reg: usize) -> Result<(), ()> {
+// see Linux px30_otp_read
+pub fn read_ns(p1: u32, max_reg: usize) -> Result<(), ()> {
     write32(SYS_SGRF_0008, 0x0002_0000);
     pre();
 
@@ -172,13 +176,15 @@ pub fn init(p1: u32, max_reg: usize) -> Result<(), ()> {
     let mut p1_shifted = p1 << 1;
 
     for offset in (0..max_offset).step_by(4) {
-        let mut cond = 0;
         let mut val = 0;
-        while cond != 0x20 {
+        for sv in (0..0x20).step_by(0x10) {
             write32(OTP_NS_USER_ADDR, 0xffff_0000 | p1_shifted);
             write32(OTP_NS_USER_ENABLE, 0x0001_0001);
             let _ = otpc_status(2);
             let v = read32(OTP_NS_USER_Q);
+            if DEBUG {
+                println!("  OTP NS: {v:08x}");
+            }
             let xx = read32(OTP_NS_0120);
             let s = ns_xx_status(xx);
             if s != 0 {
@@ -187,16 +193,13 @@ pub fn init(p1: u32, max_reg: usize) -> Result<(), ()> {
                 return Err(());
             }
             p1_shifted += 1;
-            let s = cond & 0x1f;
-            cond = cond + 0x10;
-            val = (val | (v & 0xffff)) << s;
+            val = val | ((v & 0xffff) << sv);
         }
-        // TODO: How is the base passed in the vendor code?
-        write32(OTP_PHY_BASE + offset, val);
+        println!("OTP NS @{offset:02x}: {val:08x}");
     }
 
     write32(OTP_NS_USER_CTRL, 0x0001_0000);
-    println!("OTP init done");
+    println!("OTP NS init done");
     Ok(())
 }
 
@@ -205,20 +208,20 @@ pub fn otp_phy_init() {
     for reg in (OTP_PHY_0000..OTP_PHY_0000 + 0x80).step_by(4) {
         write32(reg, 0xffff_ffff);
     }
-    if secure_init(0x0a, 1) {
+    if read_s(0x0a, 1) {
         write32(OTP_PHY_0004, 0xffff_f00f);
     }
-    if secure_init(0x20, 1) {
+    if read_s(0x20, 1) {
         write32(OTP_PHY_0010, 0xffff_00fc);
         write32(OTP_PHY_0014, 0xffff_ff00);
     }
     write32(OTP_PHY_0018, 0xffff_00ff);
     write32(OTP_PHY_001C, 0xffff_ff00);
-    if secure_init(0x3c, 1) {
+    if read_s(0x3c, 1) {
         write32(OTP_PHY_001C, 0xffff_0000);
         write32(OTP_PHY_0020, 0xffff_ff00);
     }
-    if secure_init(0x44, 1) {
+    if read_s(0x44, 1) {
         write32(OTP_PHY_0020, 0xfffffcff);
     }
     for reg in (OTP_PHY_0050..OTP_PHY_0050 + 0x20).step_by(4) {
@@ -226,4 +229,5 @@ pub fn otp_phy_init() {
     }
     write32(OTP_PHY_0210, 0x0001_0001);
     write32(OTP_PHY_0218, 0x0001_0001);
+    let _ = read_s(0x0, 0x10);
 }
