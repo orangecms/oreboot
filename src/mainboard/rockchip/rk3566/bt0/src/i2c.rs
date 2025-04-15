@@ -23,41 +23,47 @@ pub fn i2c_init() {
 
 const POLL_LIMIT: usize = 2000;
 
-fn i2c_commit(addr: u8) {
+const I2C_MB_SEND_FIN: u32 = 1 << 2;
+const I2C_MB_RCV_FIN: u32 = 1 << 3;
+const I2C_START: u32 = 1 << 4;
+const I2C_STOP: u32 = 1 << 5;
+
+fn i2c_poll_status(bits: u32) {
     for _ in 0..POLL_LIMIT {
-        if read32(I2C0_IPD) & addr as u32 != 0 {
+        if read32(I2C0_IPD) & bits != 0 {
             break;
         }
         udelay(10);
     }
-    write32(I2C0_IPD, addr as u32);
+    write32(I2C0_IPD, bits);
 }
 
 pub fn i2c_read(addr: u8, val: u8) -> u8 {
-    write32(I2C0_IEN, 0x0010);
+    write32(I2C0_IEN, I2C_START);
     write32(I2C0_CTRL, 0x122b);
-
-    i2c_commit(addr);
+    i2c_poll_status(I2C_START);
 
     let v = read32(I2C0_CTRL);
-    write32(I2C0_CTRL, v & 0xfffffff7);
-    write32(I2C0_IEN, 8);
+    write32(I2C0_CTRL, v & 0xffff_fff7);
+
+    write32(I2C0_IEN, I2C_MB_RCV_FIN);
     write32(I2C0_MRXCNT, 1);
-
-    write32(I2C0_MRXADDR, ((addr as u32 & 0x7f) << 1) | 0x1000000);
-    write32(I2C0_MRXRADDR, val as u32 | 0x1000000);
-
-    i2c_commit(addr);
+    // I2C address is << 1; last bit 0 = write, last bit 1 = read
+    let a = (addr as u32 & 0x7f) << 1;
+    write32(I2C0_MRXADDR, 0x1000000 | a);
+    write32(I2C0_MRXRADDR, 0x1000000 | val as u32);
+    i2c_poll_status(I2C_MB_RCV_FIN);
 
     let r = read32(I2C0_RXDATA0);
 
-    write32(I2C0_IEN, 0x20);
+    write32(I2C0_IEN, I2C_STOP);
     let v = read32(I2C0_CTRL);
-    write32(I2C0_CTRL, v & (0xfffffff7 | 0x10));
-
-    i2c_commit(addr);
+    write32(I2C0_CTRL, v & 0xffff_fff7 | 0x10);
+    i2c_poll_status(I2C_STOP);
 
     write32(I2C0_CTRL, 0);
+
+    println!("I2C @{addr:02x}, {val:02x}: {r:02x}");
 
     r as u8
 }

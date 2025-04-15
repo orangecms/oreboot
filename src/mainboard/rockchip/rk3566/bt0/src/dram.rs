@@ -58,19 +58,16 @@ const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
 const PMIC_ADDR: u8 = 0x20;
 
-pub fn init() {
-    // dram_init_start
-    if crate::otp::read_ns(0, 0x40).is_err() {
-        panic!("OTP setup error");
-    }
-    println!("OTP setup done");
+const DUMP_OTP_NS: bool = false;
 
-    // TODO
-    if false {
-        let mut v = 0x2100_0000;
-        while v != 0x0CCB_0A3C {
-            v += 8;
-        }
+pub fn init() {
+    if DUMP_OTP_NS {
+        _ = crate::otp::read_ns(0, 0x40);
+    }
+    // dram_init_start
+    // read first 4 bytes encoding SoC ID (524b3566 = RK3566)
+    if crate::otp::read_ns(0, 0x1).is_err() {
+        panic!("OTP error");
     }
 
     write32(SYS_SGRF_0200, 0xffff_8280);
@@ -82,22 +79,23 @@ pub fn init() {
     i2c_init();
     // gas_gauge_DATA7: initial value 0x00 (we get 0xff)
     let r = i2c_read(PMIC_ADDR, 0xa4);
-    println!("I2C 0x20, 0xa4: {r:02x}");
     // PMIC_POWER_SLP_EN1: initial value OTP (we get 0xf6)
     let r = i2c_read(PMIC_ADDR, 0xb6);
-    println!("I2C 0x20, 0xb6: {r:02x}");
     println!("flag: {:02x}", r & 0x20);
 
-    let v0208 = read32(PMU_GRF_OS_0208);
-    println!("PMU_GRF_OS_0208: {v0208:08x}");
+    // gets 0x00 on second read?!
+    let r = i2c_read(PMIC_ADDR, 0xa4);
 
+    let v0208 = read32(PMU_GRF_OS_0208);
+
+    // Why is this being done here?
     crate::otp::otp_phy_init();
 
     // we get 0, should be non-zero though...
+    println!("PMU_GRF_OS_0208: {v0208:08x}");
     if v0208 != 0 {
-        println!("v0208: {v0208:08x}");
         upctl2_pre_init();
     } else {
-        println!("v0208 is 0, whoops");
+        println!("PMU_GRF_OS_0208 is 0, whoops");
     }
 }

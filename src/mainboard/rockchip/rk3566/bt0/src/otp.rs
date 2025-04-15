@@ -202,6 +202,8 @@ pub fn read_ns(start: u32, entries: u32) -> Result<(), ()> {
     Ok(())
 }
 
+const DUMP_S_ALL: bool = false;
+
 pub fn otp_phy_init() {
     // "clear" the first 0x80 bytes - or 32 registers
     for reg in (OTP_PHY_0000..OTP_PHY_0000 + 0x80).step_by(4) {
@@ -229,6 +231,7 @@ pub fn otp_phy_init() {
     write32(OTP_PHY_0210, 0x0001_0001);
     write32(OTP_PHY_0218, 0x0001_0001);
 
-    // OUR CODE
-    let _ = read_s(0x0, 0x40);
+    if DUMP_S_ALL {
+        let _ = read_s(0x0, 0x40);
+    }
 }
