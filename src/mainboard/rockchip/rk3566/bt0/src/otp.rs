@@ -81,8 +81,9 @@ fn otp_s_status(bit: u32) -> Result<(), ()> {
 }
 
 fn s_init(x: bool) {
+    write32(OTP_S_SBPI_CTRL, 0xff00_0200);
     write32(OTP_S_SBPI_CMD_VALID_PRE, 0xffff_0001);
-    write32(OTP_S_SBPI_CMD1_OFFSET, 0x0000_00fa);
+    write32(OTP_S_SBPI_CMD0_OFFSET, 0x0000_00fa);
     // NOTE: semantics unknown, and always true in vendor code
     let v = if x { 0 } else { 9 };
     write32(OTP_S_SBPI_CMD1_OFFSET, v);
@@ -104,7 +105,7 @@ pub fn pre() {
 
 const DEBUG: bool = false;
 
-fn ns_xx_status(xx: u32) -> u32 {
+fn xx_status(xx: u32) -> u32 {
     // ubfx, sbfx
     if (xx >> 6) & 3 != 3 {
         if DEBUG {
@@ -115,91 +116,89 @@ fn ns_xx_status(xx: u32) -> u32 {
     return 0xffffffff;
 }
 
+const STEP_SIZE: usize = 4;
+const READS_PER_STEP: usize = 2;
+const BITS_PER_READ: usize = 0x10;
+
 // NOTE: The vendor code has another, last param that is always set to true and
 // condition for doing s_init() in pre().
-// The vendor code returns 0, which means run the next part, or non-0.
-fn read_s(p1: u32, max_reg: usize) -> bool {
-    println!("  OTP S read {p1:08x} {max_reg} start");
-
+// NOTE: By convention, an entry is considered a 32-bit value (4 bytes) here.
+fn read_s(start: u32, entries: u32) -> Result<(), ()> {
     write32(SYS_SGRF_0008, 0x0002_0002);
     pre();
 
     write32(OTP_S_USER_CTRL, 0x0001_0001);
     udelay(2);
 
-    // registers are 4 bytes wide, so shift register number by << 2, i.e., *4.
-    let max_offset = max_reg << 2;
-    // this is always 2
-    let mut p1_shifted = p1 << 1;
+    // We get 16 bits per read, convert to 4 bytes at a time, so the max offset
+    // is the number of entries shifted by << 2, i.e., *4.
+    let max_offset = (start + entries) << READS_PER_STEP;
+    let mut entry_pos = start << READS_PER_STEP;
 
-    for offset in (0..max_offset).step_by(4) {
+    for offset in (entry_pos..max_offset).step_by(STEP_SIZE) {
         let mut val = 0;
-        for sv in (0x00..0x20).step_by(0x10) {
-            write32(OTP_S_USER_ADDR, 0xffff_0000 | p1_shifted);
+        for pos in (0..READS_PER_STEP * BITS_PER_READ).step_by(BITS_PER_READ) {
+            write32(OTP_S_USER_ADDR, 0xffff_0000 | entry_pos);
             write32(OTP_S_USER_ENABLE, 0x0001_0001);
             let _ = otp_s_status(2);
-            let v = read32(OTP_S_USER_Q);
-            if DEBUG {
-                println!("  OTP S: {v:08x}");
-            }
+            let v16 = read32(OTP_S_USER_Q) as u16;
             let xx = read32(OTP_S_0120);
-            let s = ns_xx_status(xx);
+            let s = xx_status(xx);
             if s != 0 {
                 write32(OTP_S_USER_CTRL, 0x0001_0000);
                 write32(SYS_SGRF_0008, 0x0002_0000);
-                println!("OTP S init {p1:08x} {max_reg}: {xx}: {s}");
-                return false;
+                println!("OTP S @{offset:02x}({pos}): status {xx:08x}/{s:08x}");
+                return Err(());
             }
-            p1_shifted += 1;
-            val = val | ((v & 0xffff) << sv);
+            entry_pos += 1;
+            val = val | ((v16 as u32) << pos);
         }
+        let val = val.swap_bytes();
         println!("OTP S @{offset:02x}: {val:08x}");
     }
 
     write32(OTP_S_USER_CTRL, 0x0001_0000);
     write32(SYS_SGRF_0008, 0x0002_0000);
-    println!("  OTP S {p1:08x} {max_reg} okay");
-    true
+    Ok(())
 }
 
+// NOTE: By convention, an entry is considered a 32-bit value (4 bytes) here.
 // see Linux px30_otp_read
-pub fn read_ns(p1: u32, max_reg: usize) -> Result<(), ()> {
+pub fn read_ns(start: u32, entries: u32) -> Result<(), ()> {
     write32(SYS_SGRF_0008, 0x0002_0000);
     pre();
 
     write32(OTP_NS_USER_CTRL, 0x0001_0001);
     udelay(2);
 
-    // registers are 4 bytes wide, so shift register number by << 2, i.e., *4.
-    let max_offset = max_reg << 2;
-    // this is always 2
-    let mut p1_shifted = p1 << 1;
+    // We get 16 bits per read, convert to 4 bytes at a time, so the max offset
+    // is the number of entries shifted by << 2, i.e., *4.
+    let max_offset = (start + entries) << READS_PER_STEP;
+    let mut entry_pos = start << READS_PER_STEP;
 
-    for offset in (0..max_offset).step_by(4) {
+    for offset in (entry_pos..max_offset).step_by(STEP_SIZE) {
         let mut val = 0;
-        for sv in (0..0x20).step_by(0x10) {
-            write32(OTP_NS_USER_ADDR, 0xffff_0000 | p1_shifted);
+        for pos in (0..READS_PER_STEP * BITS_PER_READ).step_by(BITS_PER_READ) {
+            write32(OTP_NS_USER_ADDR, 0xffff_0000 | entry_pos);
             write32(OTP_NS_USER_ENABLE, 0x0001_0001);
             let _ = otpc_status(2);
-            let v = read32(OTP_NS_USER_Q);
-            if DEBUG {
-                println!("  OTP NS: {v:08x}");
-            }
+            // 16 bits per read
+            let v16 = read32(OTP_NS_USER_Q) as u16;
             let xx = read32(OTP_NS_0120);
-            let s = ns_xx_status(xx);
+            let s = xx_status(xx);
             if s != 0 {
                 write32(OTP_NS_USER_CTRL, 0x0001_0000);
-                println!("ns_xx_status got {xx:08x} and returned {s:08x}");
+                println!("OTP NS @{offset:02x}({pos}): status {xx:08x}/{s:08x}");
                 return Err(());
             }
-            p1_shifted += 1;
-            val = val | ((v & 0xffff) << sv);
+            entry_pos += 1;
+            val = val | ((v16 as u32) << pos);
         }
+        let val = val.swap_bytes();
         println!("OTP NS @{offset:02x}: {val:08x}");
     }
 
     write32(OTP_NS_USER_CTRL, 0x0001_0000);
-    println!("OTP NS init done");
     Ok(())
 }
 
@@ -208,20 +207,20 @@ pub fn otp_phy_init() {
     for reg in (OTP_PHY_0000..OTP_PHY_0000 + 0x80).step_by(4) {
         write32(reg, 0xffff_ffff);
     }
-    if read_s(0x0a, 1) {
+    if read_s(0x0a / 2, 1).is_ok() {
         write32(OTP_PHY_0004, 0xffff_f00f);
     }
-    if read_s(0x20, 1) {
+    if read_s(0x20 / 2, 1).is_ok() {
         write32(OTP_PHY_0010, 0xffff_00fc);
         write32(OTP_PHY_0014, 0xffff_ff00);
     }
     write32(OTP_PHY_0018, 0xffff_00ff);
     write32(OTP_PHY_001C, 0xffff_ff00);
-    if read_s(0x3c, 1) {
+    if read_s(0x3c / 2, 1).is_ok() {
         write32(OTP_PHY_001C, 0xffff_0000);
         write32(OTP_PHY_0020, 0xffff_ff00);
     }
-    if read_s(0x44, 1) {
+    if read_s(0x44 / 2, 1).is_ok() {
         write32(OTP_PHY_0020, 0xfffffcff);
     }
     for reg in (OTP_PHY_0050..OTP_PHY_0050 + 0x20).step_by(4) {
@@ -229,5 +228,7 @@ pub fn otp_phy_init() {
     }
     write32(OTP_PHY_0210, 0x0001_0001);
     write32(OTP_PHY_0218, 0x0001_0001);
-    let _ = read_s(0x0, 0x10);
+
+    // OUR CODE
+    let _ = read_s(0x0, 0x40);
 }

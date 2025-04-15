@@ -60,7 +60,7 @@ const PMIC_ADDR: u8 = 0x20;
 
 pub fn init() {
     // dram_init_start
-    if crate::otp::read_ns(0, 24).is_err() {
+    if crate::otp::read_ns(0, 0x40).is_err() {
         panic!("OTP setup error");
     }
     println!("OTP setup done");

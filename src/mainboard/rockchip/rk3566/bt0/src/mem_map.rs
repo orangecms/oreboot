@@ -10,6 +10,7 @@ pub const CRU_NS_BASE: usize = 0xFDD2_0000;
 pub const I2C0_BASE: usize = 0xFDD4_0000;
 pub const UART0_BASE: usize = 0xFDD5_0000;
 
+pub const HDCP_KEY: usize = 0xFE0D_0000;
 pub const RESX_BASE: usize = 0xFE10_0000;
 pub const UPCTL2_BASE: usize = 0xFE25_0000;
 pub const OTP_NS_BASE: usize = 0xFE38_C000;

@@ -15,7 +15,7 @@ use core::{
 };
 use log::println;
 
-use util::mmio::write32;
+use util::mmio::{read32, write32};
 
 mod arm;
 mod dram;
@@ -114,6 +114,13 @@ extern "C" fn main() -> usize {
     util::mem::dump_block(mem_map::SRAM_BASE, 0x40, 0x20);
     // 90010000 01000000 9073a64e 00000000  0a000000 3b8523df c2ddcbfa f73f8fff
     // fa6e0115 a4dee7b8 e0a7fb59 00a1b0da  00000000 3cd9f1cf 00000000 3c7d4ce1
+
+    if false {
+        let v = read32(mem_map::HDCP_KEY);
+        println!("HDCP KEY: {v:08x}");
+        util::mem::dump_block(mem_map::HDCP_KEY, 0x20, 0x20);
+        util::mem::dump_block(0xfdcc3f5c, 0x200, 0x20);
+    }
 
     if DUMP_ROM {
         println!(">>> mask ROM dump");
