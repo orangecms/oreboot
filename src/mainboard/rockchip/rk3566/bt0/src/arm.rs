@@ -2,6 +2,15 @@
 
 use aarch64_cpu::registers::*;
 
+pub fn print_el() {
+    match CurrentEL.read_as_enum::<CurrentEL::EL::Value>(CurrentEL::EL) {
+        Some(el) => {
+            println!("Current exception level: {el:02x?}");
+        }
+        None => {}
+    }
+}
+
 // NOTE: Assumes the clock to run at 24MHz.
 pub fn udelay(us: u64) {
     let t0 = CNTPCT_EL0.get();
@@ -10,6 +19,8 @@ pub fn udelay(us: u64) {
 }
 
 pub fn print_cpuinfo() {
+    print_el();
+
     let v = MIDR_EL1.extract();
     println!("MIDR EL1: 0x{v:08x?}");
 

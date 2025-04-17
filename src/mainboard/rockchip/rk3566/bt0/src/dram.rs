@@ -9,7 +9,7 @@ DDR Version V1337 20200218_resume
 ln
 start i2c rd
 suspend_info:0x0, flag:0x20
-SRX
+LP4 MR12:0x4d,MR14:0x4d
 LP4 MR12:0x4d,MR14:0x4d
 LPDDR4, 324MHz
 BW=32 Col=10 Bk=8 CS0 Row=16 CS=1 Die BW=16 Size=2048MB
@@ -47,7 +47,7 @@ fn upctl2_pre_init() {
     println!("{v:x}");
 }
 
-const PMU_GRF_OS_0208: usize = PMU_GRF_BASE + 0x0208;
+const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
 
 // SGRF: security subsystem (?)
 // https://www.kernel.org/doc/Documentation/devicetree/bindings/soc/rockchip/grf.txt
@@ -77,25 +77,26 @@ pub fn init() {
 
     // dram_init_main
     i2c_init();
-    // gas_gauge_DATA7: initial value 0x00 (we get 0xff)
+
+    // FIXME: first read always gets 0xff regardless of the register we want
+    _ = i2c_read(PMIC_ADDR, 0x0);
+
+    // gas_gauge_DATA7: initial value 0x00
     let r = i2c_read(PMIC_ADDR, 0xa4);
     // PMIC_POWER_SLP_EN1: initial value OTP (we get 0xf6)
     let r = i2c_read(PMIC_ADDR, 0xb6);
     println!("flag: {:02x}", r & 0x20);
 
-    // gets 0x00 on second read?!
-    let r = i2c_read(PMIC_ADDR, 0xa4);
-
-    let v0208 = read32(PMU_GRF_OS_0208);
+    let v0208 = read32(PMU_GRF_OS2);
 
     // Why is this being done here?
     crate::otp::otp_phy_init();
 
     // we get 0, should be non-zero though...
-    println!("PMU_GRF_OS_0208: {v0208:08x}");
+    println!("PMU_GRF_OS2: {v0208:08x}");
     if v0208 != 0 {
         upctl2_pre_init();
     } else {
-        println!("PMU_GRF_OS_0208 is 0, whoops");
+        println!("PMU_GRF_OS2 is 0, whoops");
     }
 }
