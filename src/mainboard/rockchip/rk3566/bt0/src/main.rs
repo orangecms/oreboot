@@ -44,12 +44,9 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 pub unsafe extern "C" fn start() -> ! {
     naked_asm!(
         "init:",
+        // store initial PC
         "adr     x9, init",
-        // set counter timer frequency to 24MHz
-        "mov     w0,#0x3600",
-        "movk    w0,#0x016e, LSL #16",
-        "msr     cntfrq_el0, x0",
-        // 3. prepare stack
+        // prepare stack
         "ldr     x1, {stack}",
         "str     x5, [x4], #0",
         "ldr     x1, {stack_size}",
@@ -85,6 +82,8 @@ const TIMER1: usize = mem_map::TIMER_BASE + 0x0020;
 extern "C" fn main() -> usize {
     let mut ini_pc: usize = 0;
     unsafe { asm!("mov {}, x9", out(reg) ini_pc) };
+
+    arm::init_counter();
 
     // system timer 1 init: set to highest value
     // timer control: disable

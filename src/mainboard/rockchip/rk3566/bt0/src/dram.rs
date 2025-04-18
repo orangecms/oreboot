@@ -2,7 +2,16 @@ use util::mmio::{read32, write32};
 
 use crate::arm::udelay;
 use crate::i2c::{i2c_init, i2c_read};
-use crate::mem_map::{PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE, UPCTL2_BASE};
+use crate::mem_map::{
+    CRU_NS_BASE, DDR_GRF_BASE, PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE, UPCTL2_BASE,
+};
+
+// SGRF: security subsystem (?)
+// https://www.kernel.org/doc/Documentation/devicetree/bindings/soc/rockchip/grf.txt
+// https://www.rockchip.fr/Rockchip%20RK3288%20TRM%20V1.0%20Part%201-System%20and%20System%20Control.pdf
+const SYS_SGRF_0200: usize = SYS_SGRF_BASE + 0x0200;
+const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
+const SYS_SGRF_0208: usize = SYS_SGRF_BASE + 0x0208;
 
 /*
 DDR Version V1337 20200218_resume
@@ -49,11 +58,55 @@ fn upctl2_pre_init() {
 
 const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
 
-// SGRF: security subsystem (?)
-// https://www.kernel.org/doc/Documentation/devicetree/bindings/soc/rockchip/grf.txt
-// https://www.rockchip.fr/Rockchip%20RK3288%20TRM%20V1.0%20Part%201-System%20and%20System%20Control.pdf
-const SYS_SGRF_0200: usize = SYS_SGRF_BASE + 0x0200;
-const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
+fn cru_ns_xxx(v: u32) {
+    let b = CRU_NS_BASE;
+    let vb = v / 1000000;
+
+    let m1 = match vb {
+        ..101 => 6,
+        ..201 => 4,
+        ..800 => 2,
+        _ => 1,
+    };
+    let m2 = match vb {
+        ..151 => 6,
+        ..800 => 4,
+        _ => 2,
+    };
+    let m3 = match v {
+        ..528000001 => 0x30000,
+        _ => 0x30001,
+    };
+
+    write32(CRU_NS_BASE + 0x00c0, 0x000c_0000);
+    write32(CRU_NS_BASE + 0x0128, 0x2000_2000);
+    write32(
+        CRU_NS_BASE + 0x0020,
+        0x7fff_0000 | (m2 << 12) | m1 * m2 * vb / 24,
+    );
+
+    write32(CRU_NS_BASE + 0x0024, 0x11ff_1001 | (m1 << 6));
+    write32(CRU_NS_BASE + 0x0024, 0x2000_0000);
+
+    for _ in 0..1000 {
+        udelay(1);
+        if read32(CRU_NS_BASE + 0x0024) & (1 << 10) != 0 {
+            break;
+        }
+    }
+
+    write32(CRU_NS_BASE + 0x00c0, 0x000c_0004);
+}
+
+fn ddr_xxx() {
+    println!("ddr_xxx");
+    // ddr_xxx
+    write32(DDR_GRF_BASE, 0x20000);
+    // TODO: this really comes from a struct
+    let v = 0x144; // 324
+    cru_ns_xxx((v * 1000000) / 2);
+    println!("ddr_xxx done");
+}
 
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
 const PMIC_ADDR: u8 = 0x20;
@@ -92,11 +145,15 @@ pub fn init() {
     // Why is this being done here?
     crate::otp::otp_phy_init();
 
-    // we get 0, should be non-zero though...
-    println!("PMU_GRF_OS2: {v0208:08x}");
-    if v0208 != 0 {
-        upctl2_pre_init();
-    } else {
-        println!("PMU_GRF_OS2 is 0, whoops");
+    if false {
+        // we get 0 (reset value), would be non-zero for a second run...
+        println!("PMU_GRF_OS2: {v0208:08x}");
+        if v0208 != 0 {
+            upctl2_pre_init();
+        } else {
+            println!("PMU_GRF_OS2 is 0, whoops");
+        }
     }
+
+    ddr_xxx();
 }

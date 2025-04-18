@@ -2,6 +2,17 @@
 
 use aarch64_cpu::registers::*;
 
+const FREQ_24M: u64 = 24 * 1000 * 1000;
+
+/// Sets the initial frequenct. Note that the UART also depends on it.
+pub fn init_counter() {
+    let freq = FREQ_24M;
+    // FIXME: Why can't we just do `CNTFRQ_EL0.set(freq);`?
+    unsafe {
+        core::arch::asm!("msr cntfrq_el0, {}", in(reg) freq);
+    }
+}
+
 pub fn print_el() {
     match CurrentEL.read_as_enum::<CurrentEL::EL::Value>(CurrentEL::EL) {
         Some(el) => {
@@ -18,11 +29,14 @@ pub fn udelay(us: u64) {
     while CNTPCT_EL0.get() < t1 {}
 }
 
+// https://developer.arm.com/documentation/102412/0103/Execution-and-Security-states/Security-states
+// TODO: SCR_EL3.NS bit indicates whether we are "secure" (kekw LOL uwu senpai)
+
 pub fn print_cpuinfo() {
     print_el();
 
     let v = MIDR_EL1.extract();
-    println!("MIDR EL1: 0x{v:08x?}");
+    println!("Main ID Register (MIDR EL1): 0x{v:08x?}");
 
     let arch = match MIDR_EL1.read_as_enum(MIDR_EL1::Architecture) {
         Some(MIDR_EL1::Architecture::Value::Individual) => "individual",
