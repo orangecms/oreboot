@@ -3,7 +3,7 @@ use util::mmio::{read32, write32};
 use crate::arm::udelay;
 use crate::i2c::{i2c_init, i2c_read};
 use crate::mem_map::{
-    CRU_NS_BASE, DDR_GRF_BASE, PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE, UPCTL2_BASE,
+    CRU_NS_BASE, CRU_S_BASE, DDR_GRF_BASE, PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE, UPCTL2_BASE,
 };
 
 // SGRF: security subsystem (?)
@@ -11,7 +11,8 @@ use crate::mem_map::{
 // https://www.rockchip.fr/Rockchip%20RK3288%20TRM%20V1.0%20Part%201-System%20and%20System%20Control.pdf
 const SYS_SGRF_0200: usize = SYS_SGRF_BASE + 0x0200;
 const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
-const SYS_SGRF_0208: usize = SYS_SGRF_BASE + 0x0208;
+
+const CRU_S_0208: usize = CRU_S_BASE + 0x0208;
 
 /*
 DDR Version V1337 20200218_resume
@@ -105,6 +106,10 @@ fn ddr_xxx() {
     // TODO: this really comes from a struct
     let v = 0x144; // 324
     cru_ns_xxx((v * 1000000) / 2);
+
+    write32(SYS_SGRF_BASE + 0x0014, 0xb000b00);
+    write32(CRU_S_0208, 0x0002_0002);
+
     println!("ddr_xxx done");
 }
 
