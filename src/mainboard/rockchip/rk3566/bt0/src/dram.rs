@@ -3,7 +3,8 @@ use util::mmio::{read32, write32};
 use crate::arm::udelay;
 use crate::i2c::{i2c_init, i2c_read};
 use crate::mem_map::{
-    CRU_NS_BASE, CRU_S_BASE, DDR_GRF_BASE, PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE, UPCTL2_BASE,
+    CRU_NS_BASE, CRU_S_BASE, DDR_GRF_BASE, DDR_PHY_BASE, PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE,
+    UPCTL2_BASE,
 };
 
 // SGRF: security subsystem (?)
@@ -59,22 +60,22 @@ fn upctl2_pre_init() {
 
 const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
 
-fn cru_ns_xxx(v: u32) {
+fn cru_ns_xxx(p: u32) {
     let b = CRU_NS_BASE;
-    let vb = v / 1000000;
+    let vp = p / 1000000;
 
-    let m1 = match vb {
+    let m1 = match vp {
         ..101 => 6,
         ..201 => 4,
         ..800 => 2,
         _ => 1,
     };
-    let m2 = match vb {
+    let m2 = match vp {
         ..151 => 6,
         ..800 => 4,
         _ => 2,
     };
-    let m3 = match v {
+    let m3 = match p {
         ..528000001 => 0x30000,
         _ => 0x30001,
     };
@@ -83,7 +84,7 @@ fn cru_ns_xxx(v: u32) {
     write32(CRU_NS_BASE + 0x0128, 0x2000_2000);
     write32(
         CRU_NS_BASE + 0x0020,
-        0x7fff_0000 | (m2 << 12) | m1 * m2 * vb / 24,
+        0x7fff_0000 | (m2 << 12) | m1 * m2 * vp / 24,
     );
 
     write32(CRU_NS_BASE + 0x0024, 0x11ff_1001 | (m1 << 6));
@@ -99,16 +100,61 @@ fn cru_ns_xxx(v: u32) {
     write32(CRU_NS_BASE + 0x00c0, 0x000c_0004);
 }
 
+fn phy_smth(p1: u32, p2: u32) {
+    let vp1 = p1 / 1000000;
+    //
+    let (m1, m2) = match vp1 {
+        ..51 => (1, 5),
+        ..101 => (1, 4),
+        ..201 => (1, 3),
+        ..401 => (1, 2),
+        ..801 => (1, 1),
+        _ => (0, 0),
+    };
+    let m3 = (p2 * 8 + 4) & 0x1f;
+    let m4 = (p2 * 8 + 3) & 0x1f;
+
+    let v = read32(DDR_PHY_BASE + 0x00d0);
+
+    // ^ 0xffffffff means inversion
+    let m = v & (((7 << m3 | 1 << m4) ^ 0xffffffff) | m2 << m3 | m1 << m4);
+
+    write32(DDR_PHY_BASE + 0x00d0, m);
+}
+
 fn ddr_xxx() {
+    // NOTE: first round only, make parameter
+    let vx = 0x3;
+
     println!("ddr_xxx");
     // ddr_xxx
     write32(DDR_GRF_BASE, 0x20000);
-    // TODO: this really comes from a struct
-    let v = 0x144; // 324
-    cru_ns_xxx((v * 1000000) / 2);
+    // TODO: this really comes from a struct at 0x64
+    let s_0064 = 0x144; // 324
+    cru_ns_xxx((s_0064 * 1000000) / 2);
 
-    write32(SYS_SGRF_BASE + 0x0014, 0xb000b00);
+    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0b00);
     write32(CRU_S_0208, 0x0002_0002);
+    write32(CRU_NS_BASE + 0x046c, 0x0180_0180);
+    udelay(10);
+    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0b00);
+    write32(CRU_S_0208, 0x0002_0002);
+    write32(CRU_NS_BASE + 0x046c, 0x0180_0100);
+
+    if vx <= 8 {
+        let m1 = if vx == 8 { 7 } else { vx };
+
+        let x = (m1 & 0xc + 0x39 * 4) >> ((m1 & 0b11) << 3) & 0xff;
+        let v = if x == 0xe4 {
+            0xff80_e400
+        } else {
+            0xff80_0080 | (x << 8)
+        };
+
+        write32(DDR_GRF_BASE + 0x000c, v);
+    }
+
+    phy_smth(s_0064 * 1000000, 0);
 
     println!("ddr_xxx done");
 }
