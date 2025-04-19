@@ -100,6 +100,30 @@ fn cru_ns_xxx(p: u32) {
     write32(CRU_NS_BASE + 0x00c0, 0x000c_0004);
 }
 
+struct XParam {
+    v1: u32,
+    v2: u32,
+}
+
+const XX_PARAMS_0: [XParam; 4] = [
+    XParam {
+        v1: 0x00,
+        v2: 0x0000_1FA7,
+    }, //
+    XParam {
+        v1: 0x08,
+        v2: 0x0000_0000,
+    }, //
+    XParam {
+        v1: 0x0c,
+        v2: 0x0500_0000,
+    }, //
+    XParam {
+        v1: 0x10,
+        v2: 0x0500_0000,
+    }, //
+];
+
 fn phy_smth(p1: u32, p2: u32) {
     let vp1 = p1 / 1000000;
     //
@@ -155,6 +179,18 @@ fn ddr_xxx() {
     }
 
     phy_smth(s_0064 * 1000000, 0);
+
+    // TODO: other rounds have different params / sizes thereof
+    for p in XX_PARAMS_0.iter() {
+        let r = DDR_PHY_BASE + p.v1 as usize;
+        let v = if p.v1 * 4 < 9 {
+            let vx = read32(r);
+            (vx & 0xc0ffffff) | p.v2
+        } else {
+            p.v2
+        };
+        write32(r, v)
+    }
 
     println!("ddr_xxx done");
 }
