@@ -175,12 +175,14 @@ fn get_funny_bits() -> (u32, u32) {
     (vl, vxx)
 }
 
-fn ddr_xxx() {
+fn ddr_xxx(enable_ecc: bool) {
+    let s_0000 = 0x1;
     // TODO: make struct or smth parameters
-    // NOTE: This comes from a struct at ???; 3 is the value in the first round.
-    let s_0xxx = 0x3;
+    let s_000c = 0x1;
     // TODO: This comes from a struct at 0x64. Var name to ease tracking.
-    let s_0064 = 0x144; // 324
+    let s_0064 = 0x144;
+    // NOTE: This comes from a struct at 0x68.
+    let s_0068 = 0x3;
 
     println!("ddr_xxx");
     write32(DDR_GRF_0000, 0x20000);
@@ -196,8 +198,8 @@ fn ddr_xxx() {
     write32(CRU_NS_BASE + 0x046c, 0x0180_0100);
 
     // TODO: What is the possible value range? This check may be unnecessary.
-    if s_0xxx <= 8 {
-        let m1 = if s_0xxx == 8 { 7 } else { s_0xxx };
+    if s_0068 <= 8 {
+        let m1 = if s_0068 == 8 { 7 } else { s_0068 };
 
         let x = (m1 & 0xc + 0x39 * 4) >> ((m1 & 0b11) << 3) & 0xff;
         let v = if x == 0xe4 {
@@ -225,6 +227,48 @@ fn ddr_xxx() {
 
     // Extracted here to keep the flow simpler
     let (vl, vxx) = get_funny_bits();
+
+    let v = read32(DDR_PHY_BASE) & 0xffffe0ff;
+    let vx = match s_000c {
+        1 => v | ((1 << vl) | (1 << vxx)) << 8,
+        2 => v | 0x0f00,
+        _ => v | 0x100 << vl,
+    };
+    let mut vxo = if enable_ecc { vx } else { vx | 0x1000 };
+
+    if s_0000 == 4 {
+        vxo |= 0x0010_0000;
+        let v = read32(DDR_PHY_BASE + 0x0038);
+        write32(DDR_PHY_BASE + 0x0038, v | 1 << 1);
+    }
+    write32(DDR_PHY_BASE, vxo);
+
+    if s_0068 < 7 && (0b01001001 >> s_0068) & 1 != 0 {
+        // TODO: tweak this
+        // 32 iterations
+        for o in (0x0300..0x0a80).step_by(0x60) {
+            let r = DDR_PHY_BASE + o + 8;
+            let v = read32(r);
+            write32(r, v & 0xffff_fdff);
+        }
+    } else if s_0068 == 7 {
+        let v = read32(DDR_PHY_BASE + 0x0038);
+        write32(DDR_PHY_BASE + 0x0038, (v & 0xffff_07ff) | 0x0000_5800);
+        for o in (0x0300..0x0a80).step_by(0x60) {
+            let r = DDR_PHY_BASE + o;
+            let v = read32(r);
+            write32(r, (v & 0xffff_ff9f) | 0x40);
+        }
+    } else if s_0068 == 8 {
+        for o in (0x0300..0x0a80).step_by(0x60) {
+            let r = DDR_PHY_BASE + o + 8;
+            let v = read32(r);
+            write32(r, v | 0x100);
+            let r = DDR_PHY_BASE + o;
+            let v = read32(r);
+            write32(r, (v & 0xffff_ff9f) | 0x40);
+        }
+    }
 
     println!("ddr_xxx done");
 }
@@ -276,5 +320,7 @@ pub fn init() {
         }
     }
 
-    ddr_xxx();
+    // TODO: only first round?
+    let enable_ecc = true;
+    ddr_xxx(enable_ecc);
 }
