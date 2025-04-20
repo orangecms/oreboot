@@ -146,15 +146,45 @@ fn phy_smth(p1: u32, p2: u32) {
     write32(DDR_PHY_BASE + 0x00d0, m);
 }
 
+const DDR_GRF_0000: usize = DDR_GRF_BASE + 0x0000;
+const DDR_GRF_000C: usize = DDR_GRF_BASE + 0x000c;
+
+fn get_funny_bits() -> (u32, u32) {
+    let vtt = read32(DDR_GRF_000C);
+    // Extract bits 8..15. The & 0xff is technically not necessary since we
+    // do another extraction hereafter, taking a pair of bits at idx * 2.
+    let vpx = (vtt >> 8) & 0xff;
+    println!("DDR_GRF_000C bits 15..8: {vpx:08b} (full reg val: {vtt:08x})");
+
+    let mut vl = 0;
+    let mut vxx = 0;
+    for idx in 0..4 {
+        // check on bits 8..9, 10..11, 12..13, 14..15 in respective round
+        match (vpx >> (2 * idx)) & 0b11 {
+            0 => {
+                vl = idx;
+            }
+            1 => {
+                vxx = idx;
+            }
+            _ => {}
+        }
+
+        println!("round {idx}: {vl},{vxx}");
+    }
+    (vl, vxx)
+}
+
 fn ddr_xxx() {
-    // NOTE: first round only, make parameter
-    let vx = 0x3;
+    // TODO: make struct or smth parameters
+    // NOTE: This comes from a struct at ???; 3 is the value in the first round.
+    let s_0xxx = 0x3;
+    // TODO: This comes from a struct at 0x64. Var name to ease tracking.
+    let s_0064 = 0x144; // 324
 
     println!("ddr_xxx");
-    // ddr_xxx
-    write32(DDR_GRF_BASE, 0x20000);
-    // TODO: this really comes from a struct at 0x64
-    let s_0064 = 0x144; // 324
+    write32(DDR_GRF_0000, 0x20000);
+
     cru_ns_xxx((s_0064 * 1000000) / 2);
 
     write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0b00);
@@ -165,8 +195,9 @@ fn ddr_xxx() {
     write32(CRU_S_0208, 0x0002_0002);
     write32(CRU_NS_BASE + 0x046c, 0x0180_0100);
 
-    if vx <= 8 {
-        let m1 = if vx == 8 { 7 } else { vx };
+    // TODO: What is the possible value range? This check may be unnecessary.
+    if s_0xxx <= 8 {
+        let m1 = if s_0xxx == 8 { 7 } else { s_0xxx };
 
         let x = (m1 & 0xc + 0x39 * 4) >> ((m1 & 0b11) << 3) & 0xff;
         let v = if x == 0xe4 {
@@ -175,7 +206,8 @@ fn ddr_xxx() {
             0xff80_0080 | (x << 8)
         };
 
-        write32(DDR_GRF_BASE + 0x000c, v);
+        println!("DDR_GRF_000C: write {v:08x}");
+        write32(DDR_GRF_000C, v);
     }
 
     phy_smth(s_0064 * 1000000, 0);
@@ -184,13 +216,15 @@ fn ddr_xxx() {
     for p in XX_PARAMS_0.iter() {
         let r = DDR_PHY_BASE + p.v1 as usize;
         let v = if p.v1 * 4 < 9 {
-            let vx = read32(r);
-            (vx & 0xc0ffffff) | p.v2
+            (read32(r) & 0xc0ffffff) | p.v2
         } else {
             p.v2
         };
         write32(r, v)
     }
+
+    // Extracted here to keep the flow simpler
+    let (vl, vxx) = get_funny_bits();
 
     println!("ddr_xxx done");
 }
