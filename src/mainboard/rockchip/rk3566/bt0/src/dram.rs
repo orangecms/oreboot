@@ -100,27 +100,27 @@ fn cru_ns_xxx(p: u32) {
     write32(CRU_NS_BASE + 0x00c0, 0x000c_0004);
 }
 
-struct XParam {
-    v1: u32,
-    v2: u32,
+struct RegVal {
+    offset: u32,
+    value: u32,
 }
 
-const XX_PARAMS_0: [XParam; 4] = [
-    XParam {
-        v1: 0x00,
-        v2: 0x0000_1FA7,
+const XX_PARAMS_0_PHY: [RegVal; 4] = [
+    RegVal {
+        offset: 0x00,
+        value: 0x0000_1FA7,
     }, //
-    XParam {
-        v1: 0x08,
-        v2: 0x0000_0000,
+    RegVal {
+        offset: 0x08,
+        value: 0x0000_0000,
     }, //
-    XParam {
-        v1: 0x0c,
-        v2: 0x0500_0000,
+    RegVal {
+        offset: 0x0c,
+        value: 0x0500_0000,
     }, //
-    XParam {
-        v1: 0x10,
-        v2: 0x0500_0000,
+    RegVal {
+        offset: 0x10,
+        value: 0x0500_0000,
     }, //
 ];
 
@@ -183,6 +183,10 @@ fn ddr_xxx(enable_ecc: bool) {
     let s_0064 = 0x144;
     // NOTE: This comes from a struct at 0x68.
     let s_0068 = 0x3;
+    let s_007c = 0x43041001;
+    // NOTE: value is overridden in control flow in dram_init_main, condition
+    // for setting or clearing bit 10 (0x400) seems to be a fixed constant.
+    let s_007c = 0x43041001 | (1 << 10);
 
     println!("ddr_xxx");
     write32(DDR_GRF_0000, 0x20000);
@@ -215,12 +219,12 @@ fn ddr_xxx(enable_ecc: bool) {
     phy_smth(s_0064 * 1000000, 0);
 
     // TODO: other rounds have different params / sizes thereof
-    for p in XX_PARAMS_0.iter() {
-        let r = DDR_PHY_BASE + p.v1 as usize;
-        let v = if p.v1 * 4 < 9 {
-            (read32(r) & 0xc0ffffff) | p.v2
+    for p in XX_PARAMS_0_PHY.iter() {
+        let r = DDR_PHY_BASE + p.offset as usize;
+        let v = if p.value * 4 < 9 {
+            (read32(r) & 0xc0ffffff) | p.value
         } else {
-            p.v2
+            p.value
         };
         write32(r, v)
     }
@@ -270,8 +274,163 @@ fn ddr_xxx(enable_ecc: bool) {
         }
     }
 
+    let v = read32(DDR_PHY_00C0);
+    write32(DDR_PHY_00C0, v | 1);
+    if s_007c & (1 << 10) != 0 {
+        let v = read32(DDR_PHY_00C0);
+        write32(DDR_PHY_00C0, v | 0x0006_0000);
+    }
+    let v = read32(DDR_PHY_00AC);
+    write32(DDR_PHY_00AC, v | 0x10);
+    let v = read32(DDR_PHY_0044);
+    write32(DDR_PHY_0044, v & 0x3fffffff);
+
+    write32(CRU_NS_BASE + 0x046c, 0x0180_0000);
+    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0300);
+    write32(CRU_S_0208, 0x0002_0000);
+    write32(CRU_NS_BASE + 0x046c, 0x0180_0000);
+
+    // NOTE: params list needs to be a param here as well
+    upctl2_fill(&XX_PARAMS_0_UPCTL2, 0x005d, 0x000d);
+
+    // TODO: draw the rest of the owl 🦉🖌️
+
     println!("ddr_xxx done");
 }
+
+const UPCTL2_0034: usize = UPCTL2_BASE + 0x0034;
+const UPCTL2_0038: usize = UPCTL2_BASE + 0x0038;
+const UPCTL2_0180: usize = UPCTL2_BASE + 0x0180;
+
+fn upctl2_fill(reg_vals: &[RegVal], p1: u32, p2: u32) {
+    fill_regs(UPCTL2_BASE, reg_vals);
+
+    let v = read32(UPCTL2_0034);
+    let m = 0xff00_ffe0;
+    write32(UPCTL2_0034, v & m | ((p1 & 0xff) << 16) | p2 & 0x1f);
+
+    let v = read32(UPCTL2_0038);
+    let m = 0xf000_ffff;
+    write32(UPCTL2_0038, v & m | 0x50000);
+
+    let v = read32(UPCTL2_0180);
+    write32(UPCTL2_0180, v | 0x80000000);
+}
+
+fn fill_regs(base: usize, data: &[RegVal]) {
+    for e in data {
+        write32(base + e.offset as usize, e.value);
+    }
+}
+
+// NOTE: The first value here has been changed to 0x4304_1401 ( | 0x400 ) in
+// the first round of dram_init_main.
+const XX_PARAMS_0_UPCTL2: [RegVal; 25] = [
+    RegVal {
+        offset: 0x00,
+        value: 0x4304_1401,
+    },
+    RegVal {
+        offset: 0x64,
+        value: 0x270039,
+    },
+    RegVal {
+        offset: 0xD0,
+        value: 0x20051,
+    },
+    RegVal {
+        offset: 0xD4,
+        value: 0x210000,
+    },
+    RegVal {
+        offset: 0xD8,
+        value: 0x100,
+    },
+    RegVal {
+        offset: 0xDC,
+        value: 0x3100000,
+    },
+    RegVal {
+        offset: 0xE0,
+        value: 0x0,
+    },
+    RegVal {
+        offset: 0xE4,
+        value: 0x90000,
+    },
+    RegVal {
+        offset: 0xF4,
+        value: 0xF022F,
+    },
+    RegVal {
+        offset: 0x100,
+        value: 0x7090B06,
+    },
+    RegVal {
+        offset: 0x104,
+        value: 0x50209,
+    },
+    RegVal {
+        offset: 0x108,
+        value: 0x3030307,
+    },
+    RegVal {
+        offset: 0x10C,
+        value: 0x202006,
+    },
+    RegVal {
+        offset: 0x110,
+        value: 0x3020203,
+    },
+    RegVal {
+        offset: 0x114,
+        value: 0x3030202,
+    },
+    RegVal {
+        offset: 0x120,
+        value: 0x903,
+    },
+    RegVal {
+        offset: 0x180,
+        value: 0x800020,
+    },
+    RegVal {
+        offset: 0x184,
+        value: 0x0,
+    },
+    RegVal {
+        offset: 0x190,
+        value: 0x7010001,
+    },
+    RegVal {
+        offset: 0x198,
+        value: 0xA000101,
+    },
+    RegVal {
+        offset: 0x1A0,
+        value: 0xC0400003,
+    },
+    RegVal {
+        offset: 0x240,
+        value: 0x6000600,
+    },
+    RegVal {
+        offset: 0x244,
+        value: 0x201,
+    },
+    RegVal {
+        offset: 0x250,
+        value: 0x1F00,
+    },
+    RegVal {
+        offset: 0x490,
+        value: 0x1,
+    },
+];
+
+const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
+const DDR_PHY_00AC: usize = DDR_PHY_BASE + 0x00ac;
+const DDR_PHY_00C0: usize = DDR_PHY_BASE + 0x00c0;
 
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
 const PMIC_ADDR: u8 = 0x20;
