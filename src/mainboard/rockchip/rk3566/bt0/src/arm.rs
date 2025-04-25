@@ -13,6 +13,13 @@ pub fn init_counter() {
     }
 }
 
+// NOTE: Assumes the clock to run at 24MHz.
+pub fn udelay(us: u64) {
+    let t0 = CNTPCT_EL0.get();
+    let t1 = t0 + us * 24;
+    while CNTPCT_EL0.get() < t1 {}
+}
+
 pub fn print_el() {
     match CurrentEL.read_as_enum::<CurrentEL::EL::Value>(CurrentEL::EL) {
         Some(el) => {
@@ -20,13 +27,6 @@ pub fn print_el() {
         }
         None => {}
     }
-}
-
-// NOTE: Assumes the clock to run at 24MHz.
-pub fn udelay(us: u64) {
-    let t0 = CNTPCT_EL0.get();
-    let t1 = t0 + us * 0x18;
-    while CNTPCT_EL0.get() < t1 {}
 }
 
 // https://developer.arm.com/documentation/102412/0103/Execution-and-Security-states/Security-states

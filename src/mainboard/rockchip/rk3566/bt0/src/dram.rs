@@ -175,18 +175,153 @@ fn get_funny_bits() -> (u32, u32) {
     (vl, vxx)
 }
 
+struct Cfg {
+    p0: u32, // + 0x00
+    p1: u32, // + 0x04
+    p2: u32, // + 0x08
+    p3: u32, // + 0x0c
+    p4: u32, // + 0x10
+    p5: u32, // + 0x14
+    p6: u32, // + 0x18
+    p7: u32, // + 0x1c
+    p8: u32, // + 0x20
+}
+
+const CFG_0X11: Cfg = Cfg {
+    p0: 0x144210,
+    p1: 0x210210,
+    p2: 0x0,
+    p3: 0x22212121,
+    p4: 0x22212121,
+    p5: 0xCA778,
+    p6: 0x14D14D, // (>> 12) => 14d < 144 ? NO
+    p7: 0x30F,
+    p8: 0x30F,
+};
+
+const CFG_0X20: Cfg = Cfg {
+    p0: 0x144210,
+    p1: 0x210210,
+    p2: 0x0,
+    p3: 0x22252525,
+    p4: 0x22252525,
+    p5: 0xC8B78,
+    p6: 0x271271,
+    p7: 0x1010E,
+    p8: 0x1010E,
+};
+
+const CFG_0X29: Cfg = Cfg {
+    p0: 0x144210,
+    p1: 0x210210,
+    p2: 0x0,
+    p3: 0x22272525,
+    p4: 0x22272525,
+    p5: 0xC9478,
+    p6: 0x14D14D,
+    p7: 0xF010F,
+    p8: 0xF010F,
+};
+
+const CFG_0X41: Cfg = Cfg {
+    p0: 0x144210,
+    p1: 0x210210,
+    p2: 0x0,
+    p3: 0x2824241D,
+    p4: 0x2824241D,
+    p5: 0x1E03C50,
+    p6: 0xC8320,
+    p7: 0x0,
+    p8: 0x0,
+};
+
+// NOTE: Those structs do not align all too well in the vendor code.
+// There are potential overlaps, probably related to pointer casts in source,
+// with optimizations in the build process dropping parts of then-free memory.
+fn cfg_for_dram_type(dram_type: u32) -> Cfg {
+    match dram_type {
+        // 0 => CFG_0X14, // does not really exist, vendor code is buggy (?)
+        3 => CFG_0X11,
+        6 => CFG_0X29,
+        7 => CFG_0X20,
+        8 => CFG_0X41,
+        // FIXME: This should happen much earlier. No need to carry it around.
+        // It depends on parameters currently evaluated at runtime; we can just
+        // do this at build time.
+        _ => panic!("DRAM type {dram_type} not supported!"),
+    }
+}
+
+type DramMx = [u32; 24];
+
+const DRAM_T3_MX: DramMx = [
+    0x1F40001, 0x0FA0002, 0x0A70003, 0x07D0004, //
+    0x0640005, 0x0530006, 0x0470007, 0x03F0008, //
+    0x0380009, 0x032000A, 0x02D000B, 0x029000C, //
+    0x026000D, 0x024000E, 0x021000F, 0x01F0018, //
+    0x01D0019, 0x01C001A, 0x01A001B, 0x019001C, //
+    0x018001D, 0x017001E, 0x016001F, 0x0000000, // last value unused
+];
+
+// TODO: enum for dram_type
+fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
+    let cfg = cfg_for_dram_type(dram_type);
+
+    // Those really depend on s_0064 and cfg; shortcut taken here.
+    let p7_8 = cfg.p8;
+    let p5 = (cfg.p5 >> 29) & 1;
+    let p3_4 = cfg.p4;
+    // all three are 0x21
+    let l18_0 = (p3_4 >> 16) as u8;
+    let l18_1 = (p3_4 >> 8) as u8;
+    let l18_2 = p3_4 as u8;
+
+    // XXX
+    // let dram_type_x = dram_type - 7; // fffffffc
+
+    // NOTE: conditions skipped
+    let p4_byte3 = cfg.p4 >> 24;
+    let l18_3 = 0 as u8;
+    let p5_bit27 = (cfg.p5 >> 27) & 1;
+
+    // TODO: tweak this
+    // 32 iterations
+    for o in (0x0300..0x0a80).step_by(0x60) {
+        let r = DDR_PHY_BASE + o + 8;
+        let v = read32(r);
+        write32(r, v & 0xffff_fdff);
+    }
+
+    let m0 = 0;
+    let m1 = 0;
+    let m2 = 0;
+
+    let v = read32(DDR_PHY_008C);
+    write32(DDR_PHY_008C, v | (1 << 1));
+    let v = read32(DDR_PHY_008C);
+    write32(DDR_PHY_008C, v & !(1 << 3));
+    let v = read32(DDR_PHY_008C);
+    write32(DDR_PHY_008C, v | (1 << 3));
+    let v = read32(DDR_PHY_008C);
+    write32(DDR_PHY_008C, v & !(1 << 1));
+
+    let mx = match dram_type {
+        3 => DRAM_T3_MX,
+        7 => todo!(), // DRAM_T7_MX,
+        8 => todo!(), // DRAM_T8_MX,
+        _ => todo!(), // DRAM_TX_MX,
+    };
+}
+
 fn ddr_xxx(enable_ecc: bool) {
+    // TODO: These values come from structs at the offsets encoded in the
+    // variable names. Should we make those structs or simple parameters?
     let s_0000 = 0x1;
-    // TODO: make struct or smth parameters
     let s_000c = 0x1;
-    // TODO: This comes from a struct at 0x64. Var name to ease tracking.
     let s_0064 = 0x144;
-    // NOTE: This comes from a struct at 0x68.
+    // apparently encodes the DRAM type
     let s_0068 = 0x3;
-    let s_007c = 0x43041001;
-    // NOTE: value is overridden in control flow in dram_init_main, condition
-    // for setting or clearing bit 10 (0x400) seems to be a fixed constant.
-    let s_007c = 0x43041001 | (1 << 10);
+    let s_007c = XX_PARAMS_0_UPCTL2[0].value;
 
     println!("ddr_xxx");
     write32(DDR_GRF_0000, 0x20000);
@@ -293,14 +428,28 @@ fn ddr_xxx(enable_ecc: bool) {
     // NOTE: params list needs to be a param here as well
     upctl2_fill(&XX_PARAMS_0_UPCTL2, 0x005d, 0x000d);
 
+    let v = read32(UPCTL2_0404);
+    write32(UPCTL2_0404, v | 0x0001_0000);
+
+    let v = read32(UPCTL2_0000);
+    write32(UPCTL2_0000, v | 0x2000_0000);
+
+    let v = read32(UPCTL2_0028);
+    write32(UPCTL2_0028, v & 0xffff_fffc);
+
+    upctl2_phy_smth(s_0064, s_0068, false);
+
     // TODO: draw the rest of the owl 🦉🖌️
 
     println!("ddr_xxx done");
 }
 
+const UPCTL2_0000: usize = UPCTL2_BASE + 0x0000;
+const UPCTL2_0028: usize = UPCTL2_BASE + 0x0028;
 const UPCTL2_0034: usize = UPCTL2_BASE + 0x0034;
 const UPCTL2_0038: usize = UPCTL2_BASE + 0x0038;
 const UPCTL2_0180: usize = UPCTL2_BASE + 0x0180;
+const UPCTL2_0404: usize = UPCTL2_BASE + 0x0404;
 
 fn upctl2_fill(reg_vals: &[RegVal], p1: u32, p2: u32) {
     fill_regs(UPCTL2_BASE, reg_vals);
@@ -328,7 +477,9 @@ fn fill_regs(base: usize, data: &[RegVal]) {
 const XX_PARAMS_0_UPCTL2: [RegVal; 25] = [
     RegVal {
         offset: 0x00,
-        value: 0x4304_1401,
+        // NOTE: value overridden in control flow in dram_init_main, condition
+        // for setting or clearing bit 10 (0x400) seems to be a fixed constant.
+        value: 0x43041001 | (1 << 10),
     },
     RegVal {
         offset: 0x64,
@@ -431,6 +582,7 @@ const XX_PARAMS_0_UPCTL2: [RegVal; 25] = [
 const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
 const DDR_PHY_00AC: usize = DDR_PHY_BASE + 0x00ac;
 const DDR_PHY_00C0: usize = DDR_PHY_BASE + 0x00c0;
+const DDR_PHY_008C: usize = DDR_PHY_BASE + 0x008c;
 
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
 const PMIC_ADDR: u8 = 0x20;
