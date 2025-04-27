@@ -138,12 +138,12 @@ fn phy_smth(p1: u32, p2: u32) {
     let m3 = (p2 * 8 + 4) & 0x1f;
     let m4 = (p2 * 8 + 3) & 0x1f;
 
-    let v = read32(DDR_PHY_BASE + 0x00d0);
+    let v = read32(DDR_PHY_00D0);
 
     // ^ 0xffffffff means inversion
     let m = v & (((7 << m3 | 1 << m4) ^ 0xffffffff) | m2 << m3 | m1 << m4);
 
-    write32(DDR_PHY_BASE + 0x00d0, m);
+    write32(DDR_PHY_00D0, m);
 }
 
 const DDR_GRF_0000: usize = DDR_GRF_BASE + 0x0000;
@@ -254,13 +254,33 @@ fn cfg_for_dram_type(dram_type: u32) -> Cfg {
 
 type DramMx = [u32; 24];
 
+// NOTE: This is all LE, so the upper half is what matters in upctl2_phy_smth.
 const DRAM_T3_MX: DramMx = [
-    0x1F40001, 0x0FA0002, 0x0A70003, 0x07D0004, //
-    0x0640005, 0x0530006, 0x0470007, 0x03F0008, //
-    0x0380009, 0x032000A, 0x02D000B, 0x029000C, //
-    0x026000D, 0x024000E, 0x021000F, 0x01F0018, //
-    0x01D0019, 0x01C001A, 0x01A001B, 0x019001C, //
-    0x018001D, 0x017001E, 0x016001F, 0x0000000, // last value unused
+    0x01F4_0001,
+    0x00FA_0002,
+    0x00A7_0003,
+    0x007D_0004,
+    0x0064_0005,
+    0x0053_0006,
+    0x0047_0007,
+    0x003F_0008,
+    0x0038_0009,
+    0x0032_000A,
+    0x002D_000B,
+    0x0029_000C,
+    0x0026_000D,
+    0x0024_000E,
+    // THIS: no longer < 0x21
+    0x0021_000F,
+    0x001F_0018,
+    0x001D_0019,
+    0x001C_001A,
+    0x001A_001B,
+    0x0019_001C,
+    0x0018_001D,
+    0x0017_001E,
+    0x0016_001F,
+    0x0000_0000, // last value unused
 ];
 
 // TODO: enum for dram_type
@@ -271,27 +291,35 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
     let p7_8 = cfg.p8;
     let p5 = (cfg.p5 >> 29) & 1;
     let p3_4 = cfg.p4;
+
+    let mut params: [u16; 12] = [
+        0, 0, 0, 0, // first 4 values are prefilled
+        0, 0, 0, 0, // remaining 8 values are
+        0, 0, 0, 0, // being determind later
+    ];
+
     // all three are 0x21
-    let l18_0 = (p3_4 >> 16) as u8;
-    let l18_1 = (p3_4 >> 8) as u8;
-    let l18_2 = p3_4 as u8;
+    params[0] = (p3_4 >> 16) as u8;
+    params[1] = (p3_4 >> 8) as u8;
+    params[2] = p3_4 as u8;
 
     // XXX
     // let dram_type_x = dram_type - 7; // fffffffc
 
     // NOTE: conditions skipped
     let p4_byte3 = cfg.p4 >> 24;
-    let l18_3 = 0 as u8;
+    let params_3 = 0 as u8;
     let p5_bit27 = (cfg.p5 >> 27) & 1;
 
     // TODO: tweak this
-    // 32 iterations
-    for o in (0x0300..0x0a80).step_by(0x60) {
+    // 16 iterations
+    for o in (0x0300..0x0a80).step_by(0x180) {
         let r = DDR_PHY_BASE + o + 8;
         let v = read32(r);
         write32(r, v & 0xffff_fdff);
     }
 
+    // conditions omitted
     let m0 = 0;
     let m1 = 0;
     let m2 = 0;
@@ -311,6 +339,52 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
         8 => todo!(), // DRAM_T8_MX,
         _ => todo!(), // DRAM_TX_MX,
     };
+
+    // TODO: calculate other params! precalc..?
+
+    // FIXME: + 0x30 / + 0x2c
+    // let xx1 = if params_3 == 0 { cfg.p12 } else { cfg.p11 };
+    // let xx2 = ((xx1 & 0x3ff) << 9) / 1000;
+    let xx3 = 0x100;
+
+    let vxm = (params[8] << 8) | params[4];
+
+    let v = (params[9] << 24) | (params[5] << 16) | vxm;
+    write32(DDR_PHY_00F4, v);
+
+    let v = read32(DDR_PHY_00F8) & 0xffff_e0e0 | vxm;
+    write32(DDR_PHY_00F8, v);
+
+    let v = read32(DDR_PHY_00F0) & 0xffff_e0e0;
+    let v = v | (p7_8 & 0xff00) | ((p7_8 >> 16) & 0xff);
+    write32(DDR_PHY_00F0, v);
+
+    if m1 == 0 {
+        params[7] = 0;
+    }
+    if m0 == 0 {
+        params[11] = 0;
+    }
+
+    // TODO: tweak this
+    // 16 iterations
+    for o in (0x0300..0x0a80).step_by(0x180) {
+        let r = DDR_PHY_BASE + o + 4;
+        let v = (params[10] << 24) | (params[6] << 16) | (params[11] << 8) | params[7];
+        write32(r, v);
+        let r = DDR_PHY_BASE + o;
+        let v = read32(r) & 0x007f_e07f;
+        let v = v | ((p5 << 7) ^ 0x80) | ((p7_8 & 0xff) << 8) | (uVar3 << 0x23);
+        write32(r, v);
+    }
+
+    let v = read32(DDR_PHY_0094);
+    write32(DDR_PHY_0094, v | 0x80);
+    let v = read32(DDR_PHY_0094);
+    write32(DDR_PHY_0094, v & !0x80);
+
+    let v = read32(DDR_PHY_00F8);
+    write32(DDR_PHY_00F8, v & 0xfe00_ffff | (xx3 << 16));
 }
 
 fn ddr_xxx(enable_ecc: bool) {
@@ -377,29 +451,29 @@ fn ddr_xxx(enable_ecc: bool) {
 
     if s_0000 == 4 {
         vxo |= 0x0010_0000;
-        let v = read32(DDR_PHY_BASE + 0x0038);
-        write32(DDR_PHY_BASE + 0x0038, v | 1 << 1);
+        let v = read32(DDR_PHY_0038);
+        write32(DDR_PHY_0038, v | 1 << 1);
     }
     write32(DDR_PHY_BASE, vxo);
 
     if s_0068 < 7 && (0b01001001 >> s_0068) & 1 != 0 {
         // TODO: tweak this
-        // 32 iterations
-        for o in (0x0300..0x0a80).step_by(0x60) {
+        // 16 iterations
+        for o in (0x0300..0x0a80).step_by(0x180) {
             let r = DDR_PHY_BASE + o + 8;
             let v = read32(r);
             write32(r, v & 0xffff_fdff);
         }
     } else if s_0068 == 7 {
-        let v = read32(DDR_PHY_BASE + 0x0038);
-        write32(DDR_PHY_BASE + 0x0038, (v & 0xffff_07ff) | 0x0000_5800);
-        for o in (0x0300..0x0a80).step_by(0x60) {
+        let v = read32(DDR_PHY_0038);
+        write32(DDR_PHY_0038, (v & 0xffff_07ff) | 0x0000_5800);
+        for o in (0x0300..0x0a80).step_by(0x180) {
             let r = DDR_PHY_BASE + o;
             let v = read32(r);
             write32(r, (v & 0xffff_ff9f) | 0x40);
         }
     } else if s_0068 == 8 {
-        for o in (0x0300..0x0a80).step_by(0x60) {
+        for o in (0x0300..0x0a80).step_by(0x180) {
             let r = DDR_PHY_BASE + o + 8;
             let v = read32(r);
             write32(r, v | 0x100);
@@ -579,10 +653,17 @@ const XX_PARAMS_0_UPCTL2: [RegVal; 25] = [
     },
 ];
 
+const DDR_PHY_0038: usize = DDR_PHY_BASE + 0x0038;
 const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
+const DDR_PHY_008C: usize = DDR_PHY_BASE + 0x008c;
+const DDR_PHY_0094: usize = DDR_PHY_BASE + 0x0094;
 const DDR_PHY_00AC: usize = DDR_PHY_BASE + 0x00ac;
 const DDR_PHY_00C0: usize = DDR_PHY_BASE + 0x00c0;
-const DDR_PHY_008C: usize = DDR_PHY_BASE + 0x008c;
+const DDR_PHY_00D0: usize = DDR_PHY_BASE + 0x00d0;
+const DDR_PHY_00F0: usize = DDR_PHY_BASE + 0x00f0;
+const DDR_PHY_00F4: usize = DDR_PHY_BASE + 0x00f4;
+const DDR_PHY_00F8: usize = DDR_PHY_BASE + 0x00f8;
+const DDR_PHY_0304: usize = DDR_PHY_BASE + 0x0304;
 
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
 const PMIC_ADDR: u8 = 0x20;
