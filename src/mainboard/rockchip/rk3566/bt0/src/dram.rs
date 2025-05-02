@@ -175,6 +175,8 @@ fn get_funny_bits() -> (u32, u32) {
     (vl, vxx)
 }
 
+// FIXME: vendor code also refers to +0x24, +0x3c, +0x30... but that overlaps
+// with other instances of this struct in the vendor code. What's up with that?
 struct Cfg {
     p0: u32, // + 0x00
     p1: u32, // + 0x04
@@ -188,51 +190,51 @@ struct Cfg {
 }
 
 const CFG_0X11: Cfg = Cfg {
-    p0: 0x144210,
-    p1: 0x210210,
-    p2: 0x0,
-    p3: 0x22212121,
-    p4: 0x22212121,
-    p5: 0xCA778,
-    p6: 0x14D14D, // (>> 12) => 14d < 144 ? NO
-    p7: 0x30F,
-    p8: 0x30F,
+    p0: 0x0014_4210,
+    p1: 0x0021_0210,
+    p2: 0x0000_0000,
+    p3: 0x2221_2121,
+    p4: 0x2221_2121,
+    p5: 0x000C_A778,
+    p6: 0x0014_D14D, // + 0x18; (>> 12) => 14d < 144 ? NO
+    p7: 0x0000_030F,
+    p8: 0x0000_030F,
 };
 
 const CFG_0X20: Cfg = Cfg {
-    p0: 0x144210,
-    p1: 0x210210,
-    p2: 0x0,
-    p3: 0x22252525,
-    p4: 0x22252525,
-    p5: 0xC8B78,
-    p6: 0x271271,
-    p7: 0x1010E,
-    p8: 0x1010E,
+    p0: 0x0014_4210, // + 0x24
+    p1: 0x0021_0210, // + 0x28
+    p2: 0x0000_0000, // + 0x2c
+    p3: 0x2225_2525, // + 0x30
+    p4: 0x2225_2525,
+    p5: 0x000C_8B78,
+    p6: 0x0027_1271,
+    p7: 0x0001_010E,
+    p8: 0x0001_010E,
 };
 
 const CFG_0X29: Cfg = Cfg {
-    p0: 0x144210,
-    p1: 0x210210,
-    p2: 0x0,
-    p3: 0x22272525,
-    p4: 0x22272525,
-    p5: 0xC9478,
-    p6: 0x14D14D,
-    p7: 0xF010F,
-    p8: 0xF010F,
+    p0: 0x0014_4210,
+    p1: 0x0021_0210,
+    p2: 0x0000_0000,
+    p3: 0x2227_2525,
+    p4: 0x2227_2525,
+    p5: 0x000C_9478,
+    p6: 0x0014_D14D,
+    p7: 0x000F_010F,
+    p8: 0x000F_010F,
 };
 
 const CFG_0X41: Cfg = Cfg {
-    p0: 0x144210,
-    p1: 0x210210,
-    p2: 0x0,
-    p3: 0x2824241D,
-    p4: 0x2824241D,
-    p5: 0x1E03C50,
-    p6: 0xC8320,
-    p7: 0x0,
-    p8: 0x0,
+    p0: 0x0014_4210,
+    p1: 0x0021_0210,
+    p2: 0x0000_0000,
+    p3: 0x2824_241D,
+    p4: 0x2824_241D,
+    p5: 0x01E0_3C50,
+    p6: 0x000C_8320,
+    p7: 0x0000_0000,
+    p8: 0x0000_0000,
 };
 
 // NOTE: Those structs do not align all too well in the vendor code.
@@ -344,7 +346,12 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
 
     // FIXME: + 0x30 / + 0x2c
     // let xx1 = if params_3 == 0 { cfg.p12 } else { cfg.p11 };
-    // let xx2 = ((xx1 & 0x3ff) << 9) / 1000;
+    let xx1 = if params_3 == 0 {
+        CFG_0X20.p3
+    } else {
+        CFG_0X20.p2
+    };
+    let xx2 = ((xx1 & 0x3ff) << 9) / 1000;
     let xx3 = 0x100;
 
     let vxm = (params[8] << 8) | params[4];
@@ -385,6 +392,54 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
 
     let v = read32(DDR_PHY_00F8);
     write32(DDR_PHY_00F8, v & 0xfe00_ffff | (xx3 << 16));
+
+    // p0 & 0xfff  0x210
+    let v1 = if CFG_0X20.p0 & 0xfff < s_0064 {
+        CFG_0X20.p2 // 0x0
+    } else {
+        CFG_0X20.p3 // 0x2225_2525
+    };
+    // 0x94 (148)
+    let v1 = (v1 >> 14) & 0x3ff;
+
+    // p6 & 0xfff = 0x14d
+    let v2 = if cfg.p6 & 0xfff < s_0064 {
+        CFG_0X20.p2
+    } else {
+        CFG_0X20.p3
+    };
+    // 0x149
+    let v2 = (v2 >> 10) & 0x3ff;
+
+    // 0x25b (603)
+    let v2 = v2 * 11 / 6;
+
+    let v2 = match v2 {
+        ..150 => 0,
+        ..450 => (v2 - 150) / 6,
+        ..630 => (v2 - 329) / 6 | 0x40, // we should be here
+        _ => 114,
+    };
+
+    let v1 = match v1 {
+        ..150 => 0, // we should be here
+        ..450 => (v1 - 150) / 6,
+        ..630 => (v1 - 329) / 6 | 0x40,
+        _ => 114,
+    };
+
+    write32(UPCTL2_0320, 0);
+
+    let p4_sby_0x1000 = if smth { 0x1000 } else { 0 };
+    let o_base = p4_sby_0x1000 * 2;
+    let o1 = o_base + 0x00e8;
+    let o2 = o_base + 0x00ec;
+
+    let v = read32(UPCTL2_BASE + o1);
+    write32(UPCTL2_BASE + o1, (v & 0xffff_0000) | v2);
+
+    let v = read32(UPCTL2_BASE + o2);
+    write32(UPCTL2_BASE + o2, (v & 0xffff_0000) | v1);
 }
 
 fn ddr_xxx(enable_ecc: bool) {
@@ -392,9 +447,10 @@ fn ddr_xxx(enable_ecc: bool) {
     // variable names. Should we make those structs or simple parameters?
     let s_0000 = 0x1;
     let s_000c = 0x1;
+    // this may encode the DRAM speed
     let s_0064 = 0x144;
-    // apparently encodes the DRAM type
-    let s_0068 = 0x3;
+    // apparently s_0068 encodes the DRAM type
+    let dram_type = 0x3;
     let s_007c = XX_PARAMS_0_UPCTL2[0].value;
 
     println!("ddr_xxx");
@@ -411,8 +467,8 @@ fn ddr_xxx(enable_ecc: bool) {
     write32(CRU_NS_BASE + 0x046c, 0x0180_0100);
 
     // TODO: What is the possible value range? This check may be unnecessary.
-    if s_0068 <= 8 {
-        let m1 = if s_0068 == 8 { 7 } else { s_0068 };
+    if dram_type <= 8 {
+        let m1 = if dram_type == 8 { 7 } else { dram_type };
 
         let x = (m1 & 0xc + 0x39 * 4) >> ((m1 & 0b11) << 3) & 0xff;
         let v = if x == 0xe4 {
@@ -456,31 +512,36 @@ fn ddr_xxx(enable_ecc: bool) {
     }
     write32(DDR_PHY_BASE, vxo);
 
-    if s_0068 < 7 && (0b01001001 >> s_0068) & 1 != 0 {
-        // TODO: tweak this
-        // 16 iterations
-        for o in (0x0300..0x0a80).step_by(0x180) {
-            let r = DDR_PHY_BASE + o + 8;
-            let v = read32(r);
-            write32(r, v & 0xffff_fdff);
+    // TODO: tweak this
+    // Each loop has 16 iterations
+    match dram_type {
+        0 | 3 | 6 => {
+            for o in (0x0300..0x0a80).step_by(0x180) {
+                let r = DDR_PHY_BASE + o + 8;
+                let v = read32(r);
+                write32(r, v & 0xffff_fdff);
+            }
         }
-    } else if s_0068 == 7 {
-        let v = read32(DDR_PHY_0038);
-        write32(DDR_PHY_0038, (v & 0xffff_07ff) | 0x0000_5800);
-        for o in (0x0300..0x0a80).step_by(0x180) {
-            let r = DDR_PHY_BASE + o;
-            let v = read32(r);
-            write32(r, (v & 0xffff_ff9f) | 0x40);
+        7 => {
+            let v = read32(DDR_PHY_0038);
+            write32(DDR_PHY_0038, (v & 0xffff_07ff) | 0x0000_5800);
+            for o in (0x0300..0x0a80).step_by(0x180) {
+                let r = DDR_PHY_BASE + o;
+                let v = read32(r);
+                write32(r, (v & 0xffff_ff9f) | 0x40);
+            }
         }
-    } else if s_0068 == 8 {
-        for o in (0x0300..0x0a80).step_by(0x180) {
-            let r = DDR_PHY_BASE + o + 8;
-            let v = read32(r);
-            write32(r, v | 0x100);
-            let r = DDR_PHY_BASE + o;
-            let v = read32(r);
-            write32(r, (v & 0xffff_ff9f) | 0x40);
+        8 => {
+            for o in (0x0300..0x0a80).step_by(0x180) {
+                let r = DDR_PHY_BASE + o + 8;
+                let v = read32(r);
+                write32(r, v | 0x100);
+                let r = DDR_PHY_BASE + o;
+                let v = read32(r);
+                write32(r, (v & 0xffff_ff9f) | 0x40);
+            }
         }
+        _ => {}
     }
 
     let v = read32(DDR_PHY_00C0);
@@ -511,7 +572,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(UPCTL2_0028);
     write32(UPCTL2_0028, v & 0xffff_fffc);
 
-    upctl2_phy_smth(s_0064, s_0068, false);
+    upctl2_phy_smth(s_0064, dram_type, false);
 
     // TODO: draw the rest of the owl 🦉🖌️
 
@@ -523,6 +584,8 @@ const UPCTL2_0028: usize = UPCTL2_BASE + 0x0028;
 const UPCTL2_0034: usize = UPCTL2_BASE + 0x0034;
 const UPCTL2_0038: usize = UPCTL2_BASE + 0x0038;
 const UPCTL2_0180: usize = UPCTL2_BASE + 0x0180;
+const UPCTL2_0320: usize = UPCTL2_BASE + 0x0320;
+const UPCTL2_0324: usize = UPCTL2_BASE + 0x0324;
 const UPCTL2_0404: usize = UPCTL2_BASE + 0x0404;
 
 fn upctl2_fill(reg_vals: &[RegVal], p1: u32, p2: u32) {
