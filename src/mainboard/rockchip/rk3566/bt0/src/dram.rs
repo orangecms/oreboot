@@ -440,6 +440,29 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
 
     let v = read32(UPCTL2_BASE + o2);
     write32(UPCTL2_BASE + o2, (v & 0xffff_0000) | v1);
+
+    poll_upctl2_x();
+
+    let o3 = o_base + 0x00dc;
+    let v = read32(UPCTL2_BASE + o3);
+    let v = v & 0xfd99;
+
+    let p4_byte3 = cfg.p4 >> 24;
+
+    let v3 = if p4_byte3 == 0x22 { v | (1 << 1) } else { v };
+    // TODO: if !smth ...
+
+    write32(UPCTL2_0320, 0);
+
+    let v = read32(UPCTL2_BASE + o3);
+    write32(UPCTL2_BASE + o3, (v & 0xffff_0000) | v3);
+
+    poll_upctl2_x();
+}
+
+fn poll_upctl2_x() {
+    write32(UPCTL2_0320, 1);
+    while read32(UPCTL2_0324) & 1 == 0 {}
 }
 
 fn ddr_xxx(enable_ecc: bool) {
