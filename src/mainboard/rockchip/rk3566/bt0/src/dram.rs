@@ -301,9 +301,9 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
     ];
 
     // all three are 0x21
-    params[0] = (p3_4 >> 16) as u8;
-    params[1] = (p3_4 >> 8) as u8;
-    params[2] = p3_4 as u8;
+    params[0] = (p3_4 >> 16) as u8 as u16;
+    params[1] = (p3_4 >> 8) as u8 as u16;
+    params[2] = p3_4 as u8 as u16;
 
     // XXX
     // let dram_type_x = dram_type - 7; // fffffffc
@@ -354,9 +354,9 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
     let xx2 = ((xx1 & 0x3ff) << 9) / 1000;
     let xx3 = 0x100;
 
-    let vxm = (params[8] << 8) | params[4];
+    let vxm = ((params[8] as u32) << 8) | (params[4] as u32);
 
-    let v = (params[9] << 24) | (params[5] << 16) | vxm;
+    let v = (((params[9] as u32) << 24) | ((params[5] as u32) << 16)) | vxm;
     write32(DDR_PHY_00F4, v);
 
     let v = read32(DDR_PHY_00F8) & 0xffff_e0e0 | vxm;
@@ -377,12 +377,15 @@ fn upctl2_phy_smth(s_0064: u32, dram_type: u32, smth: bool) {
     // 16 iterations
     for o in (0x0300..0x0a80).step_by(0x180) {
         let r = DDR_PHY_BASE + o + 4;
-        let v = (params[10] << 24) | (params[6] << 16) | (params[11] << 8) | params[7];
+        let v = ((params[10] as u32) << 24)
+            | ((params[6] as u32) << 16)
+            | ((params[11] as u32) << 8)
+            | params[7] as u32;
         write32(r, v);
         let r = DDR_PHY_BASE + o;
         let v = read32(r) & 0x007f_e07f;
-        let v = v | ((p5 << 7) ^ 0x80) | ((p7_8 & 0xff) << 8) | (uVar3 << 0x23);
-        write32(r, v);
+        let v = v | ((p5 << 7) ^ 0x80) | ((p7_8 & 0xff) << 8) | (xx2 << 23);
+        write32(r, v as u32);
     }
 
     let v = read32(DDR_PHY_0094);
@@ -469,7 +472,14 @@ fn ddr_xxx(enable_ecc: bool) {
     // TODO: These values come from structs at the offsets encoded in the
     // variable names. Should we make those structs or simple parameters?
     let s_0000 = 0x1;
+    let s_0004 = 0xc;
+    let s_0008 = 0x3;
     let s_000c = 0x1;
+    let s_0010 = 0x0;
+    let s_0014 = 0x0;
+    let s_0018 = 0x10;
+    let s_001c = 0x10;
+
     // this may encode the DRAM speed
     let s_0064 = 0x144;
     // apparently s_0068 encodes the DRAM type
@@ -597,10 +607,44 @@ fn ddr_xxx(enable_ecc: bool) {
 
     upctl2_phy_smth(s_0064, dram_type, false);
 
+    // 0xd
+    let s_000c_0004 = s_000c + s_0004;
+
+    // 3 * 0x20 | 0 | (-3) = 0xffff_fffc
+    let vt = (s_0018 - 0xd) * 0x20 | (s_0000 - 1) * 0x100 | s_000c_0004 - 10;
+
+    let vxx = if s_0008 == 3 { vt | 8 } else { vt };
+
+    let idx = find_index(vxx);
+    // TODO: logic
+
+    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0000);
+    write32(CRU_S_0208, 0x0002_0000);
+    write32(CRU_NS_BASE + 0x046c, 0x0180_0000);
+
     // TODO: draw the rest of the owl 🦉🖌️
 
     println!("ddr_xxx done");
 }
+
+fn find_index(vxx: u32) -> usize {
+    for (i, c) in DATA.iter().enumerate() {
+        // NOTE: ^ is XOR
+        if (c ^ vxx) & 0x1f == 0 && // asd
+            (vxx & 0xe0) <= (c & 0xe0) && // asd
+            (vxx & 0x100) <= (c & 0x100)
+        {
+            return i;
+        }
+    }
+    10
+}
+
+const DATA: [u32; 9] = [
+    0x00AA, 0x01A9, 0x018A, 0x016B, //
+    0x014C, 0x005C, 0x0099, 0x009A, //
+    0x007B,
+];
 
 const UPCTL2_0000: usize = UPCTL2_BASE + 0x0000;
 const UPCTL2_0028: usize = UPCTL2_BASE + 0x0028;
