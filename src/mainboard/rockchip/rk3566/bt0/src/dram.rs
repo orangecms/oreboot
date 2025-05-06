@@ -616,6 +616,18 @@ fn ddr_xxx(enable_ecc: bool) {
     let vxx = if s_0008 == 3 { vt | 8 } else { vt };
 
     let idx = find_index(vxx);
+
+    let val = idx.unwrap_or_else(|| {
+        if s_0008 == 3 && s_000c_0004 == 10 {
+            0xe
+        } else if s_0000 != 1 || s_0008 != 3 || s_0018 > 0x11 || s_000c_0004 != 0xd {
+            // NOTE: This should never happen.
+            panic!("calculcate DDR config error")
+        } else {
+            0x11
+        }
+    });
+
     // TODO: logic
 
     write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0000);
@@ -627,17 +639,17 @@ fn ddr_xxx(enable_ecc: bool) {
     println!("ddr_xxx done");
 }
 
-fn find_index(vxx: u32) -> usize {
+fn find_index(vxx: u32) -> Option<usize> {
     for (i, c) in DATA.iter().enumerate() {
         // NOTE: ^ is XOR
         if (c ^ vxx) & 0x1f == 0 && // asd
             (vxx & 0xe0) <= (c & 0xe0) && // asd
             (vxx & 0x100) <= (c & 0x100)
         {
-            return i;
+            return Some(i);
         }
     }
-    10
+    None
 }
 
 const DATA: [u32; 9] = [
