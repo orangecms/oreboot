@@ -617,7 +617,8 @@ fn ddr_xxx(enable_ecc: bool) {
 
     let idx = find_index(vxx);
 
-    let val = idx.unwrap_or_else(|| {
+    // NOTE: original code mutates global variable
+    let s_0030 = idx.unwrap_or_else(|| {
         if s_0008 == 3 && s_000c_0004 == 10 {
             0xe
         } else if s_0000 != 1 || s_0008 != 3 || s_0018 > 0x11 || s_000c_0004 != 0xd {
@@ -628,17 +629,37 @@ fn ddr_xxx(enable_ecc: bool) {
         }
     });
 
-    // TODO: logic
+    // TODO: more logic
+    // s_0018
+    let o = 0x218 + 4;
+    let r = UPCTL2_BASE + o;
+    let v = read32(r);
+    write32(r, v | (0xf << 8));
+    let v = read32(r);
+    write32(r, v | (0xf << 0));
+
+    if s_0000 == 1 {
+        let r = UPCTL2_BASE + 0x200;
+        let v = read32(r);
+        write32(r, v | 0x1f);
+    }
+
+    let r = UPCTL2_01B0;
+    let v = read32(r);
+    write32(r, v | 0x30);
 
     write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0000);
     write32(CRU_S_0208, 0x0002_0000);
     write32(CRU_NS_BASE + 0x046c, 0x0180_0000);
+
+    while read32(UPCTL2_0004) & 0b111 == 0 {}
 
     // TODO: draw the rest of the owl 🦉🖌️
 
     println!("ddr_xxx done");
 }
 
+// 0..=8
 fn find_index(vxx: u32) -> Option<usize> {
     for (i, c) in DATA.iter().enumerate() {
         // NOTE: ^ is XOR
@@ -659,10 +680,12 @@ const DATA: [u32; 9] = [
 ];
 
 const UPCTL2_0000: usize = UPCTL2_BASE + 0x0000;
+const UPCTL2_0004: usize = UPCTL2_BASE + 0x0004;
 const UPCTL2_0028: usize = UPCTL2_BASE + 0x0028;
 const UPCTL2_0034: usize = UPCTL2_BASE + 0x0034;
 const UPCTL2_0038: usize = UPCTL2_BASE + 0x0038;
 const UPCTL2_0180: usize = UPCTL2_BASE + 0x0180;
+const UPCTL2_01B0: usize = UPCTL2_BASE + 0x01b0;
 const UPCTL2_0320: usize = UPCTL2_BASE + 0x0320;
 const UPCTL2_0324: usize = UPCTL2_BASE + 0x0324;
 const UPCTL2_0404: usize = UPCTL2_BASE + 0x0404;
