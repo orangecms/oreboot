@@ -22,7 +22,10 @@ mod dram;
 mod uart;
 
 use uart::K1XSerial;
-use util::mmio::{read32, write32};
+use util::{
+    mem::{copy, dump_block},
+    mmio::{read32, write32},
+};
 
 pub type EntryPoint = unsafe extern "C" fn();
 
@@ -30,6 +33,34 @@ const SRAM0_BASE: usize = 0x0020_0000;
 const SRAM0_SIZE: usize = 0x0002_0000;
 
 const DRAM_BASE: usize = 0x0000_0000;
+const FLASH_BASE: usize = 0xb800_0000;
+
+const FLASH_SIZE: usize = 16 * 1024 * 1024;
+
+// vendor partitions, taken from OrangePi RV 2 U-Boot SPL; U-Boot ends at
+// - 0x0020_3fb0 (OrangePi RV2)
+// - 0x0029_ce80 (Jupiter)
+// 64K@0(bootinfo)
+// 64K@64K(private)
+// 256K@128K(fsbl),
+// 64K@384K(env)
+// 192K@448K(opensbi)
+// -@640K(uboot)
+const PART_BOOTINFO: usize = 0x0;
+const PART_RESERVED: usize = 0x0001_0000;
+const PART_FSBL: usize = 0x0002_0000;
+const PART_UBOOT_ENV: usize = 0x0006_0000;
+const PART_OPENSBI: usize = 0x0007_0000;
+const PART_UBOOT: usize = 0x000a_0000;
+
+// ours
+const ORE_MAIN_OFFSET: usize = 4 * 1024 * 1024;
+
+const LOAD_ADDR: usize = DRAM_BASE + 0x1000;
+
+const DUMP_FLASH: bool = false;
+const MEM_TEST: bool = false;
+const MEM_TEST_FULL: bool = false;
 
 const STORAGE_API_P_ADDR: usize = 0xC083_8498;
 const USB_BOOT_ENTRY: usize = 0xc083_81a0;
@@ -192,15 +223,28 @@ fn main() {
 
     dram::init();
 
-    // util::mem::test(DRAM_BASE + 0x10, 0x7fff_fff0);
-    util::mem::test(DRAM_BASE + 0x1000, 0x002f_f000);
+    const DRAM_SIZE: usize = 0x8000_0000;
+    if MEM_TEST {
+        if MEM_TEST_FULL {
+            // NOTE: The full test will take _very long_.
+            // FIXME: We need a little offset from address 0 because Rust
+            // currently errors otherwise.
+            util::mem::test(DRAM_BASE + 0x10, DRAM_SIZE - 0x10);
+        } else {
+            // Test a small amount of DRAM only.
+            util::mem::test(LOAD_ADDR, 2 * 1024 * 1024);
+        }
+    }
+
+    if DUMP_FLASH {
+        dump_block(FLASH_BASE, FLASH_SIZE, 32);
+    }
+    copy(FLASH_BASE + ORE_MAIN_OFFSET, LOAD_ADDR, 0x8000);
 
     // GO!
-    let load_addr = DRAM_BASE + 0x1000;
-    println!("[bt0] Jump to main stage @{load_addr:08x}");
-    unsafe { riscv::asm::wfi() }
+    println!("[bt0] Jump to main stage @{LOAD_ADDR:08x}");
+    exec_payload(LOAD_ADDR);
 
-    exec_payload(load_addr);
     println!("[bt0] Exit from main stage, resetting...");
     unsafe {
         // udelay(0x0100_0000);
