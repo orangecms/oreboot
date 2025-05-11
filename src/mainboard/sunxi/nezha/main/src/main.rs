@@ -267,7 +267,7 @@ fn init_csrs() {
     unsafe {
         // MXSTATUS: T-Head ISA extension enable, MAEE, MM, UCME, CLINTEE
         // NOTE: Linux relies on detecting errata via mvendorid, marchid and
-        // mipmid. If that detection fails, and we enable MAEE, Linux won't come
+        // mimpid. If that detection fails, and we enable MAEE, Linux won't come
         // up. When D-cache is enabled, and the detection fails, we run into
         // cache coherency issues. Welcome to the minefield! :)
         // NOTE: We already set part of this in bt0, but it seems to get lost?
