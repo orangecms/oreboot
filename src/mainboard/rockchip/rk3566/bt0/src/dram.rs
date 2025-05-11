@@ -654,9 +654,59 @@ fn ddr_xxx(enable_ecc: bool) {
 
     while read32(UPCTL2_0004) & 0b111 == 0 {}
 
+    // s_0064 = 0x144
+    let v1 = 500_000 / s_0064; // 1543
+    let v2 = 10_000 / v1; // 6
+
+    let v = read32(DDR_PHY_01F4) >> 18;
+
+    let v3 = if v < 0x41 {
+        (v2 + 1) * 0xffff_ffc0 + 0xc80 // 0xac0
+    } else {
+        (50 - (v2 + 1)) * v // 43 * v
+    };
+
+    let v4 = (v3 / 100) & 0x7f; // possibly 27 (0x1b)
+
+    const BLOCK_SIZE: usize = 0x180;
+    const BLOCK_COUNT: usize = 5;
+    // NOTE: s_0000 apparently could be hardcoded at build time and reflects the
+    // design/variant of the PHY.
+    for i in 0..s_0000 {
+        let o = match i {
+            0 => 0x33c,
+            1 => 0x35c,
+            2 => 0x418,
+            _ => 0x438,
+        };
+        for o in (o..o + BLOCK_COUNT * BLOCK_SIZE).step_by(BLOCK_SIZE) {
+            let m = 0x80ff_80ff;
+            let v = read32(DDR_PHY_BASE + o);
+            write32(DDR_PHY_BASE + o, (v & m) | (v4 << 24) | (v4 << 8));
+        }
+    }
+
+    let v = read32(DDR_PHY_0094);
+    write32(DDR_PHY_0094, v | 4);
+    let v = read32(DDR_PHY_0094);
+    write32(DDR_PHY_0094, v & 0xffff_fffb);
+
     // TODO: draw the rest of the owl 🦉🖌️
 
     println!("ddr_xxx done");
+}
+
+fn upctl2_get_xxxxx(v1: u32, v2: u32, mx: u32) -> u32 {
+    0
+}
+
+fn upctl2_prep_poll_xxx(v1: u32, v2: u32) {
+    write32(UPCTL2_0010, (v1 << 4) | 1);
+    write32(UPCTL2_0014, v2 << 8);
+    let v = read32(UPCTL2_0010);
+    write32(UPCTL2_0010, v | 0x80000000);
+    while read32(UPCTL2_0010) != 0 {}
+    while read32(UPCTL2_0018) & 1 != 0 {}
 }
 
 // 0..=8
@@ -681,9 +731,14 @@ const DATA: [u32; 9] = [
 
 const UPCTL2_0000: usize = UPCTL2_BASE + 0x0000;
 const UPCTL2_0004: usize = UPCTL2_BASE + 0x0004;
+const UPCTL2_0010: usize = UPCTL2_BASE + 0x0010;
+const UPCTL2_0014: usize = UPCTL2_BASE + 0x0014;
+const UPCTL2_0018: usize = UPCTL2_BASE + 0x0018;
 const UPCTL2_0028: usize = UPCTL2_BASE + 0x0028;
 const UPCTL2_0034: usize = UPCTL2_BASE + 0x0034;
 const UPCTL2_0038: usize = UPCTL2_BASE + 0x0038;
+const UPCTL2_0120: usize = UPCTL2_BASE + 0x0120;
+const UPCTL2_0124: usize = UPCTL2_BASE + 0x0124;
 const UPCTL2_0180: usize = UPCTL2_BASE + 0x0180;
 const UPCTL2_01B0: usize = UPCTL2_BASE + 0x01b0;
 const UPCTL2_0320: usize = UPCTL2_BASE + 0x0320;
@@ -828,6 +883,7 @@ const DDR_PHY_00D0: usize = DDR_PHY_BASE + 0x00d0;
 const DDR_PHY_00F0: usize = DDR_PHY_BASE + 0x00f0;
 const DDR_PHY_00F4: usize = DDR_PHY_BASE + 0x00f4;
 const DDR_PHY_00F8: usize = DDR_PHY_BASE + 0x00f8;
+const DDR_PHY_01F4: usize = DDR_PHY_BASE + 0x01f4;
 const DDR_PHY_0304: usize = DDR_PHY_BASE + 0x0304;
 
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
