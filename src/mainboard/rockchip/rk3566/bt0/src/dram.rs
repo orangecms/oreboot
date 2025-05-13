@@ -148,6 +148,8 @@ fn phy_smth(p1: u32, p2: u32) {
 
 const DDR_GRF_0000: usize = DDR_GRF_BASE + 0x0000;
 const DDR_GRF_000C: usize = DDR_GRF_BASE + 0x000c;
+const DDR_GRF_0100: usize = DDR_GRF_BASE + 0x0100;
+const DDR_GRF_0104: usize = DDR_GRF_BASE + 0x0104;
 
 fn get_funny_bits() -> (u32, u32) {
     let vtt = read32(DDR_GRF_000C);
@@ -660,6 +662,9 @@ fn ddr_xxx(enable_ecc: bool) {
 
     let v = read32(DDR_PHY_01F4) >> 18;
 
+    println!("DDR_PHY_01F4: {v:08x}");
+
+    #[allow(arithmetic_overflow)]
     let v3 = if v < 0x41 {
         (v2 + 1) * 0xffff_ffc0 + 0xc80 // 0xac0
     } else {
@@ -667,6 +672,8 @@ fn ddr_xxx(enable_ecc: bool) {
     };
 
     let v4 = (v3 / 100) & 0x7f; // possibly 27 (0x1b)
+
+    println!("v4: {v4:08x}");
 
     const BLOCK_SIZE: usize = 0x180;
     const BLOCK_COUNT: usize = 5;
@@ -691,21 +698,48 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(DDR_PHY_0094);
     write32(DDR_PHY_0094, v & 0xffff_fffb);
 
+    let m1 = upctl2_get_xxxxx(1, 0xc, 7);
+    let m2 = upctl2_get_xxxxx(1, 0xe, 7);
+
+    // we expect 0x4d for both
+    println!("LP4;   MR12: {m1:08x}   MR14: {m2:08x}");
+
+    if DEBUG {
+        // WHOOPSIES
+        assert_eq!(m1, 0x4d);
+        assert_eq!(m2, 0x4d);
+    }
+
     // TODO: draw the rest of the owl 🦉🖌️
 
     println!("ddr_xxx done");
 }
 
-fn upctl2_get_xxxxx(v1: u32, v2: u32, mx: u32) -> u32 {
-    0
+// FIXME: we only get 0 :(
+fn upctl2_get_xxxxx(v1: u32, v2: u32, mx: u32) -> u8 {
+    // NOTE: We might move this out, since parameters are just forwarded.
+    upctl2_prep_poll_xxx(v1, v2);
+    let v = read32(DDR_GRF_0100);
+    println!("upctl2_get_xxxxx DDR_GRF_0100: {v:08x}");
+    let v = if mx - 7 < 2 {
+        let v2 = read32(DDR_GRF_0104);
+        println!("upctl2_get_xxxxx DDR_GRF_0104: {v2:08x}");
+        v2 >> 8
+    } else {
+        v
+    };
+    v as u8
 }
 
+const DEBUG: bool = true;
+
 fn upctl2_prep_poll_xxx(v1: u32, v2: u32) {
+    println!("upctl2_prep_poll_xxx {v1} {v2}");
     write32(UPCTL2_0010, (v1 << 4) | 1);
     write32(UPCTL2_0014, v2 << 8);
     let v = read32(UPCTL2_0010);
     write32(UPCTL2_0010, v | 0x80000000);
-    while read32(UPCTL2_0010) != 0 {}
+    while read32(UPCTL2_0010) & (1 << 31) != 0 {}
     while read32(UPCTL2_0018) & 1 != 0 {}
 }
 
