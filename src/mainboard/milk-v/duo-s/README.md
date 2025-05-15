@@ -47,8 +47,14 @@ The `Makefile`s here are prepared to load `bt0` and `main`:
 
 The Duo S automatically drops into the USB loader mode by default.
 
-For the Duo and Duo 256M, connect pin 32 (GP27 / ADC2) to 3.3V.
+For the Duo and Duo 256M, connect pin 32 (`GP27` / `ADC2`) to 3.3V.
 A breadboard is recommended. Consider using a small resistor.
+
+Note that the pinout diagram starts counting the ADCs at 0, while the board
+labels start at 1. So `ADC1` in the diagram is `ADC2` on the board.
+
+![Milk-V Duo PCB wired up for boot mode](photos/milk-v_duo_boot_mode.jpg)
+![Milk-V Duo pinout diagram](photos/milk-v_duo_pinout_diagram.jpg)
 
 ## Switch to Arm
 
