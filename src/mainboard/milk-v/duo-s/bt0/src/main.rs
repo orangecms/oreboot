@@ -37,11 +37,12 @@ const PRINT_LOG: bool = false;
 const DUMP_MASK_ROM: bool = false;
 const DRAM_TEST: bool = true;
 const BOOT_MAIN: bool = true;
+const USB_LOAD_PAYLOAD: bool = true;
 
 // TODO: get from DTFS
-const LOAD_SIZE: usize = 0x2_0000;
-const LOAD_ADDR: usize = mem_map::DRAM_BASE;
-const PAYLOAD_ADDR: usize = LOAD_ADDR + 0x0020_0000;
+const ORE_MAIN_SIZE: usize = 0x2_0000;
+const ORE_MAIN_ADDR: usize = mem_map::DRAM_BASE;
+const PAYLOAD_ADDR: usize = ORE_MAIN_ADDR + 0x0020_0000;
 const PAYLOAD_SIZE: usize = 32 * 1024 * 1024;
 const DTB_ADDR: usize = PAYLOAD_ADDR + PAYLOAD_SIZE;
 const DTB_SIZE: usize = 256 * 1024;
@@ -127,16 +128,18 @@ pub unsafe extern "C" fn reset() {
         static _sidata: u8;
     }
 
-    use core::ptr::{self, addr_of, addr_of_mut};
-    // zero out BSS
-    let sbss = addr_of_mut!(_sbss);
-    let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-    ptr::write_bytes(sbss, 0, bss_size);
-    // copy over data
-    let sidata = addr_of!(_sidata);
-    let sdata = addr_of_mut!(_sdata);
-    let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
-    ptr::copy_nonoverlapping(sidata, sdata, data_size);
+    if false {
+        use core::ptr::{self, addr_of, addr_of_mut};
+        // zero out BSS
+        let sbss = addr_of_mut!(_sbss);
+        let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
+        ptr::write_bytes(sbss, 0, bss_size);
+        // copy over data
+        let sidata = addr_of!(_sidata);
+        let sdata = addr_of_mut!(_sdata);
+        let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
+        ptr::copy_nonoverlapping(sidata, sdata, data_size);
+    }
 
     // Call user entry point
     main();
@@ -219,38 +222,38 @@ fn main() {
 
     let v = read32(cv18xx::AXI_SRAM_RTOS_BASE);
     // 0x0c85e985
-    // CVI_RTOS_MAGIC_CODE 0xABC0DEF
+    // CVI_RTOS_MAGIC_CODE 0x0ABC0DEF
     println!("RTOS base: 0x{v:08x}");
 
     // `make run` in main
     println!(
         ">> load main stage (max size: {} KB) over USB",
-        LOAD_SIZE / 1024
+        ORE_MAIN_SIZE / 1024
     );
-    println!();
+    rom::load_image(ORE_MAIN_ADDR, 0x0, ORE_MAIN_SIZE, 0);
+    dump_block(ORE_MAIN_ADDR, 0x60, 0x20);
 
-    rom::load_image(LOAD_ADDR, 0x0, LOAD_SIZE, 0);
+    if USB_LOAD_PAYLOAD {
+        println!(
+            ">> load payload (max size: {} MB) over USB",
+            PAYLOAD_SIZE / 1024 / 1024
+        );
+        rom::load_image(PAYLOAD_ADDR, 0x0, PAYLOAD_SIZE, 0);
+        dump_block(PAYLOAD_ADDR, 0x60, 0x20);
 
-    println!(
-        ">> load payload (max size: {} MB) over USB",
-        PAYLOAD_SIZE / 1024 / 1024
-    );
-    rom::load_image(PAYLOAD_ADDR, 0x0, PAYLOAD_SIZE, 0);
-    dump_block(PAYLOAD_ADDR, 0x60, 0x20);
+        println!(">> load DTB (max size: {} KB) over USB", DTB_SIZE / 1024);
+        rom::load_image(DTB_ADDR, 0x0, DTB_SIZE, 0);
+        dump_block(DTB_ADDR, 0x60, 0x20);
+    }
 
-    println!(">> load DTB (max size: {} KB) over USB", DTB_SIZE / 1024);
-    rom::load_image(DTB_ADDR, 0x0, DTB_SIZE, 0);
-    dump_block(DTB_ADDR, 0x60, 0x20);
-
-    println!("[bt0] Jump to main stage @{LOAD_ADDR:08x}");
-    dump_block(LOAD_ADDR, 0x60, 0x20);
+    println!("[bt0] Jump to main stage @{ORE_MAIN_ADDR:08x}");
 
     if BOOT_MAIN {
         // RV64ACDFIMSUVX
-        next_stage(LOAD_ADDR);
+        next_stage(ORE_MAIN_ADDR);
     } else {
         // RV64ACDFIMSUX
-        cv18xx::exec_hartl(LOAD_ADDR);
+        cv18xx::exec_hartl(ORE_MAIN_ADDR);
     }
 }
 
