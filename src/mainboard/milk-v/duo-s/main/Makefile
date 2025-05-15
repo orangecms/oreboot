@@ -21,9 +21,13 @@ build:
 	# TODO: cargo make
 	cargo build --release
 	cargo objcopy -- -O binary $(RELEASE_BIN)
+	ls -l $(RELEASE_BIN)
 
 run: build
 	$(SG_BOOT) run $(RELEASE_BIN)
+
+load: build
+	$(SG_BOOT) load $(RELEASE_BIN)
 
 objdump: build
 	cargo objdump -- -D
