@@ -722,6 +722,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "milk_v-duo_s-bt0a"
+version = "0.1.0"
+dependencies = [
+ "aarch64-cpu",
+ "embedded-hal 1.0.0",
+ "embedded-hal-nb",
+ "log 0.1.0",
+ "nb 1.1.0",
+ "spin",
+]
+
+[[package]]
 name = "milk_v-duo_s-main"
 version = "0.1.0"
 dependencies = [
