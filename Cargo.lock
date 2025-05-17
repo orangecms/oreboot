@@ -436,7 +436,7 @@ dependencies = [
  "oreboot-arch",
  "oreboot_compression",
  "riscv 0.12.1",
- "rustsbi",
+ "rustsbi 0.4.0",
 ]
 
 [[package]]
@@ -805,7 +805,7 @@ dependencies = [
  "oreboot-arch",
  "oreboot_compression",
  "riscv 0.12.1",
- "rustsbi",
+ "rustsbi 0.4.0",
  "sbi-spec 0.0.4",
  "spin",
 ]
