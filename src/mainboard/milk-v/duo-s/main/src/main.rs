@@ -1,4 +1,3 @@
-#![feature(naked_functions)]
 #![no_std]
 #![no_main]
 // TODO: remove when done debugging crap
@@ -44,7 +43,7 @@ static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 /// # Safety
 ///
 /// Naked function.
-#[naked]
+#[unsafe(naked)]
 #[export_name = "start"]
 #[link_section = ".text.entry"]
 #[allow(named_asm_labels)]

@@ -6,9 +6,6 @@ run: run_bt0 load_main load_payload
 run_bt0:
 	$(MAKE) -C bt0 run
 
-run_main:
-	$(MAKE) -C main run
-
 load_main:
 	$(MAKE) -C main load
 
