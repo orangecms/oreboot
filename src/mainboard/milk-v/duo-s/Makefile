@@ -10,5 +10,7 @@ load_main:
 	$(MAKE) -C main load
 
 load_payload:
+	sleep 1
 	$(SG_BOOT) load $(PAYLOAD)
+	sleep 1
 	$(SG_BOOT) load $(DTB)
