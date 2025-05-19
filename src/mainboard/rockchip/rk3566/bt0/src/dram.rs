@@ -146,13 +146,32 @@ fn phy_smth(p1: u32, p2: u32) {
     write32(DDR_PHY_00D0, m);
 }
 
-const DDR_GRF_0000: usize = DDR_GRF_BASE + 0x0000;
-const DDR_GRF_000C: usize = DDR_GRF_BASE + 0x000c;
-const DDR_GRF_0100: usize = DDR_GRF_BASE + 0x0100;
-const DDR_GRF_0104: usize = DDR_GRF_BASE + 0x0104;
+const DDR_GRF_CTRL0: usize = DDR_GRF_BASE + 0x0000;
+const DDR_GRF_CTRL1: usize = DDR_GRF_BASE + 0x0004;
+const DDR_GRF_CTRL2: usize = DDR_GRF_BASE + 0x0008;
+const DDR_GRF_CTRL3: usize = DDR_GRF_BASE + 0x000c;
+const DDR_GRF_CTRL4: usize = DDR_GRF_BASE + 0x0010;
+
+const DDR_GRF_SPLIT_CON: usize = DDR_GRF_BASE + 0x0014;
+const DDR_GRF_LP_CON: usize = DDR_GRF_BASE + 0x0020;
+
+const DDR_GRF_STATUS00: usize = DDR_GRF_BASE + 0x0100;
+const DDR_GRF_STATUS01: usize = DDR_GRF_BASE + 0x0104;
+const DDR_GRF_STATUS02: usize = DDR_GRF_BASE + 0x0108;
+const DDR_GRF_STATUS03: usize = DDR_GRF_BASE + 0x010c;
+const DDR_GRF_STATUS04: usize = DDR_GRF_BASE + 0x0100;
+const DDR_GRF_STATUS05: usize = DDR_GRF_BASE + 0x0114;
+const DDR_GRF_STATUS06: usize = DDR_GRF_BASE + 0x0118;
+const DDR_GRF_STATUS07: usize = DDR_GRF_BASE + 0x011c;
+const DDR_GRF_STATUS08: usize = DDR_GRF_BASE + 0x0120;
+const DDR_GRF_STATUS09: usize = DDR_GRF_BASE + 0x0124;
+// NOTE: taken from manual, apparently some offsets are skipped here
+const DDR_GRF_STATUS10: usize = DDR_GRF_BASE + 0x0130;
+const DDR_GRF_STATUS11: usize = DDR_GRF_BASE + 0x0134;
+const DDR_GRF_STATUS12: usize = DDR_GRF_BASE + 0x0138;
 
 fn get_funny_bits() -> (u32, u32) {
-    let vtt = read32(DDR_GRF_000C);
+    let vtt = read32(DDR_GRF_CTRL3);
     // Extract bits 8..15. The & 0xff is technically not necessary since we
     // do another extraction hereafter, taking a pair of bits at idx * 2.
     let vpx = (vtt >> 8) & 0xff;
@@ -489,7 +508,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let s_007c = XX_PARAMS_0_UPCTL2[0].value;
 
     println!("ddr_xxx");
-    write32(DDR_GRF_0000, 0x20000);
+    write32(DDR_GRF_CTRL0, 0x20000);
 
     cru_ns_xxx((s_0064 * 1000000) / 2);
 
@@ -513,7 +532,7 @@ fn ddr_xxx(enable_ecc: bool) {
         };
 
         println!("DDR_GRF_000C: write {v:08x}");
-        write32(DDR_GRF_000C, v);
+        write32(DDR_GRF_CTRL3, v);
     }
 
     phy_smth(s_0064 * 1000000, 0);
@@ -656,12 +675,14 @@ fn ddr_xxx(enable_ecc: bool) {
 
     while read32(UPCTL2_0004) & 0b111 == 0 {}
 
+    // The following appears to be some kind of measurement, yielding different
+    // values for different runs.
+
     // s_0064 = 0x144
     let v1 = 500_000 / s_0064; // 1543
     let v2 = 10_000 / v1; // 6
 
-    let v = read32(DDR_PHY_01F4) >> 18;
-
+    let v = read32(DDR_PHY_01F4) >> 24;
     println!("DDR_PHY_01F4: {v:08x}");
 
     #[allow(arithmetic_overflow)]
@@ -670,10 +691,10 @@ fn ddr_xxx(enable_ecc: bool) {
     } else {
         (50 - (v2 + 1)) * v // 43 * v
     };
+    let vf = (v3 / 100) & 0x7f; // possibly 27 (0x1b)
 
-    let v4 = (v3 / 100) & 0x7f; // possibly 27 (0x1b)
-
-    println!("v4: {v4:08x}");
+    // real values seen: 0x5c, 0xd6, 0xd7, 0xd8
+    println!("vf: {vf:02x}");
 
     const BLOCK_SIZE: usize = 0x180;
     const BLOCK_COUNT: usize = 5;
@@ -686,17 +707,19 @@ fn ddr_xxx(enable_ecc: bool) {
             2 => 0x418,
             _ => 0x438,
         };
+        let m = 0x80ff_80ff;
         for o in (o..o + BLOCK_COUNT * BLOCK_SIZE).step_by(BLOCK_SIZE) {
-            let m = 0x80ff_80ff;
-            let v = read32(DDR_PHY_BASE + o);
-            write32(DDR_PHY_BASE + o, (v & m) | (v4 << 24) | (v4 << 8));
+            let r = DDR_PHY_BASE + o;
+            let v = read32(r);
+            // println!("{r:08x}: {v:08x}");
+            write32(r, (v & m) | (vf << 24) | (vf << 8));
         }
     }
 
     let v = read32(DDR_PHY_0094);
-    write32(DDR_PHY_0094, v | 4);
+    write32(DDR_PHY_0094, v | (1 << 2));
     let v = read32(DDR_PHY_0094);
-    write32(DDR_PHY_0094, v & 0xffff_fffb);
+    write32(DDR_PHY_0094, v & !(1 << 2));
 
     let m1 = upctl2_get_xxxxx(1, 0xc, 7);
     let m2 = upctl2_get_xxxxx(1, 0xe, 7);
@@ -719,10 +742,11 @@ fn ddr_xxx(enable_ecc: bool) {
 fn upctl2_get_xxxxx(v1: u32, v2: u32, mx: u32) -> u8 {
     // NOTE: We might move this out, since parameters are just forwarded.
     upctl2_prep_poll_xxx(v1, v2);
-    let v = read32(DDR_GRF_0100);
+
+    let v = read32(DDR_GRF_STATUS00);
     println!("upctl2_get_xxxxx DDR_GRF_0100: {v:08x}");
-    let v = if mx - 7 < 2 {
-        let v2 = read32(DDR_GRF_0104);
+    let v = if mx < 9 {
+        let v2 = read32(DDR_GRF_STATUS01);
         println!("upctl2_get_xxxxx DDR_GRF_0104: {v2:08x}");
         v2 >> 8
     } else {
@@ -737,9 +761,13 @@ fn upctl2_prep_poll_xxx(v1: u32, v2: u32) {
     println!("upctl2_prep_poll_xxx {v1} {v2}");
     write32(UPCTL2_0010, (v1 << 4) | 1);
     write32(UPCTL2_0014, v2 << 8);
+
+    // looks like a control + status register
     let v = read32(UPCTL2_0010);
-    write32(UPCTL2_0010, v | 0x80000000);
+    write32(UPCTL2_0010, v | (1 << 31));
+    // wait for bit to be cleared
     while read32(UPCTL2_0010) & (1 << 31) != 0 {}
+
     while read32(UPCTL2_0018) & 1 != 0 {}
 }
 
