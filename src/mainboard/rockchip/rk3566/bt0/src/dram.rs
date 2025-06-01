@@ -23,10 +23,13 @@ use crate::mem_map::{
 // SGRF: security subsystem (?)
 // https://www.kernel.org/doc/Documentation/devicetree/bindings/soc/rockchip/grf.txt
 // https://www.rockchip.fr/Rockchip%20RK3288%20TRM%20V1.0%20Part%201-System%20and%20System%20Control.pdf
+const SYS_SGRF_0014: usize = SYS_SGRF_BASE + 0x0014;
 const SYS_SGRF_0200: usize = SYS_SGRF_BASE + 0x0200;
 const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
 
 const CRU_S_0208: usize = CRU_S_BASE + 0x0208;
+
+const CRU_NS_046C: usize = CRU_NS_BASE + 0x046c;
 
 /*
 DDR Version V1337 20200218_resume
@@ -79,6 +82,7 @@ const UPCTL2_0404: usize = UPCTL2_BASE + 0x0404;
 
 const UPCTL2_MR_WR_BUSY: u32 = 1;
 
+const DDR_PHY_0000: usize = DDR_PHY_BASE + 0x0000;
 const DDR_PHY_0038: usize = DDR_PHY_BASE + 0x0038;
 const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
 const DDR_PHY_008C: usize = DDR_PHY_BASE + 0x008c;
@@ -103,20 +107,22 @@ fn upctl2_pre_init() {
     println!("{v:x}");
 }
 
+const MEGA: u32 = 1_000_000;
+
 const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
 
-// rkclk_set_dpll ?
+// similar to U-Boot drivers/ram/rockchip/sdram_rv1126.c rkclk_set_dpll
 fn cru_ns_xxx(freq: u32) {
-    let vp = freq / 1000000;
+    let f_mhz = freq / MEGA;
 
-    let m1 = match vp {
-        ..101 => 6,
-        ..201 => 4,
+    let postdiv1 = match f_mhz {
+        ..=100 => 6,
+        ..=200 => 4,
         ..800 => 2,
         _ => 1,
     };
-    let m2 = match vp {
-        ..151 => 6,
+    let postdiv2 = match f_mhz {
+        ..=150 => 6,
         ..800 => 4,
         _ => 2,
     };
@@ -128,12 +134,10 @@ fn cru_ns_xxx(freq: u32) {
     const CRU_NS_MODE_CONF0: usize = CRU_NS_BASE + 0x00C0;
     write32(CRU_NS_MODE_CONF0, 0x000c_0000);
     write32(CRU_NS_BASE + 0x0128, 0x2000_2000);
-    write32(
-        CRU_NS_BASE + 0x0020,
-        0x7fff_0000 | (m2 << 12) | (m1 * m2 * vp / 24),
-    );
+    let fbdiv = (f_mhz * postdiv1 * postdiv2 / 24);
+    write32(CRU_NS_BASE + 0x0020, 0x7fff_0000 | (postdiv2 << 12) | fbdiv);
 
-    write32(CRU_NS_BASE + 0x0024, 0x11ff_1001 | (m1 << 6));
+    write32(CRU_NS_BASE + 0x0024, 0x11ff_1001 | (postdiv1 << 6));
     write32(CRU_NS_BASE + 0x0024, 0x2000_0000);
 
     for _ in 0..1000 {
@@ -173,7 +177,7 @@ const XX_PARAMS_0_PHY: [RegVal; 4] = [
 // similar to U-Boot drivers/ram/rockchip/sdram_rv1126.c phy_pll_set
 fn phy_pll_set(freq: u32, p2: u32) {
     // maybe divider value & enable-bit
-    let (v1, v2) = match freq / 1000000 {
+    let (v1, v2) = match freq / MEGA {
         ..51 => (5, 1),
         ..101 => (4, 1),
         ..201 => (3, 1),
@@ -557,17 +561,18 @@ fn ddr_xxx(enable_ecc: bool) {
     println!("ddr_xxx");
     write32(DDR_GRF_CTRL0, 0x20000);
 
-    cru_ns_xxx((dram_freq * 1000000) / 2);
+    cru_ns_xxx((dram_freq * MEGA) / 2);
 
-    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0b00);
+    write32(SYS_SGRF_0014, 0x0b00_0b00);
     write32(CRU_S_0208, 0x0002_0002);
-    write32(CRU_NS_BASE + 0x046c, 0x0180_0180);
+    write32(CRU_NS_046C, 0x0180_0180);
     udelay(10);
-    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0b00);
+    write32(SYS_SGRF_0014, 0x0b00_0b00);
     write32(CRU_S_0208, 0x0002_0002);
-    write32(CRU_NS_BASE + 0x046c, 0x0180_0100);
+    write32(CRU_NS_046C, 0x0180_0100);
 
-    // TODO: What is the possible value range? This check may be unnecessary.
+    // TODO: What is the possible value range?
+    // This check may be unnecessary.
     if dram_type <= 8 {
         let m1 = if dram_type == 8 { 7 } else { dram_type };
 
@@ -583,7 +588,7 @@ fn ddr_xxx(enable_ecc: bool) {
         write32(DDR_GRF_CTRL3, v);
     }
 
-    phy_pll_set(dram_freq * 1000000, 0);
+    phy_pll_set(dram_freq * MEGA, 0);
 
     // TODO: other rounds have different params / sizes thereof
     // NOTE: this looks similar to PHY cfg functions for other PHYs
@@ -600,7 +605,7 @@ fn ddr_xxx(enable_ecc: bool) {
     // Extracted here to keep the flow simpler
     let (vl, vxx) = get_funny_bits();
 
-    let v = read32(DDR_PHY_BASE) & 0xffffe0ff;
+    let v = read32(DDR_PHY_0000) & 0xffffe0ff;
     let vx = match s_000c {
         1 => v | ((1 << vl) | (1 << vxx)) << 8,
         2 => v | 0x0f00,
@@ -658,10 +663,10 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(DDR_PHY_0044);
     write32(DDR_PHY_0044, v & 0x3fffffff);
 
-    write32(CRU_NS_BASE + 0x046c, 0x0180_0000);
-    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0300);
+    write32(CRU_NS_046C, 0x0180_0000);
+    write32(SYS_SGRF_0014, 0x0b00_0300);
     write32(CRU_S_0208, 0x0002_0000);
-    write32(CRU_NS_BASE + 0x046c, 0x0180_0000);
+    write32(CRU_NS_046C, 0x0180_0000);
 
     // NOTE: params list needs to be a param here as well
     upctl2_config(&XX_PARAMS_0_UPCTL2, 0x005d, 0x000d);
@@ -722,9 +727,9 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(r);
     write32(r, v | (1 << 5) | (1 << 4));
 
-    write32(SYS_SGRF_BASE + 0x0014, 0x0b00_0000);
+    write32(SYS_SGRF_0014, 0x0b00_0000);
     write32(CRU_S_0208, 0x0002_0000);
-    write32(CRU_NS_BASE + 0x046c, 0x0180_0000);
+    write32(CRU_NS_046C, 0x0180_0000);
 
     // bits 0..2: OPERATING_MODE
     // - 0 = init
