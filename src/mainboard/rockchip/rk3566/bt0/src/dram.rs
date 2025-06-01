@@ -538,6 +538,19 @@ fn upctl2_sw_set_ack() {
     while read32(UPCTL2_SW_STAT) & 1 == 0 {}
 }
 
+// NOTE: this looks similar to PHY cfg functions for other PHYs
+fn phy_cfg() {
+    for p in XX_PARAMS_0_PHY.iter() {
+        let r = DDR_PHY_BASE + p.offset as usize;
+        let v = if p.value * 4 < 9 {
+            (read32(r) & 0xc0ffffff) | p.value
+        } else {
+            p.value
+        };
+        write32(r, v)
+    }
+}
+
 // set_ds_odt ?
 fn ddr_xxx(enable_ecc: bool) {
     // TODO: These values come from structs at the offsets encoded in the
@@ -552,9 +565,9 @@ fn ddr_xxx(enable_ecc: bool) {
     let s_0018 = 0x10; // CS0 row
     let s_001c = 0x10; // CS1 row
 
-    // DRAM frequency
+    // was s_0064
     let dram_freq = 0x144;
-    // apparently s_0068 encodes the DRAM type
+    // was s_0068
     let dram_type = 0x3;
     let s_007c = XX_PARAMS_0_UPCTL2[0].value;
 
@@ -563,6 +576,7 @@ fn ddr_xxx(enable_ecc: bool) {
 
     clk_set_dpll((dram_freq * MEGA) / 2);
 
+    // maybe reset
     write32(SYS_SGRF_0014, 0x0b00_0b00);
     write32(CRU_S_0208, 0x0002_0002);
     write32(CRU_NS_046C, 0x0180_0180);
@@ -590,17 +604,9 @@ fn ddr_xxx(enable_ecc: bool) {
 
     phy_pll_set(dram_freq * MEGA, 0);
 
-    // TODO: other rounds have different params / sizes thereof
-    // NOTE: this looks similar to PHY cfg functions for other PHYs
-    for p in XX_PARAMS_0_PHY.iter() {
-        let r = DDR_PHY_BASE + p.offset as usize;
-        let v = if p.value * 4 < 9 {
-            (read32(r) & 0xc0ffffff) | p.value
-        } else {
-            p.value
-        };
-        write32(r, v)
-    }
+    // extracted
+    // TODO: other rounds may have different params / sizes thereof
+    phy_cfg();
 
     // Extracted here to keep the flow simpler
     let (vl, vxx) = get_funny_bits();
