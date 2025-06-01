@@ -571,7 +571,8 @@ fn ddr_xxx(enable_ecc: bool) {
     if dram_type <= 8 {
         let m1 = if dram_type == 8 { 7 } else { dram_type };
 
-        let x = (m1 & 0xc + 0x39 * 4) >> ((m1 & 0b11) << 3) & 0xff;
+        const XX: u32 = 0xe400_00e4;
+        let x = (XX >> ((m1 & 0b11) << 3)) & 0xff;
         let v = if x == 0xe4 {
             0xff80_e400
         } else {
