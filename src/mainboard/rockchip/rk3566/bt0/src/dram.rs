@@ -112,7 +112,7 @@ const MEGA: u32 = 1_000_000;
 const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
 
 // similar to U-Boot drivers/ram/rockchip/sdram_rv1126.c rkclk_set_dpll
-fn cru_ns_xxx(freq: u32) {
+fn clk_set_dpll(freq: u32) {
     let f_mhz = freq / MEGA;
 
     let postdiv1 = match f_mhz {
@@ -561,7 +561,7 @@ fn ddr_xxx(enable_ecc: bool) {
     println!("ddr_xxx");
     write32(DDR_GRF_CTRL0, 0x20000);
 
-    cru_ns_xxx((dram_freq * MEGA) / 2);
+    clk_set_dpll((dram_freq * MEGA) / 2);
 
     write32(SYS_SGRF_0014, 0x0b00_0b00);
     write32(CRU_S_0208, 0x0002_0002);
