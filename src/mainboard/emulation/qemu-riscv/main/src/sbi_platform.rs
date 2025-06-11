@@ -20,11 +20,14 @@ pub fn init() -> PlatSbi {
 }
 
 fn init_pmp() {
-    let cfg = 0x0f0f0f0f0fusize; // pmpaddr0-1 and pmpaddr2-3 are read-only
+    // Protect pmpaddr1-2 - this is our code
+    let cfg = 0x0000_0000_000f_0f0fusize;
     reg::pmpcfg0::write(cfg);
     reg::pmpcfg2::write(0); // nothing active here
-    reg::pmpaddr0::write(0x80000000usize >> 2);
-    reg::pmpaddr1::write(0x80200000usize >> 2);
+    reg::pmpaddr0::write(0);
+    reg::pmpaddr1::write(0x0000_0000_8000_0000usize >> 2);
+    reg::pmpaddr2::write(0x0000_0000_8020_0000usize >> 2);
+    reg::pmpaddr3::write(0xffff_ffff_0000_0000usize >> 2);
 }
 
 struct Timer;
