@@ -1,4 +1,3 @@
-#![feature(naked_functions, asm_const)]
 #![feature(panic_info_message)]
 #![no_std]
 #![no_main]
@@ -12,7 +11,7 @@ use embedded_hal_nb::serial::Write;
 extern crate log;
 
 use core::{
-    arch::asm,
+    arch::{asm, naked_asm},
     intrinsics::transmute,
     panic::PanicInfo,
     ptr::{self, addr_of, addr_of_mut},
@@ -58,12 +57,12 @@ static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 /// # Safety
 ///
 /// Naked function.
-#[naked]
+#[unsafe(naked)]
 #[export_name = "start"]
 #[link_section = ".text.entry"]
 #[allow(named_asm_labels)]
 pub unsafe extern "C" fn start() -> ! {
-    asm!(
+    naked_asm!(
         "auipc  s4, 0",
 
         "csrw   mstatus, zero",
@@ -87,40 +86,14 @@ pub unsafe extern "C" fn start() -> ! {
         "call   {payload}",
         ".boothart:",
 
-        "call   {reset}",
+        "call   {main}",
         boothart   = const BOOT_HART_ID,
         stack      = sym BT0_STACK,
         stack_size = const STACK_SIZE,
         payload    = sym exec_payload,
-        reset      = sym reset,
-        start      = sym start,
-        options(noreturn)
+        main       = sym main,
+        start      = sym start
     )
-}
-
-/// Initialize RAM: Clear BSS and set up data.
-/// See https://docs.rust-embedded.org/embedonomicon/main.html
-///
-/// # Safety
-/// :shrug:
-#[no_mangle]
-pub unsafe extern "C" fn reset() {
-    extern "C" {
-        static mut _sbss: u8;
-        static mut _ebss: u8;
-
-        static mut _sdata: u8;
-        static mut _edata: u8;
-        static _sidata: u8;
-    }
-
-    let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-    ptr::write_bytes(addr_of_mut!(_sbss), 0, bss_size);
-
-    let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
-    ptr::copy_nonoverlapping(addr_of!(_sidata), addr_of_mut!(_sdata), data_size);
-    // Call user entry point
-    main();
 }
 
 fn vendorid_to_name<'a>(vendorid: usize) -> &'a str {
@@ -248,9 +221,7 @@ fn main() {
 
     // dram_test();
 
-    unsafe {
-        asm!("wfi");
-    }
+    unsafe { riscv::asm::wfi() }
 
     // GO!
     let load_addr = DRAM_BASE;
@@ -259,7 +230,7 @@ fn main() {
     println!("[bt0] Exit from main stage, resetting...");
     unsafe {
         // udelay(0x0100_0000);
-        reset();
+        main();
         riscv::asm::wfi()
     };
 }
@@ -284,9 +255,8 @@ fn panic(info: &PanicInfo) -> ! {
     } else {
         println!("[bt0] panic at unknown location");
     };
-    if let Some(msg) = info.message() {
-        println!("[bt0]   {msg}");
-    }
+    let msg = info.message();
+    println!("[bt0]   {msg}");
     loop {
         core::hint::spin_loop();
     }
