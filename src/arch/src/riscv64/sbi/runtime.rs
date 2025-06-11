@@ -44,13 +44,14 @@ unsafe fn delegate_interrupt_exception() {
     medeleg::set_load_misaligned();
     medeleg::set_store_misaligned();
     // A load or store fault means PMP violation, shouldn't be hit.
+    // I.e., it would mean that S-mode code tries to access SBI memory.
     // NOTE: Delegating those is not effective, e.g. on SiFive U74 (U7).
     medeleg::set_load_fault();
     medeleg::set_store_fault();
 
-    medeleg::set_user_env_call();
-    // Do not delegate env calls from S-mode nor M-mode.
+    // NOTE: Do not delegate env calls from S-mode nor M-mode.
     // The SBI needs to handle them.
+    medeleg::set_user_env_call();
 
     medeleg::set_instruction_page_fault();
     medeleg::set_load_page_fault();
