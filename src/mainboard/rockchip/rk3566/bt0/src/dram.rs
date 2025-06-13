@@ -64,6 +64,8 @@ osreg:0x1000e2c1,0x20000001
 out
 */
 
+// https://www.synopsys.com/dw/ipdir.php?ds=dwc_ddr_universal_upctl2
+// Synopsys Enhanced Universal DDR Protocol Controller (uPCTL2)
 // see also U-Boot arch/arm/include/asm/arch-rockchip/sdram_pctl_px30.h
 // https://github.com/u-boot/u-boot/blob/master/arch/arm/include/asm/arch-rockchip/sdram_pctl_px30.h
 const UPCTL2_MSTR: usize = UPCTL2_BASE + 0x0000;
@@ -74,8 +76,26 @@ const UPCTL2_MR_STAT: usize = UPCTL2_BASE + 0x0018;
 const UPCTL2_MSTR2: usize = UPCTL2_BASE + 0x0028;
 const UPCTL2_PWRTMG: usize = UPCTL2_BASE + 0x0034;
 const UPCTL2_HWLPCTL: usize = UPCTL2_BASE + 0x0038;
+const UPCTL2_REFRESH_CTRL0: usize = UPCTL2_BASE + 0x0050;
+const UPCTL2_REFRESH_CTRL1: usize = UPCTL2_BASE + 0x0054;
+const UPCTL2_REFRESH_CTRL2: usize = UPCTL2_BASE + 0x0058;
+// NOTE: The following two are mixed up in U-Boot.
+const UPCTL2_REFRESH_CTRL3: usize = UPCTL2_BASE + 0x005c;
+const UPCTL2_REFRESH_CTRL4: usize = UPCTL2_BASE + 0x0060;
+const UPCTL2_INIT0: usize = UPCTL2_BASE + 0x00d0;
+const UPCTL2_INIT1: usize = UPCTL2_BASE + 0x00d4;
+const UPCTL2_INIT2: usize = UPCTL2_BASE + 0x00d8;
+const UPCTL2_INIT3: usize = UPCTL2_BASE + 0x00dc;
+const UPCTL2_INIT4: usize = UPCTL2_BASE + 0x00e0;
+const UPCTL2_INIT5: usize = UPCTL2_BASE + 0x00e4;
+const UPCTL2_INIT6: usize = UPCTL2_BASE + 0x00e8;
+const UPCTL2_INIT7: usize = UPCTL2_BASE + 0x00ec;
 const UPCTL2_ZQCTL0: usize = UPCTL2_BASE + 0x0180;
 const UPCTL2_DFI_MISC: usize = UPCTL2_BASE + 0x01b0;
+const UPCTL2_0248: usize = UPCTL2_BASE + 0x0248;
+const UPCTL2_024C: usize = UPCTL2_BASE + 0x024c;
+const UPCTL2_DBG_CMD: usize = UPCTL2_BASE + 0x030c;
+const UPCTL2_DBG_STAT: usize = UPCTL2_BASE + 0x0310;
 const UPCTL2_SW_CTRL: usize = UPCTL2_BASE + 0x0320;
 const UPCTL2_SW_STAT: usize = UPCTL2_BASE + 0x0324;
 const UPCTL2_0404: usize = UPCTL2_BASE + 0x0404;
@@ -97,11 +117,34 @@ const DDR_PHY_00F8: usize = DDR_PHY_BASE + 0x00f8;
 const DDR_PHY_01F4: usize = DDR_PHY_BASE + 0x01f4;
 const DDR_PHY_0304: usize = DDR_PHY_BASE + 0x0304;
 
-// https://www.synopsys.com/dw/ipdir.php?ds=dwc_ddr_universal_upctl2
+const DDR_GRF_CTRL0: usize = DDR_GRF_BASE + 0x0000;
+const DDR_GRF_CTRL1: usize = DDR_GRF_BASE + 0x0004;
+const DDR_GRF_CTRL2: usize = DDR_GRF_BASE + 0x0008;
+const DDR_GRF_CTRL3: usize = DDR_GRF_BASE + 0x000c;
+const DDR_GRF_CTRL4: usize = DDR_GRF_BASE + 0x0010;
+
+const DDR_GRF_SPLIT_CON: usize = DDR_GRF_BASE + 0x0014;
+const DDR_GRF_LP_CON: usize = DDR_GRF_BASE + 0x0020;
+
+const DDR_GRF_STATUS00: usize = DDR_GRF_BASE + 0x0100;
+const DDR_GRF_STATUS01: usize = DDR_GRF_BASE + 0x0104;
+const DDR_GRF_STATUS02: usize = DDR_GRF_BASE + 0x0108;
+const DDR_GRF_STATUS03: usize = DDR_GRF_BASE + 0x010c;
+const DDR_GRF_STATUS04: usize = DDR_GRF_BASE + 0x0100;
+const DDR_GRF_STATUS05: usize = DDR_GRF_BASE + 0x0114;
+const DDR_GRF_STATUS06: usize = DDR_GRF_BASE + 0x0118;
+const DDR_GRF_STATUS07: usize = DDR_GRF_BASE + 0x011c;
+const DDR_GRF_STATUS08: usize = DDR_GRF_BASE + 0x0120;
+const DDR_GRF_STATUS09: usize = DDR_GRF_BASE + 0x0124;
+// NOTE: taken from manual, apparently some offsets are skipped here
+const DDR_GRF_STATUS10: usize = DDR_GRF_BASE + 0x0130;
+const DDR_GRF_STATUS11: usize = DDR_GRF_BASE + 0x0134;
+const DDR_GRF_STATUS12: usize = DDR_GRF_BASE + 0x0138;
+
 fn upctl2_pre_init() {
-    let v0248 = read32(UPCTL2_BASE + 0x0248);
+    let v0248 = read32(UPCTL2_0248);
     println!("{v0248:08x}");
-    let v024c = read32(UPCTL2_BASE + 0x024C);
+    let v024c = read32(UPCTL2_024C);
     println!("{v024c:08x}");
     let v = (v0248 >> 13) & 0xf;
     println!("{v:x}");
@@ -193,30 +236,6 @@ fn phy_pll_set(freq: u32, p2: u32) {
     let v = v & !mask | (v1 << s1) | (v2 << s2);
     write32(DDR_PHY_00D0, v);
 }
-
-const DDR_GRF_CTRL0: usize = DDR_GRF_BASE + 0x0000;
-const DDR_GRF_CTRL1: usize = DDR_GRF_BASE + 0x0004;
-const DDR_GRF_CTRL2: usize = DDR_GRF_BASE + 0x0008;
-const DDR_GRF_CTRL3: usize = DDR_GRF_BASE + 0x000c;
-const DDR_GRF_CTRL4: usize = DDR_GRF_BASE + 0x0010;
-
-const DDR_GRF_SPLIT_CON: usize = DDR_GRF_BASE + 0x0014;
-const DDR_GRF_LP_CON: usize = DDR_GRF_BASE + 0x0020;
-
-const DDR_GRF_STATUS00: usize = DDR_GRF_BASE + 0x0100;
-const DDR_GRF_STATUS01: usize = DDR_GRF_BASE + 0x0104;
-const DDR_GRF_STATUS02: usize = DDR_GRF_BASE + 0x0108;
-const DDR_GRF_STATUS03: usize = DDR_GRF_BASE + 0x010c;
-const DDR_GRF_STATUS04: usize = DDR_GRF_BASE + 0x0100;
-const DDR_GRF_STATUS05: usize = DDR_GRF_BASE + 0x0114;
-const DDR_GRF_STATUS06: usize = DDR_GRF_BASE + 0x0118;
-const DDR_GRF_STATUS07: usize = DDR_GRF_BASE + 0x011c;
-const DDR_GRF_STATUS08: usize = DDR_GRF_BASE + 0x0120;
-const DDR_GRF_STATUS09: usize = DDR_GRF_BASE + 0x0124;
-// NOTE: taken from manual, apparently some offsets are skipped here
-const DDR_GRF_STATUS10: usize = DDR_GRF_BASE + 0x0130;
-const DDR_GRF_STATUS11: usize = DDR_GRF_BASE + 0x0134;
-const DDR_GRF_STATUS12: usize = DDR_GRF_BASE + 0x0138;
 
 fn get_funny_bits() -> (u32, u32) {
     let vtt = read32(DDR_GRF_CTRL3);
@@ -551,12 +570,43 @@ fn phy_cfg() {
     }
 }
 
-// set_ds_odt ?
+fn phy_measure_xx(dram_freq: u32) -> u32 {
+    // The following appears to be some kind of measurement, yielding different
+    // values for different runs.
+
+    let v = read32(DDR_PHY_01F4);
+    println!("DDR_PHY_01F4: {v:08x}");
+    let v = v >> 24;
+
+    // dram_freq = 0x144
+    let v1 = 500_000 / dram_freq; // 1543
+    let v2 = (10_000 / v1) + 1; // 7
+
+    let v3 = if v < 0x41 {
+        // 0xac0
+        0xc80 - 0x40 * v
+    } else {
+        let v = read32(DDR_PHY_01F4);
+        println!("DDR_PHY_01F4: {v:08x}");
+        let v = v >> 24;
+        (50 - v2) * v // 43 * v
+    };
+
+    // real values seen:
+    //    27 (0x1b)
+    //    92 (0x5c)
+    //   214 (0xd6)
+    //   215 (0xd7)
+    //   216 (0xd8)
+    (v3 / 100) & 0x7f
+}
+
+// sdram_init_ ?
 fn ddr_xxx(enable_ecc: bool) {
     // TODO: These values come from structs at the offsets encoded in the
     // variable names. Should we make those structs or simple parameters?
     // U-Boot arm/include/asm/arch-rockchip/sdram_common.h
-    let s_0000 = 0x1; // rank
+    let rank = 0x1; // s_0000
     let s_0004 = 0xc; // col
     let s_0008 = 0x3; // bank number, power of 2, i.e., 2^3=8
     let s_000c = 0x1; // channel bus width, 1 means 16bit
@@ -619,7 +669,7 @@ fn ddr_xxx(enable_ecc: bool) {
     };
     let mut vxo = if enable_ecc { vx } else { vx | 0x1000 };
 
-    if s_0000 == 4 {
+    if rank == 4 {
         vxo |= 0x0010_0000;
         let v = read32(DDR_PHY_0038);
         write32(DDR_PHY_0038, v | 1 << 1);
@@ -695,7 +745,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let s_000c_0004 = s_000c + s_0004;
 
     // 3 * 0x20 | 0 | (-3) = 0xffff_fffc
-    let vt = ((s_0000 - 1) << 8) | ((s_0018 - 13) << 5) | (s_000c_0004 - 10);
+    let vt = ((rank - 1) << 8) | ((s_0018 - 13) << 5) | (s_000c_0004 - 10);
 
     let vxx = if s_0008 == 3 { vt | 8 } else { vt };
 
@@ -705,7 +755,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let s_0030 = idx.unwrap_or_else(|| {
         if s_0008 == 3 && s_000c_0004 == 10 {
             14
-        } else if s_0000 != 1 || s_0008 != 3 || s_0018 > 17 || s_000c_0004 != 13 {
+        } else if rank != 1 || s_0008 != 3 || s_0018 > 17 || s_000c_0004 != 13 {
             // NOTE: This should never happen.
             panic!("calculcate DDR config error")
         } else {
@@ -722,7 +772,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(r);
     write32(r, v | (0xf << 0));
 
-    if s_0000 == 1 {
+    if rank == 1 {
         let r = UPCTL2_BASE + 0x200;
         let v = read32(r);
         write32(r, v | 0x1f);
@@ -733,6 +783,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(r);
     write32(r, v | (1 << 5) | (1 << 4));
 
+    // reset ?
     write32(SYS_SGRF_0014, 0x0b00_0000);
     write32(CRU_S_0208, 0x0002_0000);
     write32(CRU_NS_046C, 0x0180_0000);
@@ -746,45 +797,31 @@ fn ddr_xxx(enable_ecc: bool) {
     // - 2 = "not auto"
     while read32(UPCTL2_STAT) & 0b111 == 0 {}
 
-    // The following appears to be some kind of measurement, yielding different
-    // values for different runs.
-
-    // dram_freq = 0x144
-    let v1 = 500_000 / dram_freq; // 1543
-    let v2 = 10_000 / v1; // 6
-
-    let v = read32(DDR_PHY_01F4) >> 24;
-    println!("DDR_PHY_01F4: {v:08x}");
-
-    #[allow(arithmetic_overflow)]
-    let v3 = if v < 0x41 {
-        (v2 + 1) * 0xffff_ffc0 + 0xc80 // 0xac0
-    } else {
-        (50 - (v2 + 1)) * v // 43 * v
-    };
-    let vf = (v3 / 100) & 0x7f; // possibly 27 (0x1b)
-
-    // real values seen: 0x5c, 0xd6, 0xd7, 0xd8
-    println!("vf: {vf:02x}");
+    let vf = phy_measure_xx(dram_freq);
+    println!("vf: {vf} (0x{vf:02x})");
+    // This is used to adjust registers in multiple blocks.
+    let a = (vf << 24) | (vf << 8);
 
     const BLOCK_SIZE: usize = 0x180;
-    const BLOCK_COUNT: usize = 4;
-    // NOTE: s_0000 apparently could be hardcoded at build time and reflects the
-    // design/variant of the PHY.
-    for i in 0..s_0000 {
+    const BLOCK_COUNT: usize = 5;
+    let mask = (0x7f << 24) | (0x7f << 8);
+    // NOTE: rank apparently could be hardcoded at build time.
+    for i in 0..rank {
         let o = match i {
             0 => 0x33c,
             1 => 0x35c,
             2 => 0x418,
             _ => 0x438,
         };
-        let m = 0x80ff_80ff;
         // NOTE: inclusive
-        for o in (o..=o + BLOCK_COUNT * BLOCK_SIZE).step_by(BLOCK_SIZE) {
-            let r = DDR_PHY_BASE + o;
-            let v = read32(r);
-            // println!("{r:08x}: {v:08x}");
-            write32(r, (v & m) | (vf << 24) | (vf << 8));
+        for block in 0..BLOCK_COUNT {
+            let reg = DDR_PHY_BASE + block * BLOCK_SIZE + o;
+            let val = read32(reg);
+            let v = val & mask | a;
+            if DEBUG {
+                println!("  {reg:08x}: {val:08x} -> {v:08x}");
+            }
+            write32(reg, v);
         }
     }
 
@@ -792,6 +829,10 @@ fn ddr_xxx(enable_ecc: bool) {
     write32(DDR_PHY_0094, v | (1 << 2));
     let v = read32(DDR_PHY_0094);
     write32(DDR_PHY_0094, v & !(1 << 2));
+
+    // TODO: What is MR? What is required for it to be read?
+    // Could be Mode Register.
+    // https://www.mindshare.com/files/MindShare_DRAM_QRG_v5a.pdf
 
     let mr12 = upctl2_read_mr(1, 12, 7);
     let mr14 = upctl2_read_mr(1, 14, 7);
@@ -804,13 +845,59 @@ fn ddr_xxx(enable_ecc: bool) {
         assert_eq!(mr14, 0x4d);
     }
 
+    let e8 = read32(UPCTL2_INIT6);
+    let ec = read32(UPCTL2_INIT7);
+    upctl2_write_mr(0xf, 0xb, (e8 >> 16) as u16, 7);
+    upctl2_write_mr(0xf, 0xc, e8 as u16, 7);
+    upctl2_write_mr(0xf, 0x16, (ec >> 16) as u16, 7);
+
+    while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
+    write32(UPCTL2_DBG_CMD, 0x0000_0010);
+    while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
+
+    train(dram_type);
+
     // TODO: draw the rest of the owl 🦉🖌️
 
     println!("ddr_xxx done");
 }
 
+fn train(dram_type: u32) {
+    let xx = if upctl2_zqctl_refreshctl() { 1 } else { 0 };
+    write32(CRU_NS_BASE + 0x00a0, xx);
+
+    let v = read32(UPCTL2_BASE + 0x0028);
+    write32(UPCTL2_BASE + 0x0028, v & !(1 << 1));
+
+    let vx = read32(UPCTL2_BASE + 0x0028) & 0b11;
+    let vxs = vx * 0x1000;
+    let vv = if vx != 0 { 0x1000 } else { vx };
+    let reg = UPCTL2_BASE + 0x00dc + (vxs + vx) as usize;
+    let xx = read32(reg);
+    let vx = if dram_type != 0 && dram_type != 3 {
+        xx & 0xff
+    } else {
+        xx & 0x3fff | 0x4000
+    };
+    //
+    // TODO
+}
+
+fn upctl2_zqctl_refreshctl() -> bool {
+    let v0 = read32(UPCTL2_ZQCTL0);
+    let zqctl0_31_not_set = v0 & (1 << 31) != 0;
+    if zqctl0_31_not_set {
+        write32(UPCTL2_ZQCTL0, v0 | (1 << 31));
+    }
+    let v = read32(UPCTL2_REFRESH_CTRL4);
+    write32(UPCTL2_REFRESH_CTRL4, v | 1);
+    let v = read32(UPCTL2_REFRESH_CTRL4);
+    write32(UPCTL2_REFRESH_CTRL4, v ^ (1 << 1));
+    zqctl0_31_not_set
+}
+
 // U-Boot drivers/ram/rockchip/sdram_pctl_px30.c pctl_write_mr
-fn upctl2_write_mr(rank: u32, mr: u32, val: u8, p4: u32) {
+fn upctl2_write_mr(rank: u32, mr: u32, val: u16, p4: u32) {
     println!("upctl2_write_mr rank {rank} mr {mr} val {val}");
 
     while read32(UPCTL2_MR_STAT) & UPCTL2_MR_WR_BUSY != 0 {}
@@ -836,13 +923,14 @@ fn upctl2_write_mr(rank: u32, mr: u32, val: u8, p4: u32) {
 
 // FIXME: we only get 0 :(
 // pctl_read_mr
-fn upctl2_read_mr(rank: u32, mr: u32, mx: u32) -> u8 {
+fn upctl2_read_mr(rank: u32, mr: u32, dram_type: u32) -> u8 {
     // NOTE: We might move this out, since parameters are just forwarded.
     upctl2_prep_poll_mr(rank, mr);
 
     let v = read32(DDR_GRF_STATUS00);
     println!("upctl2_get_xxxxx DDR_GRF_0100: {v:08x}");
-    let v = if mx < 9 {
+    let v = if dram_type < 9 {
+        // We should get here.
         let v2 = read32(DDR_GRF_STATUS01);
         println!("upctl2_get_xxxxx DDR_GRF_0104: {v2:08x}");
         v2 >> 8
@@ -1057,6 +1145,8 @@ pub fn init() {
     crate::otp::otp_phy_init();
 
     // XXX: ignore for now
+    // NOTE: This should get the DRAM size; U-Boot:
+    // rk3568_dmc_probe
     if false {
         let v0208 = read32(PMU_GRF_OS2);
         // we get 0 (reset value), would be non-zero for a second run...
