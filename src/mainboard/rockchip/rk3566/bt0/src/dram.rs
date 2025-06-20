@@ -27,9 +27,11 @@ const SYS_SGRF_0014: usize = SYS_SGRF_BASE + 0x0014;
 const SYS_SGRF_0200: usize = SYS_SGRF_BASE + 0x0200;
 const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
 
-const CRU_S_0208: usize = CRU_S_BASE + 0x0208;
+const CRU_S_CLK_SEL_CFG66: usize = CRU_S_BASE + 0x0208;
 
-const CRU_NS_046C: usize = CRU_NS_BASE + 0x046c;
+const CRU_NS_MODE_CFG0: usize = CRU_NS_BASE + 0x00c0;
+const CRU_NS_VPLL_CFG0: usize = CRU_NS_BASE + 0x00a0;
+const CRU_NS_SOFT_RESET_CFG27: usize = CRU_NS_BASE + 0x046c;
 
 /*
 DDR Version V1337 20200218_resume
@@ -74,8 +76,9 @@ const UPCTL2_MR_CTRL0: usize = UPCTL2_BASE + 0x0010;
 const UPCTL2_MR_CTRL1: usize = UPCTL2_BASE + 0x0014;
 const UPCTL2_MR_STAT: usize = UPCTL2_BASE + 0x0018;
 const UPCTL2_MSTR2: usize = UPCTL2_BASE + 0x0028;
-const UPCTL2_PWRTMG: usize = UPCTL2_BASE + 0x0034;
-const UPCTL2_HWLPCTL: usize = UPCTL2_BASE + 0x0038;
+const UPCTL2_POWER_CTRL: usize = UPCTL2_BASE + 0x0030;
+const UPCTL2_POWER_TIMING: usize = UPCTL2_BASE + 0x0034;
+const UPCTL2_HWLP_CTRL: usize = UPCTL2_BASE + 0x0038;
 const UPCTL2_REFRESH_CTRL0: usize = UPCTL2_BASE + 0x0050;
 const UPCTL2_REFRESH_CTRL1: usize = UPCTL2_BASE + 0x0054;
 const UPCTL2_REFRESH_CTRL2: usize = UPCTL2_BASE + 0x0058;
@@ -90,7 +93,7 @@ const UPCTL2_INIT4: usize = UPCTL2_BASE + 0x00e0;
 const UPCTL2_INIT5: usize = UPCTL2_BASE + 0x00e4;
 const UPCTL2_INIT6: usize = UPCTL2_BASE + 0x00e8;
 const UPCTL2_INIT7: usize = UPCTL2_BASE + 0x00ec;
-const UPCTL2_ZQCTL0: usize = UPCTL2_BASE + 0x0180;
+const UPCTL2_ZQ_CTRL0: usize = UPCTL2_BASE + 0x0180;
 const UPCTL2_DFI_MISC: usize = UPCTL2_BASE + 0x01b0;
 const UPCTL2_0248: usize = UPCTL2_BASE + 0x0248;
 const UPCTL2_024C: usize = UPCTL2_BASE + 0x024c;
@@ -98,7 +101,7 @@ const UPCTL2_DBG_CMD: usize = UPCTL2_BASE + 0x030c;
 const UPCTL2_DBG_STAT: usize = UPCTL2_BASE + 0x0310;
 const UPCTL2_SW_CTRL: usize = UPCTL2_BASE + 0x0320;
 const UPCTL2_SW_STAT: usize = UPCTL2_BASE + 0x0324;
-const UPCTL2_0404: usize = UPCTL2_BASE + 0x0404;
+const UPCTL2_PCFGR_N: usize = UPCTL2_BASE + 0x0404;
 
 const UPCTL2_MR_WR_BUSY: u32 = 1;
 
@@ -174,8 +177,7 @@ fn clk_set_dpll(freq: u32) {
         _ => 0x30001,
     };
 
-    const CRU_NS_MODE_CONF0: usize = CRU_NS_BASE + 0x00C0;
-    write32(CRU_NS_MODE_CONF0, 0x000c_0000);
+    write32(CRU_NS_MODE_CFG0, 0x000c_0000);
     write32(CRU_NS_BASE + 0x0128, 0x2000_2000);
     let fbdiv = (f_mhz * postdiv1 * postdiv2 / 24);
     write32(CRU_NS_BASE + 0x0020, 0x7fff_0000 | (postdiv2 << 12) | fbdiv);
@@ -198,21 +200,24 @@ struct RegVal {
     value: u32,
 }
 
-const XX_PARAMS_0_PHY: [RegVal; 4] = [
+type CtrlCfg = [RegVal; 25];
+type PhyCfg = [RegVal; 4];
+
+const PHY_CFG0: PhyCfg = [
     RegVal {
-        offset: 0x00,
+        offset: 0x0000,
         value: 0x0000_1FA7,
     }, //
     RegVal {
-        offset: 0x08,
+        offset: 0x0008,
         value: 0x0000_0000,
     }, //
     RegVal {
-        offset: 0x0c,
+        offset: 0x000c,
         value: 0x0500_0000,
     }, //
     RegVal {
-        offset: 0x10,
+        offset: 0x0010,
         value: 0x0500_0000,
     }, //
 ];
@@ -265,70 +270,83 @@ fn get_funny_bits() -> (u32, u32) {
 
 // FIXME: vendor code also refers to +0x24, +0x3c, +0x30... but that overlaps
 // with other instances of this struct in the vendor code. What's up with that?
-struct Cfg {
-    p0: u32, // + 0x00
-    p1: u32, // + 0x04
-    p2: u32, // + 0x08
-    p3: u32, // + 0x0c
-    p4: u32, // + 0x10
-    p5: u32, // + 0x14
-    p6: u32, // + 0x18
-    p7: u32, // + 0x1c
-    p8: u32, // + 0x20
+// U-Boot structs for this, but they are casted...
+// drivers/ram/rockchip/sdram-rv1126-loader_params.inc
+// drivers/ram/rockchip/sdram_rv1126.c  u32 common_info[]
+// ude/asm/arch-rockchip/sdram_common.h  ddr2_3_4_lp2_3_info + lp4_info
+struct DdrCfg {
+    p0: u32,                // + 0x00  ddr_freq_f0_f1
+    p1: u32,                // + 0x04  ddr_freq_f2_f3
+    p2: u32,                // + 0x08  ddr_freq_f4_f5
+    p3: u32,                // + 0x0c  odt_on_drv
+    odt_off_drv: u32,       // + 0x10  odt_off_drv
+    odt_pu_cal_info: u32,   // + 0x14  odt_pu_cal_info
+    p6: u32,                // + 0x18  odt_enable_freq
+    p7: u32,                // + 0x1c  odt_on_slew_rate
+    odt_off_slew_rate: u32, // + 0x20  odt_off_slew_rate
 }
 
-const CFG_0X11: Cfg = Cfg {
+struct Lp4Cfg {
+    ddr_cfg: DdrCfg,
+    ca_odt_on_freq: u32,
+    cs_drv_ca_odt_info: u32,
+    odt_on_vref: u32,
+    odt_off_vref: u32,
+}
+
+const CFG_0X11: DdrCfg = DdrCfg {
     p0: 0x0014_4210,
     p1: 0x0021_0210,
     p2: 0x0000_0000,
     p3: 0x2221_2121,
-    p4: 0x2221_2121,
-    p5: 0x000C_A778,
+    odt_off_drv: 0x2221_2121,
+    odt_pu_cal_info: 0x000C_A778,
     p6: 0x0014_D14D, // + 0x18; (>> 12) => 14d < 144 ? NO
     p7: 0x0000_030F,
-    p8: 0x0000_030F,
+    odt_off_slew_rate: 0x0000_030F,
 };
 
-const CFG_0X20: Cfg = Cfg {
+const CFG_0X20: DdrCfg = DdrCfg {
     p0: 0x0014_4210, // + 0x24
     p1: 0x0021_0210, // + 0x28
     p2: 0x0000_0000, // + 0x2c
     p3: 0x2225_2525, // + 0x30
-    p4: 0x2225_2525,
-    p5: 0x000C_8B78,
+    odt_off_drv: 0x2225_2525,
+    odt_pu_cal_info: 0x000C_8B78,
     p6: 0x0027_1271,
     p7: 0x0001_010E,
-    p8: 0x0001_010E,
+    odt_off_slew_rate: 0x0001_010E,
 };
 
-const CFG_0X29: Cfg = Cfg {
+const CFG_0X29: DdrCfg = DdrCfg {
     p0: 0x0014_4210,
     p1: 0x0021_0210,
     p2: 0x0000_0000,
     p3: 0x2227_2525,
-    p4: 0x2227_2525,
-    p5: 0x000C_9478,
+    odt_off_drv: 0x2227_2525,
+    odt_pu_cal_info: 0x000C_9478,
     p6: 0x0014_D14D,
     p7: 0x000F_010F,
-    p8: 0x000F_010F,
+    odt_off_slew_rate: 0x000F_010F,
 };
 
-const CFG_0X41: Cfg = Cfg {
+const CFG_0X41: DdrCfg = DdrCfg {
     p0: 0x0014_4210,
     p1: 0x0021_0210,
     p2: 0x0000_0000,
     p3: 0x2824_241D,
-    p4: 0x2824_241D,
-    p5: 0x01E0_3C50,
+    odt_off_drv: 0x2824_241D,
+    odt_pu_cal_info: 0x01E0_3C50,
     p6: 0x000C_8320,
     p7: 0x0000_0000,
-    p8: 0x0000_0000,
+    odt_off_slew_rate: 0x0000_0000,
 };
 
 // NOTE: Those structs do not align all too well in the vendor code.
 // There are potential overlaps, probably related to pointer casts in source,
 // with optimizations in the build process dropping parts of then-free memory.
-fn cfg_for_dram_type(dram_type: u32) -> Cfg {
+// U-Boot  drivers/ram/rockchip/sdram_rv1126.c  get_ddr_drv_odt_info
+fn get_ddr_drv_odt_info(dram_type: u32) -> DdrCfg {
     match dram_type {
         // 0 => CFG_0X14, // does not really exist, vendor code is buggy (?)
         3 => CFG_0X11,
@@ -344,7 +362,8 @@ fn cfg_for_dram_type(dram_type: u32) -> Cfg {
 
 type DramMx = [u32; 24];
 
-// NOTE: This is all LE, so the upper half is what matters in upctl2_phy_smth.
+// NOTE: This is all LE, so the upper half is what matters in set_ds_odt.
+// drivers/ram/rockchip/sdram_rv1126.c  d3_phy_drv_2_ohm
 const DRAM_T3_MX: DramMx = [
     0x01F4_0001,
     0x00FA_0002,
@@ -374,13 +393,15 @@ const DRAM_T3_MX: DramMx = [
 ];
 
 // TODO: enum for dram_type
-fn upctl2_phy_smth(dram_freq: u32, dram_type: u32, smth: bool) {
-    let cfg = cfg_for_dram_type(dram_type);
+// drivers/ram/rockchip/sdram_rv1126.c  set_ds_odt
+fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
+    let cfg = get_ddr_drv_odt_info(dram_type);
 
     // Those really depend on dram_freq and cfg; shortcut taken here.
-    let p7_8 = cfg.p8;
-    let p5 = (cfg.p5 >> 29) & 1;
-    let p3_4 = cfg.p4;
+    let p3_4 = cfg.odt_off_drv;
+    // PHY_LP4_DRV_PULLDOWN_EN_ODTOFF
+    let p5 = (cfg.odt_pu_cal_info >> 29) & 1;
+    let p7_8 = cfg.odt_off_slew_rate;
 
     let mut params: [u16; 12] = [
         0, 0, 0, 0, // first 4 values are prefilled
@@ -397,9 +418,9 @@ fn upctl2_phy_smth(dram_freq: u32, dram_type: u32, smth: bool) {
     // let dram_type_x = dram_type - 7; // fffffffc
 
     // NOTE: conditions skipped
-    let p4_byte3 = cfg.p4 >> 24;
+    let p4_byte3 = cfg.odt_off_drv >> 24;
     let params_3 = 0 as u8;
-    let p5_bit27 = (cfg.p5 >> 27) & 1;
+    let p5_bit27 = (cfg.odt_pu_cal_info >> 27) & 1;
 
     // TODO: tweak this
     // 4 iterations
@@ -432,7 +453,7 @@ fn upctl2_phy_smth(dram_freq: u32, dram_type: u32, smth: bool) {
 
     // TODO: calculate other params! precalc..?
 
-    // FIXME: + 0x30 / + 0x2c
+    // NOTE: Lp4Cfg has 12 properties; we have DDR3 though!
     // let xx1 = if params_3 == 0 { cfg.p12 } else { cfg.p11 };
     let xx1 = if params_3 == 0 {
         CFG_0X20.p3
@@ -462,7 +483,7 @@ fn upctl2_phy_smth(dram_freq: u32, dram_type: u32, smth: bool) {
     }
 
     // TODO: tweak this
-    // 4 iterations
+    // 5 iterations
     for o in (0x0300..0x0a80).step_by(0x180) {
         let r = DDR_PHY_BASE + o + 4;
         let v = ((params[10] as u32) << 24)
@@ -538,7 +559,7 @@ fn upctl2_phy_smth(dram_freq: u32, dram_type: u32, smth: bool) {
     let v = read32(UPCTL2_BASE + o3);
     let v = v & 0xfd99;
 
-    let p4_byte3 = cfg.p4 >> 24;
+    let p4_byte3 = cfg.odt_off_drv >> 24;
 
     let v3 = if p4_byte3 == 0x22 { v | (1 << 1) } else { v };
     // TODO: if !smth ...
@@ -558,8 +579,8 @@ fn upctl2_sw_set_ack() {
 }
 
 // NOTE: this looks similar to PHY cfg functions for other PHYs
-fn phy_cfg() {
-    for p in XX_PARAMS_0_PHY.iter() {
+fn phy_cfg(cfg: &PhyCfg) {
+    for p in cfg.iter() {
         let r = DDR_PHY_BASE + p.offset as usize;
         let v = if p.offset <= 16 {
             (read32(r) & 0xc0ff_ffff) | p.value
@@ -601,25 +622,27 @@ fn phy_measure_xx(dram_freq: u32) -> u32 {
     (v3 / 100) & 0x7f
 }
 
-// sdram_init_ ?
+// sdram_init_ / sdram_init_detect ?
 fn ddr_xxx(enable_ecc: bool) {
     // TODO: These values come from structs at the offsets encoded in the
     // variable names. Should we make those structs or simple parameters?
-    // U-Boot arm/include/asm/arch-rockchip/sdram_common.h
+    // U-Boot arch/arm/include/asm/arch-rockchip/sdram_common.h sdram_cap_info
+    //        arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
     let rank = 0x1; // s_0000
-    let s_0004 = 0xc; // col
-    let s_0008 = 0x3; // bank number, power of 2, i.e., 2^3=8
-    let s_000c = 0x1; // channel bus width, 1 means 16bit
-    let s_0010 = 0x0; // die bus width, 0 means 8bit
-    let s_0014 = 0x0; // row 3_4, 0 means normal die, power of 2
-    let s_0018 = 0x10; // CS0 row
-    let s_001c = 0x10; // CS1 row
+    let s_0004 = 12; // col
+    let s_0008 = 3; // bank number, power of 2, i.e., 2^3=8
+    let s_000c = 1; // channel bus width, 1 means 16bit
+    let s_0010 = 0; // die bus width, 0 means 8bit
+    let s_0014 = 0; // row 3_4, 0 means normal die, power of 2
+    let s_0018 = 16; // CS0 row
+    let s_001c = 16; // CS1 row
 
     // was s_0064
     let dram_freq = 0x144;
     // was s_0068
     let dram_type = 0x3;
-    let s_007c = XX_PARAMS_0_UPCTL2[0].value;
+
+    let s_007c = UPCTL2_CFG0[0].value;
 
     println!("ddr_xxx");
     write32(DDR_GRF_CTRL0, 0x20000);
@@ -628,12 +651,12 @@ fn ddr_xxx(enable_ecc: bool) {
 
     // maybe reset
     write32(SYS_SGRF_0014, 0x0b00_0b00);
-    write32(CRU_S_0208, 0x0002_0002);
-    write32(CRU_NS_046C, 0x0180_0180);
+    write32(CRU_S_CLK_SEL_CFG66, 0x0002_0002);
+    write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0180);
     udelay(10);
     write32(SYS_SGRF_0014, 0x0b00_0b00);
-    write32(CRU_S_0208, 0x0002_0002);
-    write32(CRU_NS_046C, 0x0180_0100);
+    write32(CRU_S_CLK_SEL_CFG66, 0x0002_0002);
+    write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0100);
 
     // TODO: What is the possible value range?
     // This check may be unnecessary.
@@ -656,7 +679,7 @@ fn ddr_xxx(enable_ecc: bool) {
 
     // extracted
     // TODO: other rounds may have different params / sizes thereof
-    phy_cfg();
+    phy_cfg(&PHY_CFG0);
 
     // Extracted here to keep the flow simpler
     let (vl, vxx) = get_funny_bits();
@@ -677,13 +700,15 @@ fn ddr_xxx(enable_ecc: bool) {
     write32(DDR_PHY_BASE, vxo);
 
     // TODO: tweak this
-    // Each loop has 4 iterations
+    // Each loop has 5 iterations
     match dram_type {
         0 | 3 | 6 => {
             for o in (0x0300..0x0a80).step_by(0x180) {
                 let r = DDR_PHY_BASE + o + 8;
                 let v = read32(r);
-                write32(r, v & 0xffff_fdff);
+                let nv = v & 0xffff_fdff;
+                println!("  {r:08x}: {v:08x} -> {nv:08x}");
+                write32(r, nv);
             }
         }
         7 => {
@@ -719,16 +744,16 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(DDR_PHY_0044);
     write32(DDR_PHY_0044, v & 0x3fffffff);
 
-    write32(CRU_NS_046C, 0x0180_0000);
+    write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
     write32(SYS_SGRF_0014, 0x0b00_0300);
-    write32(CRU_S_0208, 0x0002_0000);
-    write32(CRU_NS_046C, 0x0180_0000);
+    write32(CRU_S_CLK_SEL_CFG66, 0x0002_0000);
+    write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
 
     // NOTE: params list needs to be a param here as well
-    upctl2_config(&XX_PARAMS_0_UPCTL2, 0x005d, 0x000d);
+    upctl2_config(&UPCTL2_CFG0, 0x005d, 0x000d);
 
-    let v = read32(UPCTL2_0404);
-    write32(UPCTL2_0404, v | 0x0001_0000);
+    let v = read32(UPCTL2_PCFGR_N);
+    write32(UPCTL2_PCFGR_N, v | (1 << 16));
 
     // drivers/ram/rockchip/sdram_rv1126.c
     // static int sdram_init_(/*...*/)
@@ -739,7 +764,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(UPCTL2_MSTR2);
     write32(UPCTL2_MSTR2, v & !(0b11));
 
-    upctl2_phy_smth(dram_freq, dram_type, false);
+    set_ds_odt(dram_freq, dram_type, false);
 
     // 0xd
     let s_000c_0004 = s_000c + s_0004;
@@ -785,8 +810,8 @@ fn ddr_xxx(enable_ecc: bool) {
 
     // reset ?
     write32(SYS_SGRF_0014, 0x0b00_0000);
-    write32(CRU_S_0208, 0x0002_0000);
-    write32(CRU_NS_046C, 0x0180_0000);
+    write32(CRU_S_CLK_SEL_CFG66, 0x0002_0000);
+    write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
 
     // bits 0..2: OPERATING_MODE
     // - 0 = init
@@ -863,8 +888,8 @@ fn ddr_xxx(enable_ecc: bool) {
 }
 
 fn train(dram_type: u32) {
-    let xx = if upctl2_zqctl_refreshctl() { 1 } else { 0 };
-    write32(CRU_NS_BASE + 0x00a0, xx);
+    let disable_auto_zq = upctl2_zqctl_refreshctl();
+    write32(CRU_NS_VPLL_CFG0, disable_auto_zq as u32);
 
     let v = read32(UPCTL2_BASE + 0x0028);
     write32(UPCTL2_BASE + 0x0028, v & !(1 << 1));
@@ -883,17 +908,20 @@ fn train(dram_type: u32) {
     // TODO
 }
 
+// U-Boot drivers/ram/rockchip/sdram_pctl_px30.c pctl_dis_zqcs_aref
 fn upctl2_zqctl_refreshctl() -> bool {
-    let v0 = read32(UPCTL2_ZQCTL0);
-    let zqctl0_31_not_set = v0 & (1 << 31) != 0;
-    if zqctl0_31_not_set {
-        write32(UPCTL2_ZQCTL0, v0 | (1 << 31));
+    let v0 = read32(UPCTL2_ZQ_CTRL0);
+    let disable_auto_zq = v0 & (1 << 31) != 0;
+    // disable ZQ CS
+    if disable_auto_zq {
+        write32(UPCTL2_ZQ_CTRL0, v0 | (1 << 31));
     }
+    // disable auto refresh
     let v = read32(UPCTL2_REFRESH_CTRL4);
     write32(UPCTL2_REFRESH_CTRL4, v | 1);
     let v = read32(UPCTL2_REFRESH_CTRL4);
     write32(UPCTL2_REFRESH_CTRL4, v ^ (1 << 1));
-    zqctl0_31_not_set
+    disable_auto_zq
 }
 
 // U-Boot drivers/ram/rockchip/sdram_pctl_px30.c pctl_write_mr
@@ -944,6 +972,8 @@ const DEBUG: bool = true;
 
 /*
  * drivers/ram/rockchip/sdram_pctl_px30.c pctl_read_mr()
+ * cs = chip select
+ * mr = mode register?
  *
  * rank = 1: cs0
  * rank = 2: cs1
@@ -984,16 +1014,16 @@ const DATA: [u32; 9] = [
 fn upctl2_config(reg_vals: &[RegVal], p1: u32, p2: u32) {
     fill_regs(UPCTL2_BASE, reg_vals);
 
-    let v = read32(UPCTL2_PWRTMG);
+    let v = read32(UPCTL2_POWER_TIMING);
     let m = 0xff00_ffe0;
-    write32(UPCTL2_PWRTMG, v & m | ((p1 & 0xff) << 16) | p2 & 0x1f);
+    write32(UPCTL2_POWER_TIMING, v & m | ((p1 & 0xff) << 16) | p2 & 0x1f);
 
-    let v = read32(UPCTL2_HWLPCTL);
+    let v = read32(UPCTL2_HWLP_CTRL);
     let m = 0xf000_ffff;
-    write32(UPCTL2_HWLPCTL, v & m | 0x50000);
+    write32(UPCTL2_HWLP_CTRL, v & m | 0x50000);
 
-    let v = read32(UPCTL2_ZQCTL0);
-    write32(UPCTL2_ZQCTL0, v | 0x80000000);
+    let v = read32(UPCTL2_ZQ_CTRL0);
+    write32(UPCTL2_ZQ_CTRL0, v | 0x80000000);
 }
 
 fn fill_regs(base: usize, data: &[RegVal]) {
@@ -1004,107 +1034,107 @@ fn fill_regs(base: usize, data: &[RegVal]) {
 
 // NOTE: The first value here has been changed to 0x4304_1401 ( | 0x400 ) in
 // the first round of dram_init_main.
-const XX_PARAMS_0_UPCTL2: [RegVal; 25] = [
+const UPCTL2_CFG0: CtrlCfg = [
     RegVal {
-        offset: 0x00,
+        offset: 0x0000,
         // NOTE: value overridden in control flow in dram_init_main, condition
         // for setting or clearing bit 10 (0x400) seems to be a fixed constant.
-        value: 0x43041001 | (1 << 10),
+        value: 0x4304_1001 | (1 << 10),
     },
     RegVal {
-        offset: 0x64,
-        value: 0x270039,
+        offset: 0x0064,
+        value: 0x0027_0039,
     },
     RegVal {
-        offset: 0xD0,
-        value: 0x20051,
+        offset: 0x00d0, // INIT0
+        value: 0x0002_0051,
     },
     RegVal {
-        offset: 0xD4,
-        value: 0x210000,
+        offset: 0x00d4, // INIT1
+        value: 0x0021_0000,
     },
     RegVal {
-        offset: 0xD8,
-        value: 0x100,
+        offset: 0x00d8, // INIT2
+        value: 0x0000_0100,
     },
     RegVal {
-        offset: 0xDC,
-        value: 0x3100000,
+        offset: 0x00dc, // INIT3
+        value: 0x0310_0000,
     },
     RegVal {
-        offset: 0xE0,
+        offset: 0x00e0, // INIT4
         value: 0x0,
     },
     RegVal {
-        offset: 0xE4,
+        offset: 0x00e4, // INIT5
         value: 0x90000,
     },
     RegVal {
-        offset: 0xF4,
+        offset: 0x00f4, // RANK_CTRL
         value: 0xF022F,
     },
     RegVal {
-        offset: 0x100,
-        value: 0x7090B06,
+        offset: 0x0100, // DRAM_TIMING0
+        value: 0x0709_0b06,
     },
     RegVal {
-        offset: 0x104,
-        value: 0x50209,
+        offset: 0x0104, // DRAM_TIMING1
+        value: 0x0005_0209,
     },
     RegVal {
-        offset: 0x108,
-        value: 0x3030307,
+        offset: 0x0108, // DRAM_TIMING2
+        value: 0x0303_0307,
     },
     RegVal {
-        offset: 0x10C,
-        value: 0x202006,
+        offset: 0x010c, // DRAM_TIMING3
+        value: 0x0020_2006,
     },
     RegVal {
-        offset: 0x110,
-        value: 0x3020203,
+        offset: 0x0110, // DRAM_TIMING4
+        value: 0x0302_0203,
     },
     RegVal {
-        offset: 0x114,
-        value: 0x3030202,
+        offset: 0x0114, // DRAM_TIMING5
+        value: 0x0303_0202,
     },
     RegVal {
-        offset: 0x120,
-        value: 0x903,
+        offset: 0x0120, // DRAM_TIMING8
+        value: 0x0000_0903,
     },
     RegVal {
-        offset: 0x180,
-        value: 0x800020,
+        offset: 0x0180, // ZQ_CTRL0
+        value: 0x0080_0020,
     },
     RegVal {
-        offset: 0x184,
+        offset: 0x0184, // ZQ_CTRL1
         value: 0x0,
     },
     RegVal {
-        offset: 0x190,
-        value: 0x7010001,
+        offset: 0x0190, // DFI_TIMING0
+        value: 0x0701_0001,
     },
     RegVal {
-        offset: 0x198,
-        value: 0xA000101,
+        offset: 0x0198, // DFI_LP_CFG0
+        value: 0x0a00_0101,
     },
     RegVal {
-        offset: 0x1A0,
-        value: 0xC0400003,
+        offset: 0x01a0, // DFI_UPDATE0
+        value: 0xc040_0003,
     },
     RegVal {
-        offset: 0x240,
-        value: 0x6000600,
+        offset: 0x0240, // ODT_CFG
+        value: 0x0600_0600,
     },
     RegVal {
-        offset: 0x244,
-        value: 0x201,
+        offset: 0x0244, // ODT_MAP
+        value: 0x0000_0201,
     },
     RegVal {
-        offset: 0x250,
-        value: 0x1F00,
+        offset: 0x0250, // SCHED
+        value: 0x0000_1f00,
     },
     RegVal {
-        offset: 0x490,
+        offset: 0x0490, // PCTRL_N
         value: 0x1,
     },
 ];
@@ -1114,6 +1144,7 @@ const PMIC_ADDR: u8 = 0x20;
 
 const DUMP_OTP_NS: bool = false;
 
+// U-Boot: drivers/ram/rockchip/sdram_rv1126.c  rv1126_dmc_init
 pub fn init() {
     if DUMP_OTP_NS {
         _ = crate::otp::read_ns(0, 0x40);
@@ -1160,5 +1191,6 @@ pub fn init() {
 
     // TODO: only first round?
     let enable_ecc = true;
+    // sdram_init_detect ?
     ddr_xxx(enable_ecc);
 }
