@@ -561,8 +561,8 @@ fn upctl2_sw_set_ack() {
 fn phy_cfg() {
     for p in XX_PARAMS_0_PHY.iter() {
         let r = DDR_PHY_BASE + p.offset as usize;
-        let v = if p.value * 4 < 9 {
-            (read32(r) & 0xc0ffffff) | p.value
+        let v = if p.offset <= 16 {
+            (read32(r) & 0xc0ff_ffff) | p.value
         } else {
             p.value
         };
