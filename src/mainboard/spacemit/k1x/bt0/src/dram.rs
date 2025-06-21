@@ -2,9 +2,13 @@ use log::{print, println};
 use util::mem::dump_block;
 use util::mmio::{read32, write32};
 
+// U-Boot  drivers/ddr/spacemit/k1x/lpddr4_silicon_init.c
+
 const DDR_TRAINING_INFO: usize = 0xC080_0000;
 
+// data rate in mega transfers, currently hardcoded
 const DATA_RATE: u32 = 2400;
+// NOTE: This comes from the DT in U-Boot. Default is 1 otherwise.
 const CS_NUM: u32 = 2;
 const DDRC_BASE: usize = 0xc000_0000;
 
@@ -14,7 +18,8 @@ const DPHY0_BASE_OFFSET: usize = 0x0004_0000;
 const BAR_BASE_OFFSET: usize = 0x0005_0000;
 const FOO_BASE_OFFSET: usize = 0x0005_8000;
 
-// drivers/ddr/spacemit/k1x/ddr_init_asic.h
+// U-Boot  drivers/ddr/spacemit/k1x/ddr_init_asic.h
+// memory controller channel 0
 const MC_CH0_BASE_OFFSET: usize = 0x0200;
 const MC_CH0_PHY_BASE_OFFSET: usize = 0x1000;
 
@@ -24,17 +29,6 @@ const SUBPHY_B_OFFSET: usize = 0x0200;
 const FREQ_POINT_OFFSET: usize = 0x4000;
 
 const OTHER_CONTROL_OFFSET: usize = 0x10000;
-
-#[repr(C)]
-#[derive(Debug)]
-struct HeaderInfo {
-    magic: u32,
-    crc32: u32,
-    chipid: u64,
-    mac_addr: u64,
-    version: u32,
-    cs_num: u32,
-}
 
 const DDR_TRAINING_INFO_MAGIC: usize = 0x54524444; // DDRT
 const DDR_TRAINING_INFO_VERSION: usize = 0x0001_0000;
@@ -61,22 +55,10 @@ fn enable_pll() {
 
 fn mck6_sw_fc_top(freq_no: u32) {
     let freq = match freq_no {
-        0 => {
-            /* 1200MT */
-            0x0000_3B50
-        }
-        1 => {
-            /* 1600MT */
-            0x0000_3B04
-        }
-        2 => {
-            /* 1600MT */
-            0x0000_3B40
-        }
-        3 => {
-            /* 3200MT */
-            0x0000_3B00
-        }
+        0 => 0x0000_3B50, // 1200MT
+        1 => 0x0000_3B04, // 2400MT
+        2 => 0x0000_3B40, // 1600MT
+        3 => 0x0000_3B00, // 3200MT
         4 => {
             println!("DDR SW frequency change to ext clk");
             0x0000_3B02
@@ -670,18 +652,23 @@ fn ddr_dfc_table_init(ddrc_base: usize) {
     write32(ddrc_base + 0x74, 0x00040303);
     write32(ddrc_base + 0x78, 0x00000044);
     write32(ddrc_base + 0x70, 0x00000000);
+
     write32(ddrc_base + 0x74, 0x13000008);
     write32(ddrc_base + 0x78, 0x00000020);
     write32(ddrc_base + 0x70, 0x00000001);
+
     write32(ddrc_base + 0x74, 0x13010000);
     write32(ddrc_base + 0x78, 0x00000028);
     write32(ddrc_base + 0x70, 0x00000002);
+
     write32(ddrc_base + 0x74, 0x1302000d);
     write32(ddrc_base + 0x78, 0x00000024);
     write32(ddrc_base + 0x70, 0x00000003);
+
     write32(ddrc_base + 0x74, 0x13020001);
     write32(ddrc_base + 0x78, 0x00000024);
     write32(ddrc_base + 0x70, 0x00000004);
+
     write32(ddrc_base + 0x74, 0x13020002);
     write32(ddrc_base + 0x78, 0x00000024);
     write32(ddrc_base + 0x70, 0x00000005);
@@ -1060,8 +1047,8 @@ fn ddr_dfc(ddrc_base: usize, freq_no: u32) {
             write32(FREQ_REG1, 0x00003B02);
             write32(FREQ_REG2, cfg);
         }
-        _ => {
-            println!("no this case");
+        x => {
+            println!("BAD frequency change {x}");
         }
     }
 
@@ -1534,8 +1521,7 @@ fn top_training_fp_all(
 }
 
 pub fn init() {
-    // NOTE: This comes from the DT in U-Boot. Default is 1 otherwise.
-    let cs_num = 2;
+    let cs_num = CS_NUM;
 
     top_common_config();
     top_ddr_mc_phy_device_init(DDRC_BASE, cs_num, 0);
@@ -1560,19 +1546,11 @@ pub fn init() {
     ddr_dfc(DDRC_BASE, fp);
     top_training_fp_all(DDRC_BASE, cs_num, fp);
 
-    let data_rate = 2400;
+    let data_rate = DATA_RATE;
     /* change dram frequency */
     match data_rate {
-        1600 => {
-            ddr_dfc(DDRC_BASE, 1);
-        }
-        // WE HIT THIS
-        2400 => {
-            ddr_dfc(DDRC_BASE, 2);
-        }
-        1200 | _ => {
-            // data_rate = 1200;
-            ddr_dfc(DDRC_BASE, 0);
-        }
+        1600 => ddr_dfc(DDRC_BASE, 1),
+        2400 => ddr_dfc(DDRC_BASE, 2),
+        1200 | _ => ddr_dfc(DDRC_BASE, 0),
     }
 }

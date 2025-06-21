@@ -31,3 +31,6 @@ objdump: build
 
 hexdump: build
 	xxd $(RELEASE_BIN)
+
+flowchart:
+	mmcd -i flow.chart -w 1920 -H 1080 -o flow.png
