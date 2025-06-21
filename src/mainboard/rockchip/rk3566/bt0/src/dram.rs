@@ -656,19 +656,37 @@ fn phy_measure_xx(dram_freq: u32) -> u32 {
     (v3 / 100) & 0x7f
 }
 
+fn upctl2_prefill() {
+    const PREFILL_0200_DATA: [u32; 9] = [
+        0x0000_1f1f,
+        0x0009_0909,
+        0x0,
+        0x0,
+        0x0000_1f00,
+        0x0808_0808,
+        0x0808_0808,
+        0x0000_0f08,
+        0x0,
+    ];
+    let b = UPCTL2_BASE + 0x200;
+    for (i, v) in PREFILL_0200_DATA.iter().enumerate() {
+        write32(b + i * 4, *v);
+    }
+}
+
 // sdram_init_ / sdram_init_detect ?
 fn ddr_xxx(enable_ecc: bool) {
     // TODO: These values come from structs at the offsets encoded in the
     // variable names. Should we make those structs or simple parameters?
     // U-Boot arch/arm/include/asm/arch-rockchip/sdram_common.h sdram_cap_info
     //        arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
-    let rank = 0x1; // s_0000
-    let s_0004 = 12; // col
-    let s_0008 = 3; // bank number, power of 2, i.e., 2^3=8
+    let rank = 1; // s_0000
+    let column = 12; // col
+    let bank_num = 3; // bank number, power of 2, i.e., 2^3=8
     let bus_width = 1; // channel bus width, 1 means 16bit
     let s_0010 = 0; // die bus width, 0 means 8bit
     let s_0014 = 0; // row 3_4, 0 means normal die, power of 2
-    let s_0018 = 16; // CS0 row
+    let cs0_row = 16; // CS0 row
     let s_001c = 16; // CS1 row
 
     // was s_0064
@@ -768,7 +786,11 @@ fn ddr_xxx(enable_ecc: bool) {
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
 
     // NOTE: params list needs to be a param here as well
-    upctl2_config(&UPCTL2_CFG0, 0x005d, 0x000d);
+    // the stem from the global config:
+    //   PD_IDLE = ???
+    const SELF_REFRESH_IDLE: u32 = 0x005d;
+    const PD_IDLE: u32 = 0x000d;
+    upctl2_config(&UPCTL2_CFG0, SELF_REFRESH_IDLE, PD_IDLE);
 
     let v = read32(UPCTL2_PCFGR_N);
     write32(UPCTL2_PCFGR_N, v | (1 << 16));
@@ -784,21 +806,26 @@ fn ddr_xxx(enable_ecc: bool) {
 
     set_ds_odt(dram_freq, dram_type, false);
 
-    // 0xd
-    let s_000c_0004 = bus_width + s_0004;
+    // similar to arch/arm/mach-rockchip/rk3036/sdram_rk3036.c  sdram_all_config
+    // 0xd (13)
+    let bw_plus_col = bus_width + column;
 
-    // 3 * 0x20 | 0 | (-3) = 0xffff_fffc
-    let vt = ((rank - 1) << 8) | ((s_0018 - 13) << 5) | (s_000c_0004 - 10);
+    // 0 | (3 << 5) | 3 = 0b0110_0011 = 0x63
+    // TODO: is this osreg?
+    let vt = ((rank - 1) << 8) | ((cs0_row - 13) << 5) | (bw_plus_col - 10);
+    println!("vt {vt:08x}");
 
-    let vxx = if s_0008 == 3 { vt | 8 } else { vt };
+    // bank_num is 3
+    let vxx = if bank_num == 3 { vt | 8 } else { vt };
 
     let idx = find_index(vxx);
 
-    // NOTE: original code mutates global variable
+    // NOTE: original code mutates global variable; this searches for a list of
+    // data.
     let s_0030 = idx.unwrap_or_else(|| {
-        if s_0008 == 3 && s_000c_0004 == 10 {
+        if bank_num == 3 && bw_plus_col == 10 {
             14
-        } else if rank != 1 || s_0008 != 3 || s_0018 > 17 || s_000c_0004 != 13 {
+        } else if rank != 1 || bank_num != 3 || cs0_row > 17 || bw_plus_col != 13 {
             // NOTE: This should never happen.
             panic!("calculcate DDR config error")
         } else {
@@ -806,20 +833,27 @@ fn ddr_xxx(enable_ecc: bool) {
         }
     });
 
+    upctl2_prefill();
+
     // TODO: more logic
-    // s_0018
+    // cs0_row
     let o = 0x0218 + 4;
     let r = UPCTL2_BASE + o;
     let v = read32(r);
-    write32(r, v | (0xf << 8));
+    // put 0xf at respectively byte position 0, 1, 2 or 3
+    let byte_pos = (0x11 & 3) << 3; // 1 << 3 = 8
+    write32(r, v | (0xf << byte_pos));
     let v = read32(r);
-    write32(r, v | (0xf << 0));
+    let byte_pos = (0x10 & 3) << 3; // 1 << 3 = 8
+    write32(r, v | (0xf << byte_pos));
 
     if rank == 1 {
         let r = UPCTL2_BASE + 0x200;
         let v = read32(r);
         write32(r, v | 0x1f);
     }
+
+    // ----
 
     // also in U-Boot drivers/ram/rockchip/sdram_rv1126.c sdram_init_
     let r = UPCTL2_DFI_MISC;
@@ -882,17 +916,26 @@ fn ddr_xxx(enable_ecc: bool) {
     // we expect 0x4d for both
     println!("LP4  MR12: {mr12:02x}  MR14: {mr14:02x}");
 
-    if DEBUG {
+    if false && DEBUG {
         // WHOOPSIES
         assert_eq!(mr12, 0x4d);
         assert_eq!(mr14, 0x4d);
     }
 
-    let e8 = read32(UPCTL2_INIT6);
-    let ec = read32(UPCTL2_INIT7);
-    upctl2_write_mr(0xf, 0xb, (e8 >> 16) as u16, 7);
-    upctl2_write_mr(0xf, 0xc, e8 as u16, 7);
-    upctl2_write_mr(0xf, 0x16, (ec >> 16) as u16, 7);
+    let init6 = read32(UPCTL2_INIT6);
+    let init7 = read32(UPCTL2_INIT7);
+    println!("INIT  6: {init6:08x}  7: {init7:08x}");
+    upctl2_write_mr(0xf, 11, (init6 >> 16) as u16, 7);
+    upctl2_write_mr(0xf, 12, init6 as u16, 7);
+    upctl2_write_mr(0xf, 22, (init7 >> 16) as u16, 7);
+
+    if DEBUG {
+        let mr11 = upctl2_read_mr(1, 11, 7);
+        let mr12 = upctl2_read_mr(1, 12, 7);
+        let mr22 = upctl2_read_mr(1, 22, 7);
+        println!("LP4  MR11: {mr11:02x}  MR12: {mr12:02x}  MR22: {mr22:02x}");
+        panic!("DEBUG");
+    }
 
     while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
     write32(UPCTL2_DBG_CMD, 0x0000_0010);
@@ -1012,10 +1055,11 @@ fn upctl2_prep_poll_mr(rank: u32, mr: u32) {
 // 0..=8
 fn find_index(vxx: u32) -> Option<usize> {
     for (i, c) in DATA.iter().enumerate() {
+        let x = *c;
         // NOTE: ^ is XOR
         if (c ^ vxx) & 0x1f == 0 && // asd
-            (vxx & 0xe0) <= (c & 0xe0) && // asd
-            (vxx & 0x100) <= (c & 0x100)
+            (vxx & 0xe0) <= (x & 0xe0) && // asd
+            (vxx & 0x100) <= (x & 0x100)
         {
             return Some(i);
         }
