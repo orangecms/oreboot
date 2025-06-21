@@ -38,30 +38,38 @@ DDR Version V1337 20200218_resume
 ln
 start i2c rd
 suspend_info:0x0, flag:0x20
+
 LP4 MR12:0x4d,MR14:0x4d
 LP4 MR12:0x4d,MR14:0x4d
+
 LPDDR4, 324MHz
 BW=32 Col=10 Bk=8 CS0 Row=16 CS=1 Die BW=16 Size=2048MB
+
 change to: 324MHz
 PWRCTL:0x40,stat:0x303
 minca:0x80,ck:0x80,ab:0x80,0x80, min_ck:0x0
 PWRCTL:0x0,stat:0x1
+
 get tdqqs2dq:482 ps
+
 change to: 528MHz
 PWRCTL:0x40,stat:0x303
 vref_ca:00000072
 minca:0x76,ck:0x80,ab:0x80,0x80, min_ck:0xa
 PWRCTL:0x0,stat:0x1
+
 change to: 528MHz
 PWRCTL:0x40,stat:0x303
 vref_ca:00000072
 minca:0x76,ck:0x80,ab:0x80,0x80, min_ck:0xa
 PWRCTL:0x0,stat:0x1
+
 change to: 528MHz(final freq)
 PWRCTL:0x40,stat:0x303
 vref_ca:00000072
 minca:0x76,ck:0x80,ab:0x80,0x80, min_ck:0xa
 PWRCTL:0x0,stat:0x1
+
 osreg:0x1000e2c1,0x20000001
 out
 */
@@ -82,9 +90,10 @@ const UPCTL2_HWLP_CTRL: usize = UPCTL2_BASE + 0x0038;
 const UPCTL2_REFRESH_CTRL0: usize = UPCTL2_BASE + 0x0050;
 const UPCTL2_REFRESH_CTRL1: usize = UPCTL2_BASE + 0x0054;
 const UPCTL2_REFRESH_CTRL2: usize = UPCTL2_BASE + 0x0058;
-// NOTE: The following two are mixed up in U-Boot.
+// NOTE: The following two are mixed up in U-Boot. Or are they?
 const UPCTL2_REFRESH_CTRL3: usize = UPCTL2_BASE + 0x005c;
 const UPCTL2_REFRESH_CTRL4: usize = UPCTL2_BASE + 0x0060;
+const UPCTL2_REFRESH_TIMING: usize = UPCTL2_BASE + 0x0064;
 const UPCTL2_INIT0: usize = UPCTL2_BASE + 0x00d0;
 const UPCTL2_INIT1: usize = UPCTL2_BASE + 0x00d4;
 const UPCTL2_INIT2: usize = UPCTL2_BASE + 0x00d8;
@@ -240,32 +249,6 @@ fn phy_pll_set(freq: u32, p2: u32) {
     let mask = (0b111 << s1) | (1 << s2);
     let v = v & !mask | (v1 << s1) | (v2 << s2);
     write32(DDR_PHY_00D0, v);
-}
-
-fn get_funny_bits() -> (u32, u32) {
-    let vtt = read32(DDR_GRF_CTRL3);
-    // Extract bits 8..15. The & 0xff is technically not necessary since we
-    // do another extraction hereafter, taking a pair of bits at idx * 2.
-    let vpx = (vtt >> 8) & 0xff;
-    println!("DDR_GRF_000C bits 15..8: {vpx:08b} (full reg val: {vtt:08x})");
-
-    let mut vl = 0;
-    let mut vxx = 0;
-    for idx in 0..4 {
-        // check on bits 8..9, 10..11, 12..13, 14..15 in respective round
-        match (vpx >> (2 * idx)) & 0b11 {
-            0 => {
-                vl = idx;
-            }
-            1 => {
-                vxx = idx;
-            }
-            _ => {}
-        }
-
-        println!("round {idx}: {vl},{vxx}");
-    }
-    (vl, vxx)
 }
 
 // FIXME: vendor code also refers to +0x24, +0x3c, +0x30... but that overlaps
@@ -572,14 +555,43 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     upctl2_sw_set_ack();
 }
 
-// drivers/ram/rockchip/sdram_rv1126.c sw_set_ack
+// U-Boot  drivers/ram/rockchip/sdram_rv1126.c  sw_set_ack
 fn upctl2_sw_set_ack() {
     write32(UPCTL2_SW_CTRL, 1);
     while read32(UPCTL2_SW_STAT) & 1 == 0 {}
 }
 
+fn get_funny_bits() -> (u32, u32) {
+    let v = read32(DDR_GRF_CTRL3);
+    // Extract bits 8..15. The & 0xff is technically not necessary since we
+    // do another extraction hereafter, taking a pair of bits at idx * 2.
+    let dq_map = (v >> 8) & 0xff;
+    println!("DDR_GRF_000C bits 15..8: {dq_map:08b} (full reg val: {v:08x})");
+
+    let mut v0 = 0;
+    let mut v1 = 0;
+    for i in 0..4 {
+        // check on bits 8..9, 10..11, 12..13, 14..15 in respective round
+        match (dq_map >> (i * 2)) & 0x3 {
+            0 => {
+                v0 = i;
+            }
+            1 => {
+                v1 = i;
+            }
+            _ => {}
+        }
+
+        println!("round {i}: {v0},{v1}");
+    }
+    (v0, v1)
+}
+
 // NOTE: this looks similar to PHY cfg functions for other PHYs
-fn phy_cfg(cfg: &PhyCfg) {
+// U-Boot  drivers/ram/rockchip/sdram_rv1126.c  phy_cfg
+fn phy_cfg(cfg: &PhyCfg, dram_freq: u32, rank: u32, bus_width: u32, enable_ecc: bool) {
+    phy_pll_set(dram_freq * MEGA, 0);
+
     for p in cfg.iter() {
         let r = DDR_PHY_BASE + p.offset as usize;
         let v = if p.offset <= 16 {
@@ -589,6 +601,28 @@ fn phy_cfg(cfg: &PhyCfg) {
         };
         write32(r, v)
     }
+
+    // Extracted here to keep the flow simpler
+    let (v0, v1) = get_funny_bits();
+
+    // TODO: Is this really PHY DQ width mask?
+    const PHY_DQ_WIDTH_MASK: u32 = 0xffff_e0ff;
+    let v = read32(DDR_PHY_0000) & PHY_DQ_WIDTH_MASK;
+
+    let vx = match bus_width {
+        1 => v | ((1 << v0) | (1 << v1)) << 8,
+        2 => v | 0x0f00,
+        _ => v | 0x100 << v0,
+    };
+    let mut vxo = if enable_ecc { vx } else { vx | 0x1000 };
+
+    if rank == 4 {
+        vxo |= 0x0010_0000;
+        let v = read32(DDR_PHY_0038);
+        write32(DDR_PHY_0038, v | 1 << 1);
+    }
+
+    write32(DDR_PHY_BASE, vxo);
 }
 
 fn phy_measure_xx(dram_freq: u32) -> u32 {
@@ -631,7 +665,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let rank = 0x1; // s_0000
     let s_0004 = 12; // col
     let s_0008 = 3; // bank number, power of 2, i.e., 2^3=8
-    let s_000c = 1; // channel bus width, 1 means 16bit
+    let bus_width = 1; // channel bus width, 1 means 16bit
     let s_0010 = 0; // die bus width, 0 means 8bit
     let s_0014 = 0; // row 3_4, 0 means normal die, power of 2
     let s_0018 = 16; // CS0 row
@@ -641,8 +675,6 @@ fn ddr_xxx(enable_ecc: bool) {
     let dram_freq = 0x144;
     // was s_0068
     let dram_type = 0x3;
-
-    let s_007c = UPCTL2_CFG0[0].value;
 
     println!("ddr_xxx");
     write32(DDR_GRF_CTRL0, 0x20000);
@@ -675,29 +707,9 @@ fn ddr_xxx(enable_ecc: bool) {
         write32(DDR_GRF_CTRL3, v);
     }
 
-    phy_pll_set(dram_freq * MEGA, 0);
-
     // extracted
     // TODO: other rounds may have different params / sizes thereof
-    phy_cfg(&PHY_CFG0);
-
-    // Extracted here to keep the flow simpler
-    let (vl, vxx) = get_funny_bits();
-
-    let v = read32(DDR_PHY_0000) & 0xffffe0ff;
-    let vx = match s_000c {
-        1 => v | ((1 << vl) | (1 << vxx)) << 8,
-        2 => v | 0x0f00,
-        _ => v | 0x100 << vl,
-    };
-    let mut vxo = if enable_ecc { vx } else { vx | 0x1000 };
-
-    if rank == 4 {
-        vxo |= 0x0010_0000;
-        let v = read32(DDR_PHY_0038);
-        write32(DDR_PHY_0038, v | 1 << 1);
-    }
-    write32(DDR_PHY_BASE, vxo);
+    phy_cfg(&PHY_CFG0, dram_freq, rank, bus_width, enable_ecc);
 
     // TODO: tweak this
     // Each loop has 5 iterations
@@ -735,15 +747,21 @@ fn ddr_xxx(enable_ecc: bool) {
 
     let v = read32(DDR_PHY_00C0);
     write32(DDR_PHY_00C0, v | 1);
-    if s_007c & (1 << 10) != 0 {
+
+    // TODO: recheck
+    let ctl_cfg_first_val = UPCTL2_CFG0[0].value;
+    if ctl_cfg_first_val & (1 << 10) != 0 {
         let v = read32(DDR_PHY_00C0);
         write32(DDR_PHY_00C0, v | 0x0006_0000);
     }
+
     let v = read32(DDR_PHY_00AC);
     write32(DDR_PHY_00AC, v | 0x10);
-    let v = read32(DDR_PHY_0044);
-    write32(DDR_PHY_0044, v & 0x3fffffff);
 
+    let v = read32(DDR_PHY_0044);
+    write32(DDR_PHY_0044, v & 0x3fff_ffff);
+
+    // reset?
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
     write32(SYS_SGRF_0014, 0x0b00_0300);
     write32(CRU_S_CLK_SEL_CFG66, 0x0002_0000);
@@ -767,7 +785,7 @@ fn ddr_xxx(enable_ecc: bool) {
     set_ds_odt(dram_freq, dram_type, false);
 
     // 0xd
-    let s_000c_0004 = s_000c + s_0004;
+    let s_000c_0004 = bus_width + s_0004;
 
     // 3 * 0x20 | 0 | (-3) = 0xffff_fffc
     let vt = ((rank - 1) << 8) | ((s_0018 - 13) << 5) | (s_000c_0004 - 10);
@@ -1036,13 +1054,13 @@ fn fill_regs(base: usize, data: &[RegVal]) {
 // the first round of dram_init_main.
 const UPCTL2_CFG0: CtrlCfg = [
     RegVal {
-        offset: 0x0000,
+        offset: 0x0000, // MSTR
         // NOTE: value overridden in control flow in dram_init_main, condition
         // for setting or clearing bit 10 (0x400) seems to be a fixed constant.
         value: 0x4304_1001 | (1 << 10),
     },
     RegVal {
-        offset: 0x0064,
+        offset: 0x0064, // refresh timing
         value: 0x0027_0039,
     },
     RegVal {
