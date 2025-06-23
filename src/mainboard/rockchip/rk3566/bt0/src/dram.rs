@@ -249,119 +249,6 @@ const PHY_CFG3: PhyCfg = [
     }, //
 ];
 
-// similar to U-Boot drivers/ram/rockchip/sdram_rv1126.c phy_pll_set
-fn phy_pll_set(freq: u32, p2: u32) {
-    // maybe divider value & enable-bit
-    let (v1, v2) = match freq / MEGA {
-        ..51 => (5, 1),
-        ..101 => (4, 1),
-        ..201 => (3, 1),
-        ..401 => (2, 1),
-        ..801 => (1, 1),
-        _ => (0, 0),
-    };
-    let s1 = (p2 * 8 + 4) & 0x1f;
-    let s2 = (p2 * 8 + 3) & 0x1f;
-
-    let v = read32(DDR_PHY_00D0);
-    let mask = (0b111 << s1) | (1 << s2);
-    let v = v & !mask | (v1 << s1) | (v2 << s2);
-    write32(DDR_PHY_00D0, v);
-}
-
-// FIXME: vendor code also refers to +0x24, +0x3c, +0x30... but that overlaps
-// with other instances of this struct in the vendor code. What's up with that?
-// U-Boot structs for this, but they are casted...
-// drivers/ram/rockchip/sdram-rv1126-loader_params.inc
-// drivers/ram/rockchip/sdram_rv1126.c  u32 common_info[]
-// ude/asm/arch-rockchip/sdram_common.h  ddr2_3_4_lp2_3_info + lp4_info
-struct DdrCfg {
-    p0: u32, // + 0x00  ddr_freq_f0_f1
-    p1: u32, // + 0x04  ddr_freq_f2_f3
-    p2: u32, // + 0x08  ddr_freq_f4_f5
-    odt_on_drv: u32,
-    odt_off_drv: u32,
-    odt_pu_cal_info: u32,
-    odt_enable_freq: u32,
-    odt_on_slew_rate: u32,
-    odt_off_slew_rate: u32,
-}
-
-struct Lp4Cfg {
-    ddr_cfg: DdrCfg,
-    ca_odt_on_freq: u32,
-    cs_drv_ca_odt_info: u32,
-    odt_on_vref: u32,
-    odt_off_vref: u32,
-}
-
-const CFG_0X11: DdrCfg = DdrCfg {
-    p0: 0x0014_4210,
-    p1: 0x0021_0210,
-    p2: 0x0000_0000,
-    odt_on_drv: 0x2221_2121,
-    odt_off_drv: 0x2221_2121,
-    odt_pu_cal_info: 0x000C_A778,
-    odt_enable_freq: 0x0014_D14D, // + 0x18; (>> 12) => 14d < 144 ? NO
-    odt_on_slew_rate: 0x0000_030F,
-    odt_off_slew_rate: 0x0000_030F,
-};
-
-// NOTE: we use this
-const CFG_0X20: DdrCfg = DdrCfg {
-    p0: 0x0014_4210,
-    p1: 0x0021_0210,
-    p2: 0x0000_0000,
-    odt_on_drv: 0x2225_2525,
-    odt_off_drv: 0x2225_2525,
-    odt_pu_cal_info: 0x000C_8B78,
-    odt_enable_freq: 0x0027_1271,
-    odt_on_slew_rate: 0x0001_010E,
-    odt_off_slew_rate: 0x0001_010E,
-};
-
-const CFG_0X29: DdrCfg = DdrCfg {
-    p0: 0x0014_4210,
-    p1: 0x0021_0210,
-    p2: 0x0000_0000,
-    odt_on_drv: 0x2227_2525,
-    odt_off_drv: 0x2227_2525,
-    odt_pu_cal_info: 0x000C_9478,
-    odt_enable_freq: 0x0014_D14D,
-    odt_on_slew_rate: 0x000F_010F,
-    odt_off_slew_rate: 0x000F_010F,
-};
-
-const CFG_0X41: DdrCfg = DdrCfg {
-    p0: 0x0014_4210,
-    p1: 0x0021_0210,
-    p2: 0x0000_0000,
-    odt_on_drv: 0x2824_241D,
-    odt_off_drv: 0x2824_241D,
-    odt_pu_cal_info: 0x01E0_3C50,
-    odt_enable_freq: 0x000C_8320,
-    odt_on_slew_rate: 0x0000_0000,
-    odt_off_slew_rate: 0x0000_0000,
-};
-
-// NOTE: Those structs do not align all too well in the vendor code.
-// There are potential overlaps, probably related to pointer casts in source,
-// with optimizations in the build process dropping parts of then-free memory.
-// U-Boot  drivers/ram/rockchip/sdram_rv1126.c  get_ddr_drv_odt_info
-fn get_ddr_drv_odt_info(dram_type: u32) -> DdrCfg {
-    match dram_type {
-        // 0 => CFG_0X14, // does not really exist, vendor code is buggy (?)
-        3 => CFG_0X11,
-        6 => CFG_0X29,
-        7 => CFG_0X20,
-        8 => CFG_0X41,
-        // FIXME: This should happen much earlier. No need to carry it around.
-        // It depends on parameters currently evaluated at runtime; we can just
-        // do this at build time.
-        _ => panic!("DRAM type {dram_type} not supported!"),
-    }
-}
-
 struct ValKey16 {
     key: u16,
     val: u16,
@@ -563,16 +450,158 @@ const DRAM_T7_MX: OdtOhm = [
     },
 ];
 
+// similar to U-Boot drivers/ram/rockchip/sdram_rv1126.c phy_pll_set
+fn phy_pll_set(freq: u32, p2: u32) {
+    // maybe divider value & enable-bit
+    let (v1, v2) = match freq / MEGA {
+        ..51 => (5, 1),
+        ..101 => (4, 1),
+        ..201 => (3, 1),
+        ..401 => (2, 1),
+        ..801 => (1, 1),
+        _ => (0, 0),
+    };
+    let s1 = (p2 * 8 + 4) & 0x1f;
+    let s2 = (p2 * 8 + 3) & 0x1f;
+
+    let v = read32(DDR_PHY_00D0);
+    let mask = (0b111 << s1) | (1 << s2);
+    let v = v & !mask | (v1 << s1) | (v2 << s2);
+    write32(DDR_PHY_00D0, v);
+}
+
+// U-Boot defines two structs for this; for LPDDR4, there are more properties
+// see arch/arm/include/asm/arch-rockchip/sdram_common.h
+//    structs  ddr2_3_4_lp2_3_info + lp4_info
+// data really comes from a global include file
+// drivers/ram/rockchip/sdram-rv1126-loader_params.inc
+// included with later type casts
+// drivers/ram/rockchip/sdram_rv1126.c  u32 common_info[]
+struct DdrCfg {
+    ddr_freq_f0_f1: u32,
+    ddr_freq_f2_f3: u32,
+    ddr_freq_f4_f5: u32,
+    odt_on_drv: u32,
+    odt_off_drv: u32,
+    odt_pu_cal_info: u32,
+    odt_enable_freq: u32,
+    odt_on_slew_rate: u32,
+    odt_off_slew_rate: u32,
+    // the below are LPDDR4 only
+    ca_odt_enable_freq: u32,
+    cs_drv_ca_odt_info: u32,
+    odt_on_vref: u32,
+    odt_off_vref: u32,
+}
+
+// NOTE: ODT is enabled if odt_enable_freq < dram_freq
+const CFG_0X11: DdrCfg = DdrCfg {
+    ddr_freq_f0_f1: 0x0014_4210,
+    ddr_freq_f2_f3: 0x0021_0210,
+    ddr_freq_f4_f5: 0x0000_0000,
+    odt_on_drv: 0x2221_2121,
+    odt_off_drv: 0x2221_2121,
+    odt_pu_cal_info: 0x000C_A778,
+    odt_enable_freq: 0x0014_D14D, // 0x14d < 0x144 ? NO
+    odt_on_slew_rate: 0x0000_030F,
+    odt_off_slew_rate: 0x0000_030F,
+    ca_odt_enable_freq: 0,
+    cs_drv_ca_odt_info: 0,
+    odt_on_vref: 0,
+    odt_off_vref: 0,
+};
+
+// NOTE: we use this
+const CFG_0X20: DdrCfg = DdrCfg {
+    ddr_freq_f0_f1: 0x0014_4210,
+    ddr_freq_f2_f3: 0x0021_0210,
+    ddr_freq_f4_f5: 0x0000_0000,
+    odt_on_drv: 0x2225_2525,
+    odt_off_drv: 0x2225_2525,
+    odt_pu_cal_info: 0x000C_8B78,
+    odt_enable_freq: 0x0027_1271, // 0x271 < 0x144 ? NO
+    odt_on_slew_rate: 0x0001_010E,
+    odt_off_slew_rate: 0x0001_010E,
+    ca_odt_enable_freq: 0,
+    cs_drv_ca_odt_info: 0,
+    odt_on_vref: 0,
+    odt_off_vref: 0,
+};
+
+const CFG_0X29: DdrCfg = DdrCfg {
+    ddr_freq_f0_f1: 0x0014_4210,
+    ddr_freq_f2_f3: 0x0021_0210,
+    ddr_freq_f4_f5: 0x0000_0000,
+    odt_on_drv: 0x2227_2525,
+    odt_off_drv: 0x2227_2525,
+    odt_pu_cal_info: 0x000C_9478,
+    odt_enable_freq: 0x0014_D14D,
+    odt_on_slew_rate: 0x000F_010F,
+    odt_off_slew_rate: 0x000F_010F,
+    ca_odt_enable_freq: 0,
+    cs_drv_ca_odt_info: 0,
+    odt_on_vref: 0,
+    odt_off_vref: 0,
+};
+
+const CFG_0X41: DdrCfg = DdrCfg {
+    ddr_freq_f0_f1: 0x0014_4210,
+    ddr_freq_f2_f3: 0x0021_0210,
+    ddr_freq_f4_f5: 0x0000_0000,
+    odt_on_drv: 0x2824_241D,
+    odt_off_drv: 0x2824_241D,
+    odt_pu_cal_info: 0x01E0_3C50,
+    odt_enable_freq: 0x000C_8320,
+    odt_on_slew_rate: 0x0000_0000,
+    odt_off_slew_rate: 0x0000_0000,
+    ca_odt_enable_freq: 0,
+    cs_drv_ca_odt_info: 0,
+    odt_on_vref: 0,
+    odt_off_vref: 0,
+};
+
+const CFG_LPDDR4: DdrCfg = DdrCfg {
+    ddr_freq_f0_f1: 0x0014_4210,
+    ddr_freq_f2_f3: 0x0021_0210,
+    ddr_freq_f4_f5: 0x0000_0000,
+    odt_on_drv: 0x2826_261e,
+    odt_off_drv: 0x2826_261e,
+    odt_pu_cal_info: 0x0de0_3c50,
+    odt_enable_freq: 0x0014_d320,
+    odt_on_slew_rate: 0x000f_0f00,
+    odt_off_slew_rate: 0x000f_0f00,
+    ca_odt_enable_freq: 0x0000_0320,
+    cs_drv_ca_odt_info: 0x0003_0000,
+    odt_on_vref: 0x17c4_b0a6,
+    odt_off_vref: 0x1a46_91a4,
+};
+
+// FIXME: Recheck, some configs may be wrong here.
+// U-Boot  drivers/ram/rockchip/sdram_rv1126.c  get_ddr_drv_odt_info
+fn get_ddr_drv_odt_info(dram_type: u32) -> DdrCfg {
+    match dram_type {
+        // 0 => CFG_0X14, // does not really exist, vendor code is buggy (?)
+        3 => CFG_0X11,
+        6 => CFG_0X29, // RECHECK
+        7 => CFG_LPDDR4,
+        8 => CFG_0X41, // RECHECK
+        // FIXME: This should happen much earlier. No need to carry it around.
+        // It depends on parameters currently evaluated at runtime; we can just
+        // do this at build time.
+        _ => panic!("DRAM type {dram_type} not supported!"),
+    }
+}
+
 // TODO: enum for dram_type
 // drivers/ram/rockchip/sdram_rv1126.c  set_ds_odt
 // set drive strength for on-die termination
 fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let cfg = get_ddr_drv_odt_info(dram_type);
 
-    // Those really depend on dram_freq and cfg; shortcut taken here.
+    // Those really depend on dram_freq and odt_enable_freq; shortcut taken here
     let drv = cfg.odt_off_drv;
     // PHY_LP4_DRV_PULLDOWN_EN_ODTOFF
-    let p5 = (cfg.odt_pu_cal_info >> 29) & 1;
+    let pulldown_en = (cfg.odt_pu_cal_info >> 29) & 1;
     let slew_rate = cfg.odt_off_slew_rate;
 
     let mut params: [u16; 12] = [
@@ -582,9 +611,9 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     ];
 
     // all three are 0x25
-    params[0] = (drv >> 16) as u8 as u16;
-    params[1] = (drv >> 8) as u8 as u16;
-    params[2] = drv as u8 as u16;
+    let phy_dq_drv_ohm = drv as u8;
+    let phy_clk_drv_ohm = (drv >> 16) as u8;
+    let phy_ca_drv_ohm = (drv >> 8) as u8;
 
     // NOTE: conditions skipped
     let drv_byte3 = cfg.odt_off_drv >> 24;
@@ -593,10 +622,12 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
 
     // TODO: tweak this
     // 4 iterations
-    for o in (0x0300..0x0a80).step_by(0x180) {
-        let r = DDR_PHY_BASE + o + 8;
-        let v = read32(r);
-        write32(r, v & 0xffff_fdff);
+    if dram_type < 9 {
+        for o in (0x0300..0x0a80).step_by(0x180) {
+            let r = DDR_PHY_BASE + o + 8;
+            let v = read32(r);
+            write32(r, v & 0xffff_fdff);
+        }
     }
 
     // conditions omitted
@@ -627,7 +658,7 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let xx1 = if dram_type == 7 {
         CFG_0X20.odt_on_drv
     } else {
-        CFG_0X20.p2
+        CFG_0X20.ddr_freq_f4_f5
     };
     let xx2 = ((xx1 & 0x3ff) << 9) / 1000;
     let xx3 = 0x100;
@@ -662,7 +693,9 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
         write32(r, v);
         let r = DDR_PHY_BASE + o;
         let v = read32(r) & 0x007f_e07f;
-        let v = v | ((p5 << 7) ^ 0x80) | ((slew_rate & 0xff) << 8) | (xx2 << 23);
+        // NOTE: XOR here flips the bit
+        let pulldown = (pulldown_en << 7) ^ (1 << 7);
+        let v = v | ((slew_rate & 0xff) << 8) | (xx2 << 23) | pulldown;
         write32(r, v as u32);
     }
 
@@ -674,9 +707,8 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let v = read32(DDR_PHY_00F8);
     write32(DDR_PHY_00F8, v & 0xfe00_ffff | (xx3 << 16));
 
-    // p0 & 0xfff  0x210
-    let v1 = if CFG_0X20.p0 & 0xfff < dram_freq {
-        CFG_0X20.p2 // 0x0
+    let v1 = if CFG_0X20.ddr_freq_f0_f1 & 0xfff < dram_freq {
+        CFG_0X20.ddr_freq_f4_f5
     } else {
         CFG_0X20.odt_on_drv // 0x2225_2525
     };
@@ -685,7 +717,7 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
 
     // odt_enable_freq & 0xfff = 0x14d
     let v2 = if cfg.odt_enable_freq & 0xfff < dram_freq {
-        CFG_0X20.p2
+        CFG_0X20.ddr_freq_f4_f5
     } else {
         CFG_0X20.odt_on_drv
     };
