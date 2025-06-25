@@ -256,9 +256,8 @@ struct ValKey16 {
 
 type OdtOhm = [ValKey16; 23];
 
-// NOTE: This is all LE, so the upper half is what matters in set_ds_odt.
 // drivers/ram/rockchip/sdram_rv1126.c  d3_phy_drv_2_ohm
-const DRAM_T3_MX: OdtOhm = [
+const DRAM_T3_ODT_OHM: OdtOhm = [
     ValKey16 {
         val: 0x01F4,
         key: 0x0001,
@@ -315,7 +314,7 @@ const DRAM_T3_MX: OdtOhm = [
         val: 0x0024,
         key: 0x000E,
     },
-    // THIS: no longer < 0x21
+    // THIS: no longer < phy_clk_drv_ohm  (0x21)
     ValKey16 {
         val: 0x0021,
         key: 0x000F,
@@ -355,98 +354,100 @@ const DRAM_T3_MX: OdtOhm = [
 ];
 
 // lp4_phy_odt_2_ohm
-const DRAM_T7_MX: OdtOhm = [
+const DRAM_T7_ODT_OHM: OdtOhm = [
     ValKey16 {
-        key: 0x1,
         val: 0x1F4,
+        key: 0x1,
     },
     ValKey16 {
-        key: 0x2,
         val: 0xFA,
+        key: 0x2,
     },
     ValKey16 {
-        key: 0x3,
         val: 0xA7,
+        key: 0x3,
     },
     ValKey16 {
-        key: 0x4,
         val: 0x7D,
+        key: 0x4,
     },
     ValKey16 {
-        key: 0x5,
         val: 0x64,
+        key: 0x5,
     },
     ValKey16 {
-        key: 0x6,
         val: 0x53,
+        key: 0x6,
     },
     ValKey16 {
-        key: 0x7,
         val: 0x47,
+        key: 0x7,
     },
     ValKey16 {
-        key: 0x8,
         val: 0x3F,
+        key: 0x8,
     },
     ValKey16 {
-        key: 0x9,
         val: 0x38,
+        key: 0x9,
     },
     ValKey16 {
-        key: 0xA,
         val: 0x32,
+        key: 0xA,
     },
     ValKey16 {
-        key: 0xB,
         val: 0x2D,
+        key: 0xB,
     },
     ValKey16 {
-        key: 0xC,
         val: 0x29,
+        key: 0xC,
     },
+    // THIS
     ValKey16 {
+        val: 0x26, // >= phy_clk_drv_ohm (0x26)
         key: 0xD,
-        val: 0x26,
     },
     ValKey16 {
-        key: 0xE,
         val: 0x24,
+        key: 0xE,
     },
     ValKey16 {
-        key: 0xF,
         val: 0x21,
+        key: 0xF,
     },
     ValKey16 {
-        key: 0x18,
         val: 0x1F,
+        key: 0x18,
     },
+    // THIS
     ValKey16 {
+        val: 0x1D, // x
         key: 0x19,
-        val: 0x1D,
     },
     ValKey16 {
-        key: 0x1A,
         val: 0x1C,
+        key: 0x1A,
     },
     ValKey16 {
-        key: 0x1B,
         val: 0x1A,
+        key: 0x1B,
     },
     ValKey16 {
-        key: 0x1C,
         val: 0x19,
+        key: 0x1C,
     },
     ValKey16 {
-        key: 0x1D,
         val: 0x18,
+        key: 0x1D,
     },
     ValKey16 {
-        key: 0x1E,
         val: 0x17,
+        key: 0x1E,
     },
     ValKey16 {
-        key: 0x1F,
         val: 0x16,
+        key: 0x1F,
     },
 ];
 
@@ -511,7 +512,6 @@ const CFG_0X11: DdrCfg = DdrCfg {
     odt_off_vref: 0,
 };
 
-// NOTE: we use this
 const CFG_0X20: DdrCfg = DdrCfg {
     ddr_freq_f0_f1: 0x0014_4210,
     ddr_freq_f2_f3: 0x0021_0210,
@@ -560,6 +560,7 @@ const CFG_0X41: DdrCfg = DdrCfg {
     odt_off_vref: 0,
 };
 
+// NOTE: we use this
 const CFG_LPDDR4: DdrCfg = DdrCfg {
     ddr_freq_f0_f1: 0x0014_4210,
     ddr_freq_f2_f3: 0x0021_0210,
@@ -610,18 +611,18 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
         0, 0, 0, 0, // being determind later
     ];
 
-    // all three are 0x25
-    let phy_dq_drv_ohm = drv as u8;
-    let phy_clk_drv_ohm = (drv >> 16) as u8;
-    let phy_ca_drv_ohm = (drv >> 8) as u8;
+    // reference values used in search
+    // TODO: split up in struct already
+    let phy_clk_drv_ohm = (drv >> 16) as u8; // 0x26
+    let phy_ca_drv_ohm = (drv >> 8) as u8; // 0x26
+    let phy_dq_drv_ohm = drv as u8; // 0x1e
 
     // NOTE: conditions skipped
     let drv_byte3 = cfg.odt_off_drv >> 24;
 
     let p5_bit27 = (cfg.odt_pu_cal_info >> 27) & 1;
 
-    // TODO: tweak this
-    // 4 iterations
+    // 5 iterations
     if dram_type < 9 {
         for o in (0x0300..0x0a80).step_by(0x180) {
             let r = DDR_PHY_BASE + o + 8;
@@ -644,25 +645,36 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let v = read32(DDR_PHY_008C);
     write32(DDR_PHY_008C, v & !(1 << 1));
 
-    let mx = match dram_type {
-        3 => DRAM_T3_MX,
-        7 => DRAM_T7_MX,
-        8 => todo!(), // DRAM_T8_MX,
-        _ => todo!(), // DRAM_TX_MX,
+    let odt_ohm = match dram_type {
+        3 => DRAM_T3_ODT_OHM,
+        7 => DRAM_T7_ODT_OHM,
+        8 => todo!(), // DRAM_T8_ODT_OHM,
+        _ => todo!(), // DRAM_TX_ODT_OHM,
     };
 
-    // TODO: calculate other params! precalc..?
+    // TODO: Find key in odt_ohm via each target_val; precalc..?
+    let target_val = phy_clk_drv_ohm; // 0x26
 
-    // NOTE: Lp4Cfg has 12 properties, unlike DDR3 config!
-    // let xx1 = if dram_type == 7 { cfg.p12 } else { cfg.p11 };
-    let xx1 = if dram_type == 7 {
-        CFG_0X20.odt_on_drv
+    let target_val3 = 0;
+
+    let phy_clk_drv = &odt_ohm[12];
+    let phy_ca_drv = &odt_ohm[12];
+    let phy_dq_drv = &odt_ohm[16];
+
+    let vref = if dram_type < 9 {
+        let v = if target_val3 == 0 {
+            cfg.odt_off_vref
+        } else {
+            cfg.odt_on_vref
+        };
+        ((v & 0x3ff) << 9) / 1000
     } else {
-        CFG_0X20.ddr_freq_f4_f5
+        todo!("vref for other DRAM types");
     };
-    let xx2 = ((xx1 & 0x3ff) << 9) / 1000;
+
     let xx3 = 0x100;
 
+    // FIXME: actual values
     let vxm = ((params[8] as u32) << 8) | (params[4] as u32);
 
     let v = (((params[9] as u32) << 24) | ((params[5] as u32) << 16)) | vxm;
@@ -695,7 +707,7 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
         let v = read32(r) & 0x007f_e07f;
         // NOTE: XOR here flips the bit
         let pulldown = (pulldown_en << 7) ^ (1 << 7);
-        let v = v | ((slew_rate & 0xff) << 8) | (xx2 << 23) | pulldown;
+        let v = v | ((slew_rate & 0xff) << 8) | (vref << 23) | pulldown;
         write32(r, v as u32);
     }
 
