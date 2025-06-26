@@ -605,12 +605,6 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let pulldown_en = (cfg.odt_pu_cal_info >> 29) & 1;
     let slew_rate = cfg.odt_off_slew_rate;
 
-    let mut params: [u16; 12] = [
-        0, 0, 0, 0, // first 4 values are prefilled
-        0, 0, 0, 0, // remaining 8 values are
-        0, 0, 0, 0, // being determind later
-    ];
-
     // reference values used in search
     // TODO: split up in struct already
     let phy_clk_drv_ohm = (drv >> 16) as u8; // 0x26
@@ -653,13 +647,12 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     };
 
     // TODO: Find key in odt_ohm via each target_val; precalc..?
-    let target_val = phy_clk_drv_ohm; // 0x26
-
     let target_val3 = 0;
 
-    let phy_clk_drv = &odt_ohm[12];
-    let phy_ca_drv = &odt_ohm[12];
-    let phy_dq_drv = &odt_ohm[16];
+    let phy_clk_drv = &odt_ohm[12 + 2];
+    let phy_ca_drv = &odt_ohm[12 + 2];
+    let phy_dq_drv = &odt_ohm[16 + 2];
+    let val3 = 0;
 
     let vref = if dram_type < 9 {
         let v = if target_val3 == 0 {
@@ -674,10 +667,9 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
 
     let xx3 = 0x100;
 
-    // FIXME: actual values
-    let vxm = ((params[8] as u32) << 8) | (params[4] as u32);
+    let vxm = ((phy_clk_drv.key as u32) << 8) | (phy_clk_drv.key as u32);
 
-    let v = (((params[9] as u32) << 24) | ((params[5] as u32) << 16)) | vxm;
+    let v = (((phy_ca_drv.key as u32) << 24) | ((phy_ca_drv.key as u32) << 16)) | vxm;
     write32(DDR_PHY_00F4, v);
 
     let v = read32(DDR_PHY_00F8) & 0xffff_e0e0 | vxm;
@@ -687,26 +679,22 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let v = v | (slew_rate & 0xff00) | ((slew_rate >> 16) & 0xff);
     write32(DDR_PHY_00F0, v);
 
-    if m1 == 0 {
-        params[7] = 0;
-    }
-    if m0 == 0 {
-        params[11] = 0;
-    }
+    let mx0 = if m0 == 0 { 0 } else { val3 };
+    let mx1 = if m1 == 0 { 0 } else { val3 };
 
+    // NOTE: XOR here flips the bit
+    let pulldown = (pulldown_en << 7) ^ (1 << 7);
     // TODO: tweak this
     // 5 iterations
     for o in (0x0300..0x0a80).step_by(0x180) {
         let r = DDR_PHY_BASE + o + 4;
-        let v = ((params[10] as u32) << 24)
-            | ((params[6] as u32) << 16)
-            | ((params[11] as u32) << 8)
-            | params[7] as u32;
+        let v = ((phy_dq_drv.key as u32) << 24)
+            | ((phy_dq_drv.key as u32) << 16)
+            | ((mx0 as u32) << 8)
+            | mx1 as u32;
         write32(r, v);
         let r = DDR_PHY_BASE + o;
         let v = read32(r) & 0x007f_e07f;
-        // NOTE: XOR here flips the bit
-        let pulldown = (pulldown_en << 7) ^ (1 << 7);
         let v = v | ((slew_rate & 0xff) << 8) | (vref << 23) | pulldown;
         write32(r, v as u32);
     }
