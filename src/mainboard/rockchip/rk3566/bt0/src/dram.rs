@@ -707,38 +707,54 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let v = read32(DDR_PHY_00F8);
     write32(DDR_PHY_00F8, v & 0xfe00_ffff | (xx3 << 16));
 
-    let v1 = if CFG_0X20.ddr_freq_f0_f1 & 0xfff < dram_freq {
-        CFG_0X20.ddr_freq_f4_f5
+    let v1 = if cfg.ca_odt_enable_freq & 0xfff < dram_freq {
+        cfg.odt_on_vref
     } else {
-        CFG_0X20.odt_on_drv // 0x2225_2525
+        cfg.odt_off_drv
     };
-    // 0x94 (148)
-    let v1 = (v1 >> 14) & 0x3ff;
+    let v1 = (v1 >> 20) & 0x3ff;
 
     // odt_enable_freq & 0xfff = 0x14d
     let v2 = if cfg.odt_enable_freq & 0xfff < dram_freq {
-        CFG_0X20.ddr_freq_f4_f5
+        cfg.odt_on_vref
     } else {
-        CFG_0X20.odt_on_drv
+        cfg.odt_off_drv
     };
-    // 0x149
     let v2 = (v2 >> 10) & 0x3ff;
 
-    // 0x25b (603)
-    let v2 = v2 * 11 / 6;
+    let (v1, v2) = if dram_type == 7 {
+        let v1 = match v1 {
+            ..100 => 0,
+            ..301 => (v1 - 100) / 4,
+            ..421 => ((v1 - 220) / 4) | 0x40,
+            _ => 114,
+        };
 
-    let v2 = match v2 {
-        ..150 => 0,
-        ..450 => (v2 - 150) / 6,
-        ..630 => ((v2 - 329) / 6) | 0x40, // we should be here
-        _ => 114,
-    };
+        let v2 = match v2 {
+            ..100 => 0,
+            ..301 => (v2 - 100) / 4,
+            ..421 => ((v2 - 220) / 4) | 0x40,
+            _ => 114,
+        };
 
-    let v1 = match v1 {
-        ..150 => 0, // we should be here
-        ..450 => (v1 - 150) / 6,
-        ..630 => ((v1 - 329) / 6) | 0x40,
-        _ => 114,
+        (v1, v2)
+    } else {
+        let v1 = v1 * 11 / 6;
+
+        let v1 = match v1 {
+            ..150 => 0,
+            ..450 => (v1 - 150) / 6,
+            ..630 => ((v1 - 329) / 6) | 0x40, // we should be here
+            _ => 114,
+        };
+
+        let v2 = match v2 {
+            ..150 => 0, // we should be here
+            ..450 => (v2 - 150) / 6,
+            ..630 => ((v2 - 329) / 6) | 0x40,
+            _ => 114,
+        };
+        (v1, v2)
     };
 
     write32(UPCTL2_SW_CTRL, 0);
@@ -749,19 +765,39 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     let o2 = o_base + 0x00ec;
 
     let v = read32(UPCTL2_BASE + o1);
-    write32(UPCTL2_BASE + o1, (v & 0xffff_0000) | v2);
+    write32(UPCTL2_BASE + o1, (v & 0xffff_0000) | v1);
 
     let v = read32(UPCTL2_BASE + o2);
-    write32(UPCTL2_BASE + o2, (v & 0xffff_0000) | v1);
+    write32(UPCTL2_BASE + o2, (v & 0xffff_0000) | v2);
 
     upctl2_sw_set_ack();
 
-    let o3 = o_base + 0x00dc;
-    let v = read32(UPCTL2_BASE + o3);
-    let v = v & 0xfd99;
+    let (o3, v3) = if dram_type != 0 && dram_type != 3 {
+        let p4_sby_0x1000 = if smth { 0x1000 } else { 0 };
+        let o_base = p4_sby_0x1000 * 2;
+        let o = o_base + 0x00e0;
+        let v = read32(UPCTL2_BASE + o) >> 16;
 
-    let v3 = if drv_byte3 == 0x22 { v | (1 << 1) } else { v };
-    // TODO: if !smth ...
+        if dram_type == 6 {
+            //
+        } else {
+            if !smth {
+                //
+            }
+            let vx = v & 0xffff_ffc6 | p5_bit27;
+            let xx = odt_calc(drv_byte3);
+            // TODO
+        }
+        (1, 1) // TODO
+    } else {
+        let o3 = o_base + 0x00dc;
+        let v = read32(UPCTL2_BASE + o3);
+        let v = v & 0xfd99;
+
+        let v3 = if drv_byte3 == 0x22 { v | (1 << 1) } else { v };
+        // TODO: if !smth ...
+        (o3, v3)
+    };
 
     write32(UPCTL2_SW_CTRL, 0);
 
@@ -769,6 +805,18 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     write32(UPCTL2_BASE + o3, (v & 0xffff_0000) | v3);
 
     upctl2_sw_set_ack();
+}
+
+fn odt_calc(odt_ohm: u32) -> u32 {
+    match odt_ohm {
+        0 => 0,
+        ..40 => 6,
+        ..48 => 5,
+        ..60 => 4,
+        ..80 => 3,
+        ..120 => 2,
+        _ => 1,
+    }
 }
 
 // U-Boot  drivers/ram/rockchip/sdram_rv1126.c  sw_set_ack
