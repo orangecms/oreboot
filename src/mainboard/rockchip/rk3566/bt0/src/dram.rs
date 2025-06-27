@@ -858,24 +858,33 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, dst_fsp: u32) {
             let drv_odt = if drv_odt == 0 { 8 } else { drv_odt };
             let mr1_mr3 = mr1_mr3_pre | (drv_odt << 3);
 
+            const MR_SHIFT: usize = 16;
+            const MR_MASK: u32 = 0x0000_ffff;
+
             /* MR11 for lp4 ca odt, dq odt set */
             let dq_odt = odt_calc(dq_odt_ohm);
             let ca_odt = odt_calc(ca_odt_ohm);
 
             let v = read32(init6);
-            const MR11_SHIFT: usize = 16;
-            // TODO: Is this correct?!
-            let v1 = (v >> MR11_SHIFT) & 0xffff_ff88;
-            // PCTL2_MR_MASK
-            let v2 = v & 0x0000_ffff;
-            let mr11 = v1 | v2 | (ca_odt << 4) | dq_odt;
+            let v1 = (v >> MR_SHIFT) & !0b0111_0111;
+            let mr11 = v1 | (ca_odt << 4) | dq_odt;
 
             upctl2_sw_set_req();
-            write32(init6, (mr11 << 16) | v2);
+            write32(init6, v & MR_MASK | (mr11 << MR_SHIFT));
             upctl2_sw_set_ack();
 
-            // TODO
             /* MR22 for soc odt/odt-ck/odt-cs/odt-ca */
+            let phy_odt = odt_calc(phy_odt_ohm);
+            // NOTE: looks like those are retained or explicitly set here.
+            let ck_cs_ca = (cfg.cs_drv_ca_odt_info >> 16) & 0b111;
+
+            let v = read32(init7);
+            let v1 = (v >> MR_SHIFT) & !0b111;
+            let mr14 = v1 | (ck_cs_ca << 3) | phy_odt;
+
+            upctl2_sw_set_req();
+            write32(init7, v & MR_MASK | (mr14 << MR_SHIFT));
+            upctl2_sw_set_ack();
 
             mr1_mr3
         }
