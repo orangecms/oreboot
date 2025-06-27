@@ -596,25 +596,67 @@ fn get_ddr_drv_odt_info(dram_type: u32) -> DdrCfg {
 // TODO: enum for dram_type
 // drivers/ram/rockchip/sdram_rv1126.c  set_ds_odt
 // set drive strength for on-die termination
-fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
+fn set_ds_odt(dram_freq: u32, dram_type: u32, dst_fsp: u32) {
     let cfg = get_ddr_drv_odt_info(dram_type);
 
-    // Those really depend on dram_freq and odt_enable_freq; shortcut taken here
-    let drv = cfg.odt_off_drv;
-    // PHY_LP4_DRV_PULLDOWN_EN_ODTOFF
-    let pulldown_en = (cfg.odt_pu_cal_info >> 29) & 1;
-    let slew_rate = cfg.odt_off_slew_rate;
+    // NOTE: The struct is very compact, but that is unnecessary.
+    // TODO: These values could be split up in the struct already.
+
+    let dram_odt_en_freq = cfg.odt_on_slew_rate & 0xfff;
+    let dram_odt_en = dram_freq > dram_odt_en_freq;
+    let (slew_rate, drive_strength, pulldown_en, dq_odt_ohm) = if dram_odt_en {
+        let slew_rate = cfg.odt_on_slew_rate;
+        let drive_strength = cfg.odt_on_drv;
+        // PHY_LP4_DRV_PULLDOWN_EN_ODTON
+        let pulldown_en = (cfg.odt_pu_cal_info >> 28) & 1;
+        let dq_odt_ohm = cfg.odt_pu_cal_info & 0xff;
+        (slew_rate, drive_strength, pulldown_en, dq_odt_ohm)
+    } else {
+        // NOTE: We are here.
+        let slew_rate = cfg.odt_off_slew_rate;
+        let drive_strength = cfg.odt_off_drv;
+        // PHY_LP4_DRV_PULLDOWN_EN_ODTOFF
+        let pulldown_en = (cfg.odt_pu_cal_info >> 29) & 1;
+        let dq_odt_ohm = 0;
+        (slew_rate, drive_strength, pulldown_en, dq_odt_ohm)
+    };
 
     // reference values used in search
-    // TODO: split up in struct already
-    let phy_clk_drv_ohm = (drv >> 16) as u8; // 0x26
-    let phy_ca_drv_ohm = (drv >> 8) as u8; // 0x26
-    let phy_dq_drv_ohm = drv as u8; // 0x1e
+    let phy_clk_drv_ohm = (drive_strength >> 16) as u8; // 0x26
+    let phy_ca_drv_ohm = (drive_strength >> 8) as u8; // 0x26
+    let phy_dq_drv_ohm = drive_strength as u8; // 0x1e
 
-    // NOTE: conditions skipped
-    let drv_byte3 = cfg.odt_off_drv >> 24;
-
-    let p5_bit27 = (cfg.odt_pu_cal_info >> 27) & 1;
+    let phy_odt_en_freq = (cfg.odt_on_slew_rate >> 12) & 0xfff;
+    let phy_odt_en = dram_freq > phy_odt_en_freq;
+    let (dram_dq_drv_ohm, phy_odt_ohm, phy_odt_pullup_enable, phy_odt_pulldown_enable, drv_pu_cal) =
+        if phy_odt_en {
+            let dram_dq_drv_ohm = cfg.odt_on_drv >> 24;
+            let phy_odt_ohm = (cfg.odt_pu_cal_info >> 8) & 0x3ff;
+            let phy_odt_pullup_enable = (cfg.odt_pu_cal_info >> 18) & 1;
+            let phy_odt_pulldown_enable = (cfg.odt_pu_cal_info >> 19) & 1;
+            let drv_pu_cal = (cfg.odt_pu_cal_info >> 26) & 1;
+            (
+                dram_dq_drv_ohm,
+                phy_odt_ohm,
+                phy_odt_pullup_enable,
+                phy_odt_pulldown_enable,
+                drv_pu_cal,
+            )
+        } else {
+            let dram_dq_drv_ohm = cfg.odt_off_drv >> 24;
+            // LP4_DRV_PU_CAL_ODTOFF
+            let drv_pu_cal = (cfg.odt_pu_cal_info >> 27) & 1;
+            let phy_odt_ohm = 0;
+            let phy_odt_pullup_enable = 0;
+            let phy_odt_pulldown_enable = 0;
+            (
+                dram_dq_drv_ohm,
+                phy_odt_ohm,
+                phy_odt_pullup_enable,
+                phy_odt_pulldown_enable,
+                drv_pu_cal,
+            )
+        };
 
     // 5 iterations
     if dram_type < 9 {
@@ -628,7 +670,14 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
     // conditions omitted
     let m0 = 0;
     let m1 = 0;
-    let m2 = 0;
+
+    let ca_odt_en_freq = cfg.ca_odt_enable_freq & 0xfff;
+    let ca_odt_en = dram_freq > ca_odt_en_freq;
+    let ca_odt_ohm = if dram_type == 7 && ca_odt_en {
+        (cfg.odt_pu_cal_info >> 18) & 0xff
+    } else {
+        0
+    };
 
     let v = read32(DDR_PHY_008C);
     write32(DDR_PHY_008C, v | (1 << 1));
@@ -759,51 +808,87 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, smth: bool) {
 
     write32(UPCTL2_SW_CTRL, 0);
 
-    let p4_sby_0x1000 = if smth { 0x1000 } else { 0 };
-    let o_base = p4_sby_0x1000 * 2;
-    let o1 = o_base + 0x00e8;
-    let o2 = o_base + 0x00ec;
-
-    let v = read32(UPCTL2_BASE + o1);
-    write32(UPCTL2_BASE + o1, (v & 0xffff_0000) | v1);
-
-    let v = read32(UPCTL2_BASE + o2);
-    write32(UPCTL2_BASE + o2, (v & 0xffff_0000) | v2);
-
-    upctl2_sw_set_ack();
-
-    let (o3, v3) = if dram_type != 0 && dram_type != 3 {
-        let p4_sby_0x1000 = if smth { 0x1000 } else { 0 };
-        let o_base = p4_sby_0x1000 * 2;
-        let o = o_base + 0x00e0;
-        let v = read32(UPCTL2_BASE + o) >> 16;
-
-        if dram_type == 6 {
-            //
+    // NOTE: There are multiple blocks with INIT registers.
+    // The base address depends on dst_fsp (TODO: what is that short for?).
+    let fsp_base = UPCTL2_BASE
+        + if dst_fsp > 0 {
+            (dst_fsp + 1) * 0x1000
         } else {
-            if !smth {
-                //
-            }
-            let vx = v & 0xffff_ffc6 | p5_bit27;
-            let xx = odt_calc(drv_byte3);
-            // TODO
-        }
-        (1, 1) // TODO
-    } else {
-        let o3 = o_base + 0x00dc;
-        let v = read32(UPCTL2_BASE + o3);
-        let v = v & 0xfd99;
+            0
+        } as usize;
+    // ...
+    let init3 = fsp_base + 0x00dc;
+    let init4 = fsp_base + 0x00e0;
+    let init6 = fsp_base + 0x00e8;
+    let init7 = fsp_base + 0x00ec;
 
-        let v3 = if drv_byte3 == 0x22 { v | (1 << 1) } else { v };
-        // TODO: if !smth ...
-        (o3, v3)
+    let v = read32(init4);
+    write32(init4, (v & 0xffff_0000) | v1);
+
+    let v = read32(init6);
+    write32(init6, (v & 0xffff_0000) | v2);
+
+    let mr1_mr3 = match dram_type {
+        0 | 3 => {
+            let v = read32(init3);
+            let v = v & 0xfd99;
+
+            let nv = if dram_dq_drv_ohm == 0x22 {
+                v | (1 << 1)
+            } else {
+                v
+            };
+            // TODO: if !smth ...
+            0
+        }
+        6 => {
+            // TODO
+            0
+        }
+        // LPDDR4(X)
+        _ => {
+            // NOTE: This is not in upstream U-Boot as of 4d3b5c679bc9.
+            if dq_odt_ohm != 0 {
+                // TODO: skipped as we do not run into this for now
+            }
+
+            // NOTE: U-Boot reads from init4 this earlier.
+            let mr1_mr3_pre = (read32(init4) >> 16) & 0xffff_ffc6 | drv_pu_cal;
+            let drv_odt = odt_calc(dram_dq_drv_ohm);
+            let drv_odt = if drv_odt == 0 { 8 } else { drv_odt };
+            let mr1_mr3 = mr1_mr3_pre | (drv_odt << 3);
+
+            /* MR11 for lp4 ca odt, dq odt set */
+            let dq_odt = odt_calc(dq_odt_ohm);
+            let ca_odt = odt_calc(ca_odt_ohm);
+
+            let v = read32(init6);
+            const MR11_SHIFT: usize = 16;
+            // TODO: Is this correct?!
+            let v1 = (v >> MR11_SHIFT) & 0xffff_ff88;
+            // PCTL2_MR_MASK
+            let v2 = v & 0x0000_ffff;
+            let mr11 = v1 | v2 | (ca_odt << 4) | dq_odt;
+
+            upctl2_sw_set_req();
+            write32(init6, (mr11 << 16) | v2);
+            upctl2_sw_set_ack();
+
+            // TODO
+            /* MR22 for soc odt/odt-ck/odt-cs/odt-ca */
+
+            mr1_mr3
+        }
     };
 
-    write32(UPCTL2_SW_CTRL, 0);
-
-    let v = read32(UPCTL2_BASE + o3);
-    write32(UPCTL2_BASE + o3, (v & 0xffff_0000) | v3);
-
+    upctl2_sw_set_req();
+    if dram_type != 0 && dram_type != 3 {
+        let m = 0xffff_0000;
+        let v = read32(init4);
+        write32(init4, (v & m) | mr1_mr3);
+    } else {
+        // TODO
+    }
     upctl2_sw_set_ack();
 }
 
@@ -823,6 +908,11 @@ fn odt_calc(odt_ohm: u32) -> u32 {
 fn upctl2_sw_set_ack() {
     write32(UPCTL2_SW_CTRL, 1);
     while read32(UPCTL2_SW_STAT) & 1 == 0 {}
+}
+
+// clear sw_done=0; U-Boot: sw_set_req
+fn upctl2_sw_set_req() {
+    write32(UPCTL2_SW_CTRL, 0);
 }
 
 fn get_funny_bits() -> (u32, u32) {
@@ -1078,7 +1168,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(UPCTL2_MSTR2);
     write32(UPCTL2_MSTR2, v & !(0b11));
 
-    set_ds_odt(dram_freq, dram_type, false);
+    set_ds_odt(dram_freq, dram_type, 0);
 
     // similar to arch/arm/mach-rockchip/rk3036/sdram_rk3036.c  sdram_all_config
     // 0xd (13)
