@@ -1019,20 +1019,21 @@ fn phy_measure_xx(dram_freq: u32) -> u32 {
     (v3 / 100) & 0x7f
 }
 
-fn upctl2_prefill() {
-    const PREFILL_0200_DATA: [u32; 9] = [
-        0x0000_1f1f,
-        0x0009_0909,
-        0x0,
-        0x0,
-        0x0000_1f00,
-        0x0808_0808,
-        0x0808_0808,
-        0x0000_0f08,
-        0x0,
-    ];
+const PREFILL_0200_DATA: [u32; 9] = [
+    0x0000_1f1f,
+    0x0009_0909,
+    0x0,
+    0x0,
+    0x0000_1f00,
+    0x0808_0808,
+    0x0808_0808,
+    0x0000_0f08,
+    0x0,
+];
+
+fn upctl2_prefill(d: &[u32]) {
     let b = UPCTL2_BASE + 0x200;
-    for (i, v) in PREFILL_0200_DATA.iter().enumerate() {
+    for (i, v) in d.iter().enumerate() {
         write32(b + i * 4, *v);
     }
 }
@@ -1179,6 +1180,8 @@ fn ddr_xxx(enable_ecc: bool) {
 
     set_ds_odt(dram_freq, dram_type, 0);
 
+    panic!("set_ds_odt DONE");
+
     // similar to arch/arm/mach-rockchip/rk3036/sdram_rk3036.c  sdram_all_config
     // 0xd (13)
     let bw_plus_col = chan_bus_width + column;
@@ -1188,7 +1191,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let vt = ((rank - 1) << 8) | ((cs0_row - 13) << 5) | (bw_plus_col - 10);
     println!("vt {vt:08x}");
 
-    // bank_num is 3
+    // bank_num is 3 -> 0x6b
     let vxx = if bank_num == 3 { vt | 8 } else { vt };
 
     let idx = find_index(vxx);
@@ -1206,7 +1209,9 @@ fn ddr_xxx(enable_ecc: bool) {
         }
     });
 
-    upctl2_prefill();
+    // essentially memcpy
+    // NOTE: data really depends on previous conditions
+    upctl2_prefill(&PREFILL_0200_DATA);
 
     // TODO: more logic
     // cs0_row
@@ -1425,9 +1430,15 @@ fn upctl2_prep_poll_mr(rank: u32, mr: u32) {
     while read32(UPCTL2_MR_STAT) & UPCTL2_MR_WR_BUSY != 0 {}
 }
 
+const INDEX_DATA: [u32; 9] = [
+    0x00AA, 0x01A9, 0x018A, 0x016B, //
+    0x014C, 0x005C, 0x0099, 0x009A, //
+    0x007B,
+];
+
 // 0..=8
 fn find_index(vxx: u32) -> Option<usize> {
-    for (i, c) in DATA.iter().enumerate() {
+    for (i, c) in INDEX_DATA.iter().enumerate() {
         let x = *c;
         // NOTE: ^ is XOR
         if (c ^ vxx) & 0x1f == 0 && // asd
@@ -1439,12 +1450,6 @@ fn find_index(vxx: u32) -> Option<usize> {
     }
     None
 }
-
-const DATA: [u32; 9] = [
-    0x00AA, 0x01A9, 0x018A, 0x016B, //
-    0x014C, 0x005C, 0x0099, 0x009A, //
-    0x007B,
-];
 
 fn upctl2_config(reg_vals: &[RegVal], p1: u32, p2: u32) {
     fill_regs(UPCTL2_BASE, reg_vals);
