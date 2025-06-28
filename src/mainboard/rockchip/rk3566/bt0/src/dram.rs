@@ -104,6 +104,8 @@ const UPCTL2_INIT6: usize = UPCTL2_BASE + 0x00e8;
 const UPCTL2_INIT7: usize = UPCTL2_BASE + 0x00ec;
 const UPCTL2_ZQ_CTRL0: usize = UPCTL2_BASE + 0x0180;
 const UPCTL2_DFI_MISC: usize = UPCTL2_BASE + 0x01b0;
+// ADDRMAP0..11
+const UPCTL2_ADDR_MAP_BASE: usize = UPCTL2_BASE + 0x200;
 const UPCTL2_0248: usize = UPCTL2_BASE + 0x0248;
 const UPCTL2_024C: usize = UPCTL2_BASE + 0x024c;
 const UPCTL2_DBG_CMD: usize = UPCTL2_BASE + 0x030c;
@@ -927,7 +929,7 @@ fn upctl2_sw_set_req() {
 fn get_funny_bits() -> (u32, u32) {
     let v = read32(DDR_GRF_CTRL3);
     // Extract bits 8..15. The & 0xff is technically not necessary since we
-    // do another extraction hereafter, taking a pair of bits at idx * 2.
+    // do another extraction hereafter, taking a pair of bits at i * 2.
     let dq_map = (v >> 8) & 0xff;
     println!("DDR_GRF_000C bits 15..8: {dq_map:08b} (full reg val: {v:08x})");
 
@@ -1019,22 +1021,23 @@ fn phy_measure_xx(dram_freq: u32) -> u32 {
     (v3 / 100) & 0x7f
 }
 
-const PREFILL_0200_DATA: [u32; 9] = [
+type AddrmapData = [u32; 9];
+
+const ADDR_MAP_DATA_17: AddrmapData = [
     0x0000_1f1f,
     0x0009_0909,
-    0x0,
-    0x0,
+    0x0000_0000,
+    0x0000_0000,
     0x0000_1f00,
     0x0808_0808,
     0x0808_0808,
     0x0000_0f08,
-    0x0,
+    0x0000_0000,
 ];
 
-fn upctl2_prefill(d: &[u32]) {
-    let b = UPCTL2_BASE + 0x200;
+fn upctl2_addrmap_prefill(d: &AddrmapData) {
     for (i, v) in d.iter().enumerate() {
-        write32(b + i * 4, *v);
+        write32(UPCTL2_ADDR_MAP_BASE + i * 4, *v);
     }
 }
 
@@ -1194,44 +1197,48 @@ fn ddr_xxx(enable_ecc: bool) {
     // bank_num is 3 -> 0x6b
     let vxx = if bank_num == 3 { vt | 8 } else { vt };
 
-    let idx = find_index(vxx);
+    // see calculate_ddrconfig
 
-    // NOTE: original code mutates global variable; this searches for a list of
-    // data.
-    let s_0030 = idx.unwrap_or_else(|| {
+    // This searches for an index to address map data.
+    // We currently hardcode that list.
+    // TODO: actually use this resulting value.
+    // Possible resulting values: 0..=8, 14, 17
+    let idx = find_addrmap_index(vxx).unwrap_or_else(|| {
         if bank_num == 3 && bw_plus_col == 10 {
             14
         } else if rank != 1 || bank_num != 3 || cs0_row > 17 || bw_plus_col != 13 {
             // NOTE: This should never happen.
-            panic!("calculcate DDR config error")
+            // Do the check at build time, and do it earlier instead of here.
+            panic!("DDR config error")
         } else {
+            // We should be here.
             17
         }
     });
+    // NOTE: unused; original code mutates config field12 (offset 0x30).
+    let s_0030 = idx;
+    println!("DDR addrmap data index: {idx}");
 
     // essentially memcpy
-    // NOTE: data really depends on previous conditions
-    upctl2_prefill(&PREFILL_0200_DATA);
+    // NOTE: data really depends on previously found index.
+    upctl2_addrmap_prefill(&ADDR_MAP_DATA_17);
 
-    // TODO: more logic
-    // cs0_row
+    // TODO: loop logic
+    // This is only one iteration, can be more depending on cs0_row.
     let o = 0x0218 + 4;
     let r = UPCTL2_BASE + o;
     let v = read32(r);
     // put 0xf at respectively byte position 0, 1, 2 or 3
     let byte_pos = (0x11 & 3) << 3; // 1 << 3 = 8
     write32(r, v | (0xf << byte_pos));
-    let v = read32(r);
-    let byte_pos = (0x10 & 3) << 3; // 1 << 3 = 8
-    write32(r, v | (0xf << byte_pos));
+
+    // TODO: some code skipped here that is for non-LPDDR4
 
     if rank == 1 {
-        let r = UPCTL2_BASE + 0x200;
+        let r = UPCTL2_ADDR_MAP_BASE;
         let v = read32(r);
         write32(r, v | 0x1f);
     }
-
-    // ----
 
     // also in U-Boot drivers/ram/rockchip/sdram_rv1126.c sdram_init_
     let r = UPCTL2_DFI_MISC;
@@ -1436,8 +1443,8 @@ const INDEX_DATA: [u32; 9] = [
     0x007B,
 ];
 
-// 0..=8
-fn find_index(vxx: u32) -> Option<usize> {
+// Possible results: 0..=8
+fn find_addrmap_index(vxx: u32) -> Option<usize> {
     for (i, c) in INDEX_DATA.iter().enumerate() {
         let x = *c;
         // NOTE: ^ is XOR
