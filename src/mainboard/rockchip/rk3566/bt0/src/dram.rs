@@ -990,26 +990,24 @@ fn phy_cfg(cfg: &PhyCfg, dram_freq: u32, rank: u32, chan_bus_width: u32, enable_
     write32(DDR_PHY_BASE, vxo);
 }
 
+// This appears to be some kind of measurement, yielding different values for
+// different runs.
 fn phy_measure_xx(dram_freq: u32) -> u32 {
-    // The following appears to be some kind of measurement, yielding different
-    // values for different runs.
+    let vx = if dram_freq == 0 {
+        0
+    } else {
+        // dram_freq = 0x144 -> 10000 / 1543 + 1 = 6 + 1 = 7
+        10_000 / (500_000 / dram_freq)
+    } + 1;
 
     let v = read32(DDR_PHY_01F4);
     println!("DDR_PHY_01F4: {v:08x}");
     let v = v >> 24;
 
-    // dram_freq = 0x144
-    let v1 = 500_000 / dram_freq; // 1543
-    let v2 = (10_000 / v1) + 1; // 7
-
     let v3 = if v < 0x41 {
-        // 0xac0
-        0xc80 - 0x40 * v
+        3200 - 64 * v
     } else {
-        let v = read32(DDR_PHY_01F4);
-        println!("DDR_PHY_01F4: {v:08x}");
-        let v = v >> 24;
-        (50 - v2) * v // 43 * v
+        (50 - vx) * v // 43 * v
     };
 
     // real values seen:
@@ -1183,7 +1181,7 @@ fn ddr_xxx(enable_ecc: bool) {
 
     set_ds_odt(dram_freq, dram_type, 0);
 
-    panic!("set_ds_odt DONE");
+    println!("set_ds_odt DONE");
 
     // similar to arch/arm/mach-rockchip/rk3036/sdram_rk3036.c  sdram_all_config
     // 0xd (13)
@@ -1266,7 +1264,7 @@ fn ddr_xxx(enable_ecc: bool) {
 
     const BLOCK_SIZE: usize = 0x180;
     const BLOCK_COUNT: usize = 5;
-    let mask = (0x7f << 24) | (0x7f << 8);
+    let mask = !((0x7f << 24) | (0x7f << 8));
     // NOTE: rank apparently could be hardcoded at build time.
     for i in 0..rank {
         let o = match i {
@@ -1292,10 +1290,6 @@ fn ddr_xxx(enable_ecc: bool) {
     let v = read32(DDR_PHY_0094);
     write32(DDR_PHY_0094, v & !(1 << 2));
 
-    // TODO: What is MR? What is required for it to be read?
-    // Could be Mode Register.
-    // https://www.mindshare.com/files/MindShare_DRAM_QRG_v5a.pdf
-
     let mr12 = upctl2_read_mr(1, 12, 7);
     let mr14 = upctl2_read_mr(1, 14, 7);
     // we expect 0x4d for both
@@ -1306,6 +1300,8 @@ fn ddr_xxx(enable_ecc: bool) {
         assert_eq!(mr12, 0x4d);
         assert_eq!(mr14, 0x4d);
     }
+
+    panic!("XXX");
 
     let init6 = read32(UPCTL2_INIT6);
     let init7 = read32(UPCTL2_INIT7);
@@ -1396,7 +1392,9 @@ fn upctl2_write_mr(rank: u32, mr: u32, val: u16, p4: u32) {
 }
 
 // FIXME: we only get 0 :(
-// pctl_read_mr
+// U-Boot pctl_read_mr
+// NOTE: MR is Mode Register.
+// See also: https://www.mindshare.com/files/MindShare_DRAM_QRG_v5a.pdf
 fn upctl2_read_mr(rank: u32, mr: u32, dram_type: u32) -> u8 {
     // NOTE: We might move this out, since parameters are just forwarded.
     upctl2_prep_poll_mr(rank, mr);
