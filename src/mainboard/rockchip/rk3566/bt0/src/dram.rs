@@ -1292,41 +1292,62 @@ fn ddr_xxx(enable_ecc: bool) {
 
     let mr12 = upctl2_read_mr(1, 12, 7);
     let mr14 = upctl2_read_mr(1, 14, 7);
-    // we expect 0x4d for both
-    println!("LP4  MR12: {mr12:02x}  MR14: {mr14:02x}");
 
-    if false && DEBUG {
-        // WHOOPSIES
+    if DEBUG {
+        println!("LPDDR4 mode registers");
+        println!("  MR12: {mr12:02x}");
+        println!("  MR14: {mr14:02x}");
         assert_eq!(mr12, 0x4d);
         assert_eq!(mr14, 0x4d);
     }
 
-    panic!("XXX");
-
     let init6 = read32(UPCTL2_INIT6);
     let init7 = read32(UPCTL2_INIT7);
-    println!("INIT  6: {init6:08x}  7: {init7:08x}");
-    upctl2_write_mr(0xf, 11, (init6 >> 16) as u16, 7);
-    upctl2_write_mr(0xf, 12, init6 as u16, 7);
-    upctl2_write_mr(0xf, 22, (init7 >> 16) as u16, 7);
+    if DEBUG {
+        println!("INIT6: {init6:08x}");
+        println!("INIT7: {init7:08x}");
+    }
+
+    upctl2_write_mr(15, 11, (init6 >> 16) as u16, 7);
+    upctl2_write_mr(15, 12, init6 as u16, 7);
+    upctl2_write_mr(15, 22, (init7 >> 16) as u16, 7);
 
     if DEBUG {
         let mr11 = upctl2_read_mr(1, 11, 7);
         let mr12 = upctl2_read_mr(1, 12, 7);
         let mr22 = upctl2_read_mr(1, 22, 7);
-        println!("LP4  MR11: {mr11:02x}  MR12: {mr12:02x}  MR22: {mr22:02x}");
-        panic!("DEBUG");
+        println!("  MR11: {mr11:02x}");
+        println!("  MR12: {mr12:02x}");
+        println!("  MR22: {mr22:02x}");
     }
 
     while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
     write32(UPCTL2_DBG_CMD, 0x0000_0010);
     while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
 
+    panic!("draw the rest of the owl 🦉🖌️");
+
     train(dram_type);
 
     // TODO: draw the rest of the owl 🦉🖌️
 
     println!("ddr_xxx done");
+}
+
+// TODO: Is this correct?
+// NOTE: We start at +4K to avoid accessing address 0, on which Rust errors.
+const RAM_BASE: usize = 0x1000;
+fn dram_test() {
+    let pattern = 0xffaa_5500;
+    for o in (0..64).step_by(4) {
+        write32(RAM_BASE + o, pattern);
+        let p = read32(RAM_BASE + o);
+        println!("{p:08x}");
+    }
+    for o in (0..64).step_by(4) {
+        let p = read32(RAM_BASE + o);
+        println!("{p:08x}");
+    }
 }
 
 fn train(dram_type: u32) {
@@ -1368,7 +1389,7 @@ fn upctl2_zqctl_refreshctl() -> bool {
 
 // U-Boot drivers/ram/rockchip/sdram_pctl_px30.c pctl_write_mr
 fn upctl2_write_mr(rank: u32, mr: u32, val: u16, p4: u32) {
-    println!("upctl2_write_mr rank {rank} mr {mr} val {val}");
+    println!("upctl2_write_mr rank {rank} mr {mr} val {val:02x}");
 
     while read32(UPCTL2_MR_STAT) & UPCTL2_MR_WR_BUSY != 0 {}
 
@@ -1391,7 +1412,6 @@ fn upctl2_write_mr(rank: u32, mr: u32, val: u16, p4: u32) {
     while read32(UPCTL2_MR_STAT) & UPCTL2_MR_WR_BUSY != 0 {}
 }
 
-// FIXME: we only get 0 :(
 // U-Boot pctl_read_mr
 // NOTE: MR is Mode Register.
 // See also: https://www.mindshare.com/files/MindShare_DRAM_QRG_v5a.pdf
@@ -1400,12 +1420,9 @@ fn upctl2_read_mr(rank: u32, mr: u32, dram_type: u32) -> u8 {
     upctl2_prep_poll_mr(rank, mr);
 
     let v = read32(DDR_GRF_STATUS00);
-    println!("upctl2_get_xxxxx DDR_GRF_0100: {v:08x}");
     let v = if dram_type < 9 {
         // We should get here.
-        let v2 = read32(DDR_GRF_STATUS01);
-        println!("upctl2_get_xxxxx DDR_GRF_0104: {v2:08x}");
-        v2 >> 8
+        read32(DDR_GRF_STATUS01) >> 8
     } else {
         v
     };
@@ -1423,7 +1440,6 @@ const DEBUG: bool = true;
  * rank = 2: cs1
  */
 fn upctl2_prep_poll_mr(rank: u32, mr: u32) {
-    println!("upctl2_prep_poll_mr {rank} {mr}");
     write32(UPCTL2_MR_CTRL0, (rank << 4) | 1);
     write32(UPCTL2_MR_CTRL1, mr << 8);
 
