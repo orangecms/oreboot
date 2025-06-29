@@ -1325,11 +1325,12 @@ fn ddr_xxx(enable_ecc: bool) {
     write32(UPCTL2_DBG_CMD, 0x0000_0010);
     while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
 
-    panic!("draw the rest of the owl 🦉🖌️");
+    train(
+        dram_type,
+        FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
+    );
 
-    train(dram_type);
-
-    // TODO: draw the rest of the owl 🦉🖌️
+    todo!("draw the rest of the owl 🦉🖌️");
 
     println!("ddr_xxx done");
 }
@@ -1350,25 +1351,66 @@ fn dram_test() {
     }
 }
 
-fn train(dram_type: u32) {
+use flagset::{flags, FlagSet, Flags};
+
+// U-Boot: data_training checks the training flag,
+// then calls specific functions for each training
+//
+//  0xff: full training (all but CA training)
+//  bit 0: CA training
+//  bit 1: read gate training
+//  bit 2: write leveling (data_training_wl)
+//  bit 3: write training
+//  bit 4: read training
+fn train(dram_type: u32, training_flags: FlagSet<TrainingFlag>) {
+    if training_flags.contains(TrainingFlag::WriteLeveling) {
+        train_write_leveling(dram_type);
+    }
+    if training_flags.contains(TrainingFlag::ReadGate) {
+        todo!("train_read_gate")
+    }
+    if training_flags.contains(TrainingFlag::Read) {
+        todo!("train_read")
+    }
+    if training_flags.contains(TrainingFlag::Write) {
+        todo!("train_write")
+    }
+}
+
+flags! {
+    pub enum TrainingFlag: u8 {
+        Ca = 1 << 0,
+        ReadGate = 1<<1,
+        WriteLeveling = 1<<2,
+        Write = 1<<3,
+        Read = 1 << 4,
+        All = 0b1111,
+    }
+}
+
+fn train_write_leveling(dram_type: u32) {
     let disable_auto_zq = upctl2_zqctl_refreshctl();
     write32(CRU_NS_VPLL_CFG0, disable_auto_zq as u32);
 
-    let v = read32(UPCTL2_BASE + 0x0028);
-    write32(UPCTL2_BASE + 0x0028, v & !(1 << 1));
+    let v = read32(UPCTL2_MSTR2);
+    write32(UPCTL2_MSTR2, v & !(1 << 1));
 
-    let vx = read32(UPCTL2_BASE + 0x0028) & 0b11;
-    let vxs = vx * 0x1000;
-    let vv = if vx != 0 { 0x1000 } else { vx };
-    let reg = UPCTL2_BASE + 0x00dc + (vxs + vx) as usize;
-    let xx = read32(reg);
+    // fsp offset?
+    let cur_fsp = read32(UPCTL2_MSTR2) & 0b11;
+    let o = if cur_fsp == 0 {
+        0
+    } else {
+        (cur_fsp + 1) * 0x1000
+    };
+    let r = UPCTL2_INIT3 + o as usize;
+    let xx = read32(r);
+
     let vx = if dram_type != 0 && dram_type != 3 {
         xx & 0xff
     } else {
         xx & 0x3fff | 0x4000
     };
     //
-    // TODO
 }
 
 // U-Boot drivers/ram/rockchip/sdram_pctl_px30.c pctl_dis_zqcs_aref
