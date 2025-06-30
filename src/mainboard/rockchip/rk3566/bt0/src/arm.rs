@@ -13,11 +13,15 @@ pub fn init_counter() {
     }
 }
 
+pub fn get_time() -> u64 {
+    CNTPCT_EL0.get()
+}
+
 // NOTE: Assumes the clock to run at 24MHz.
 pub fn udelay(us: u64) {
-    let t0 = CNTPCT_EL0.get();
+    let t0 = get_time();
     let t1 = t0 + us * 24;
-    while CNTPCT_EL0.get() < t1 {}
+    while get_time() < t1 {}
 }
 
 pub fn print_el() {

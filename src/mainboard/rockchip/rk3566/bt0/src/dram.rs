@@ -117,6 +117,7 @@ const UPCTL2_PCFGR_N: usize = UPCTL2_BASE + 0x0404;
 const UPCTL2_MR_WR_BUSY: u32 = 1;
 
 const DDR_PHY_0000: usize = DDR_PHY_BASE + 0x0000;
+const DDR_PHY_0004: usize = DDR_PHY_BASE + 0x0004;
 const DDR_PHY_0038: usize = DDR_PHY_BASE + 0x0038;
 const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
 const DDR_PHY_008C: usize = DDR_PHY_BASE + 0x008c;
@@ -129,6 +130,9 @@ const DDR_PHY_00F0: usize = DDR_PHY_BASE + 0x00f0;
 const DDR_PHY_00F4: usize = DDR_PHY_BASE + 0x00f4;
 const DDR_PHY_00F8: usize = DDR_PHY_BASE + 0x00f8;
 const DDR_PHY_01F4: usize = DDR_PHY_BASE + 0x01f4;
+const DDR_PHY_020C: usize = DDR_PHY_BASE + 0x020C;
+
+const DDR_PHY_0300: usize = DDR_PHY_BASE + 0x0300;
 const DDR_PHY_0304: usize = DDR_PHY_BASE + 0x0304;
 
 const DDR_GRF_CTRL0: usize = DDR_GRF_BASE + 0x0000;
@@ -599,6 +603,7 @@ fn get_ddr_drv_odt_info(dram_type: u32) -> DdrCfg {
 // drivers/ram/rockchip/sdram_rv1126.c  set_ds_odt
 // set drive strength for on-die termination
 fn set_ds_odt(dram_freq: u32, dram_type: u32, dst_fsp: u32) {
+    println!("set_ds_odt START");
     let cfg = get_ddr_drv_odt_info(dram_type);
 
     // NOTE: The struct is very compact, but that is unnecessary.
@@ -810,19 +815,11 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, dst_fsp: u32) {
 
     write32(UPCTL2_SW_CTRL, 0);
 
-    // NOTE: There are multiple blocks with INIT registers.
-    // The base address depends on dst_fsp (TODO: what is that short for?).
-    let fsp_base = UPCTL2_BASE
-        + if dst_fsp > 0 {
-            (dst_fsp + 1) * 0x1000
-        } else {
-            0
-        } as usize;
-    // ...
-    let init3 = fsp_base + 0x00dc;
-    let init4 = fsp_base + 0x00e0;
-    let init6 = fsp_base + 0x00e8;
-    let init7 = fsp_base + 0x00ec;
+    let fsp_offset = get_fsp_offset(dst_fsp);
+    let init3 = UPCTL2_INIT3 + fsp_offset;
+    let init4 = UPCTL2_INIT4 + fsp_offset;
+    let init6 = UPCTL2_INIT6 + fsp_offset;
+    let init7 = UPCTL2_INIT7 + fsp_offset;
 
     let v = read32(init4);
     write32(init4, (v & 0xffff_0000) | v1);
@@ -901,6 +898,14 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, dst_fsp: u32) {
         // TODO
     }
     upctl2_sw_set_ack();
+    println!("set_ds_odt DONE");
+}
+
+// NOTE: There are multiple blocks with INIT registers.
+// The offset depends on dst_fsp; here just f.
+// TODO: what is fsp short for?
+fn get_fsp_offset(f: u32) -> usize {
+    (if f == 0 { 0 } else { (f + 1) * 0x1000 }) as usize
 }
 
 fn odt_calc(odt_ohm: u32) -> u32 {
@@ -1181,8 +1186,6 @@ fn ddr_xxx(enable_ecc: bool) {
 
     set_ds_odt(dram_freq, dram_type, 0);
 
-    println!("set_ds_odt DONE");
-
     // similar to arch/arm/mach-rockchip/rk3036/sdram_rk3036.c  sdram_all_config
     // 0xd (13)
     let bw_plus_col = chan_bus_width + column;
@@ -1326,6 +1329,7 @@ fn ddr_xxx(enable_ecc: bool) {
     while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
 
     train(
+        0, // cs
         dram_type,
         FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
     );
@@ -1362,12 +1366,12 @@ use flagset::{flags, FlagSet, Flags};
 //  bit 2: write leveling (data_training_wl)
 //  bit 3: write training
 //  bit 4: read training
-fn train(dram_type: u32, training_flags: FlagSet<TrainingFlag>) {
+fn train(cs: u32, dram_type: u32, training_flags: FlagSet<TrainingFlag>) {
     if training_flags.contains(TrainingFlag::WriteLeveling) {
-        train_write_leveling(dram_type);
+        train_write_leveling(cs, dram_type);
     }
     if training_flags.contains(TrainingFlag::ReadGate) {
-        todo!("train_read_gate")
+        train_read_gate(cs, dram_type);
     }
     if training_flags.contains(TrainingFlag::Read) {
         todo!("train_read")
@@ -1380,29 +1384,24 @@ fn train(dram_type: u32, training_flags: FlagSet<TrainingFlag>) {
 flags! {
     pub enum TrainingFlag: u8 {
         Ca = 1 << 0,
-        ReadGate = 1<<1,
-        WriteLeveling = 1<<2,
-        Write = 1<<3,
+        ReadGate = 1 << 1,
+        WriteLeveling = 1 << 2,
+        Write = 1 << 3,
         Read = 1 << 4,
-        All = 0b1111,
+        All = 0b11110,
     }
 }
 
-fn train_write_leveling(dram_type: u32) {
-    let disable_auto_zq = upctl2_zqctl_refreshctl();
-    write32(CRU_NS_VPLL_CFG0, disable_auto_zq as u32);
+fn train_write_leveling(cs: u32, dram_type: u32) {
+    let is_auto_zq_enabled = upctl2_disable_zq_cs();
+    write32(CRU_NS_VPLL_CFG0, is_auto_zq_enabled as u32);
 
     let v = read32(UPCTL2_MSTR2);
     write32(UPCTL2_MSTR2, v & !(1 << 1));
 
-    // fsp offset?
     let cur_fsp = read32(UPCTL2_MSTR2) & 0b11;
-    let o = if cur_fsp == 0 {
-        0
-    } else {
-        (cur_fsp + 1) * 0x1000
-    };
-    let r = UPCTL2_INIT3 + o as usize;
+    let o = get_fsp_offset(cur_fsp);
+    let r = UPCTL2_INIT3 + o;
     let xx = read32(r);
 
     let vx = if dram_type != 0 && dram_type != 3 {
@@ -1413,20 +1412,124 @@ fn train_write_leveling(dram_type: u32) {
     //
 }
 
+fn train_read_gate(cs: u32, dram_type: u32) {
+    let phy0300 = read32(DDR_PHY_0300);
+
+    // For CS > 1, ensure that rank 4 is enabled
+    let v = read32(DDR_PHY_0000);
+    if v & (1 << 20) == 0 && cs > 1 {
+        write32(DDR_PHY_0000, v | (1 << 20));
+    }
+    let phy0000 = read32(DDR_PHY_0000);
+
+    // prepare
+    let nv = phy0300 & 0xffffff9f | 0x40;
+    for r in (DDR_PHY_0300..DDR_PHY_0300 + 0x0a80).step_by(0x180) {
+        write32(r, nv);
+    }
+
+    let is_auto_zq_enabled = upctl2_disable_zq_cs();
+
+    if dram_type == 0 {
+        // TODO
+    }
+
+    let v = read32(DDR_PHY_0004);
+    // bit 2..5: cal_cs_sel
+    // Position of 0 determines rank: 0b1110 means rank 0, 0b0111 means rank 3.
+    // 0b0000 means RX-DQS calibration result auto-switches as per DFI command
+    // after RX-DQS training.
+    write32(
+        DDR_PHY_0004,
+        v & 0xffff_ffc3 | ((!(1 << (cs & 0x1f)) & 0b1111) << 2),
+    );
+    // Start RX-DQS calibration.
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v | 1);
+
+    let t0 = crate::arm::get_time();
+    for _ in 0..50 {
+        let v = read32(DDR_PHY_020C);
+        if v & (1 << 5) != 0 {
+            panic!("RX-DQS calibration error");
+        }
+        if v & (1 << 6) != 0 {
+            let t1 = crate::arm::get_time();
+            println!("RX-DQS calibration done in {}us", t1 - t0);
+            break;
+        }
+        udelay(1);
+    }
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & !1);
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & 0xffff_ffc3);
+
+    upctl2_restore_zq_cs(is_auto_zq_enabled);
+    upctl2_dbg_rank01_refresh(8);
+
+    if DEBUG {
+        let channel_en = (phy0000 >> 8) & 0b11111;
+        println!("Channel A DQ 0..7  enabled: {}", channel_en & (1 << 0) != 0);
+        println!("Channel A DQ 8..15 enabled: {}", channel_en & (1 << 1) != 0);
+        println!("Channel B DQ 0..7  enabled: {}", channel_en & (1 << 2) != 0);
+        println!("Channel B DQ 8..15 enabled: {}", channel_en & (1 << 3) != 0);
+        println!("Channel C DQ 0..7  enabled: {}", channel_en & (1 << 4) != 0);
+    }
+
+    // restore
+    for r in (DDR_PHY_0300..DDR_PHY_0300 + 0x0a80).step_by(0x180) {
+        write32(r, phy0300);
+    }
+
+    todo!("...");
+    // TODO
+}
+
+// counterparts to UPCTL2_DBG_CMD
+const DBG_RANK0_BUSY: u32 = 1 << 0;
+const DBG_RANK1_BUSY: u32 = 1 << 1;
+const DBG_STAT_BUSY: u32 = DBG_RANK0_BUSY | DBG_RANK1_BUSY;
+
+fn upctl2_dbg_rank01_refresh(n: usize) {
+    for _ in 0..n {
+        while read32(UPCTL2_DBG_STAT) & DBG_STAT_BUSY != 0 {}
+        // NOTE: 0x3 should also do; bits 2-3 are supposedly reserved
+        write32(UPCTL2_DBG_CMD, 0x0000_000f);
+    }
+}
+
+// U-Boot pctl_rest_zqcs_aref
+fn upctl2_restore_zq_cs(auto_zq_was_disabled: bool) {
+    if auto_zq_was_disabled {
+        let v0 = read32(UPCTL2_ZQ_CTRL0);
+        write32(UPCTL2_ZQ_CTRL0, v0 & !(1 << 31));
+    }
+    // enable auto refresh
+    let v = read32(UPCTL2_REFRESH_CTRL4);
+    write32(UPCTL2_REFRESH_CTRL4, v & !1);
+
+    let v = read32(UPCTL2_REFRESH_CTRL4);
+    write32(UPCTL2_REFRESH_CTRL4, v ^ (1 << 1));
+}
+
 // U-Boot drivers/ram/rockchip/sdram_pctl_px30.c pctl_dis_zqcs_aref
-fn upctl2_zqctl_refreshctl() -> bool {
+// Returns whether ZQ CS was already disabled.
+fn upctl2_disable_zq_cs() -> bool {
     let v0 = read32(UPCTL2_ZQ_CTRL0);
-    let disable_auto_zq = v0 & (1 << 31) != 0;
-    // disable ZQ CS
-    if disable_auto_zq {
+    let auto_zq_was_disabled = v0 & (1 << 31) != 0;
+    // ensure ZQ CS is disabled
+    if auto_zq_was_disabled {
         write32(UPCTL2_ZQ_CTRL0, v0 | (1 << 31));
     }
     // disable auto refresh
     let v = read32(UPCTL2_REFRESH_CTRL4);
     write32(UPCTL2_REFRESH_CTRL4, v | 1);
+
     let v = read32(UPCTL2_REFRESH_CTRL4);
     write32(UPCTL2_REFRESH_CTRL4, v ^ (1 << 1));
-    disable_auto_zq
+
+    auto_zq_was_disabled
 }
 
 // U-Boot drivers/ram/rockchip/sdram_pctl_px30.c pctl_write_mr
