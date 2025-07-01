@@ -13,7 +13,7 @@
 
 use util::mmio::{read32, write32};
 
-use crate::arm::udelay;
+use crate::arm::{get_time, udelay};
 use crate::i2c::{i2c_init, i2c_read};
 use crate::mem_map::{
     CRU_NS_BASE, CRU_S_BASE, DDR_GRF_BASE, DDR_PHY_BASE, PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE,
@@ -120,6 +120,7 @@ const DDR_PHY_0000: usize = DDR_PHY_BASE + 0x0000;
 const DDR_PHY_0004: usize = DDR_PHY_BASE + 0x0004;
 const DDR_PHY_0038: usize = DDR_PHY_BASE + 0x0038;
 const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
+const DDR_PHY_0084: usize = DDR_PHY_BASE + 0x0084;
 const DDR_PHY_008C: usize = DDR_PHY_BASE + 0x008c;
 const DDR_PHY_0094: usize = DDR_PHY_BASE + 0x0094;
 const DDR_PHY_00AC: usize = DDR_PHY_BASE + 0x00ac;
@@ -1336,23 +1337,105 @@ fn sdram_init(post_init: bool) {
         FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
     );
 
+    let x0 = (chan_bus_width + column + bank_num) as u64; // 1 + 11 + 3 = 15
+    let s_pow = (x0 + cs0_row as u64) & 0x3f; // 15 + 17 = 32 (0x20)
+    let x1 = 1 << s_pow; // 2 ** s_pow
+    let x2 = if rank < 2 { 0 } else { todo!() };
+    let f = x1 + x2;
+
+    let v = read32(DDR_GRF_SPLIT_CON);
+    println!("split con: {v:08x}");
+    // bit 8: AXI split bypass (1) or enable (0)
+    // bits 0..7: split address
+    let split_address = if (v >> 8) & 1 == 0 { v & 0xff } else { 0 } as u64;
+
+    let s = if row_3_4 == 0 {
+        if split_address != 0 {
+            split_address * 0x800000 + (f >> 1)
+        } else {
+            f
+        }
+    } else {
+        (f * 3) >> 2
+    };
+
+    let dram_size_mb = s >> 20;
+    // FIXME: I get 4096, but should be 2048
+    println!("{dram_size_mb} MB");
+
+    // FROM HERE: U-Boot ddr_set_rate_for_fsp
+
+    // U-Boot get_wrlvl_val
+    let p_res = upctl2_low_power_update(0);
+    // NOTE: code here omitted; should be disabled
+    let p_res = upctl2_low_power_update(p_res);
+
+    let odt_cfg = get_ddr_drv_odt_info(dram_type);
+
+    // 0x210 0x144 0x210 0x210
+    let freq0 = odt_cfg.ddr_freq_f0_f1 & 0xfff;
+    let freq1 = (odt_cfg.ddr_freq_f0_f1 >> 12) & 0xfff;
+    let freq2 = odt_cfg.ddr_freq_f2_f3 & 0xfff;
+    let freq3 = (odt_cfg.ddr_freq_f2_f3 >> 12) & 0xfff;
+
+    // TODO: zero out FSP params storage ...?
+    write32(SHARE_MEM_BASE, 0x0);
+
+    let p_res = upctl2_low_power_update(0);
+
+    // TODO ...
+
+    // END ddr_set_rate_for_fsp
+
+    if false {
+        println!("DRAM test");
+        dram_test();
+    }
+
     todo!("draw the rest of the owl 🦉🖌️");
 
     println!("sdram_init done");
 }
 
+fn ddr_set_rate() {
+    //
+}
+
+const DFI_LOW_POWER_BYPASS: u32 = 1 << 15;
+
+fn upctl2_low_power_update(x: u32) -> u32 {
+    if x != 0 {
+        let v = read32(DDR_PHY_0084);
+        write32(DDR_PHY_0084, v & !DFI_LOW_POWER_BYPASS);
+        let v = read32(UPCTL2_POWER_CTRL);
+        write32(UPCTL2_POWER_CTRL, v | (x & 0xf));
+    }
+    // bit 0: self refresh enable
+    // bit 1: power down enable
+    // bit 2: deep power down enable
+    // bit 3: DFI DRAM clock disable
+    let pwr_ctl = read32(UPCTL2_POWER_CTRL);
+    write32(UPCTL2_POWER_CTRL, pwr_ctl & !0xf);
+    let v = read32(DDR_PHY_0084);
+    write32(DDR_PHY_0084, v & DFI_LOW_POWER_BYPASS);
+
+    pwr_ctl
+}
+
 // TODO: Is this correct?
-// NOTE: We start at +4K to avoid accessing address 0, on which Rust errors.
-const RAM_BASE: usize = 0x1000;
+const RAM_BASE: usize = 0x0;
+// + 128K
+const SHARE_MEM_BASE: usize = RAM_BASE + 0x10_0000;
+
+// NOTE: Start at an offset to avoid accessing address 0, on which Rust errors.
 fn dram_test() {
+    let b = 0x1000;
     let pattern = 0xffaa_5500;
     for o in (0..64).step_by(4) {
-        write32(RAM_BASE + o, pattern);
-        let p = read32(RAM_BASE + o);
-        println!("{p:08x}");
+        write32(b + o, pattern);
     }
     for o in (0..64).step_by(4) {
-        let p = read32(RAM_BASE + o);
+        let p = read32(b + o);
         println!("{p:08x}");
     }
 }
@@ -1453,7 +1536,7 @@ fn train_read_gate(cs: u32, dram_type: u32) {
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v | 1);
 
-    let cal_res = check_calibration();
+    let cal_res = check_rx_dqs_calibration();
 
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v & !1);
@@ -1489,12 +1572,12 @@ fn train_read_gate(cs: u32, dram_type: u32) {
     let v = read32(DDR_PHY_0448);
     let xx = v >> ((cs & 1) * 16);
     if xx & 0x7ff != 0 {
-        println!("hmm {v:08x} {cs} {xx:03x}");
+        panic!("read gate training error; DDR_PHY_0448: {v:08x} {cs} {xx:03x}");
     }
 }
 
-fn check_calibration() -> u32 {
-    let t0 = crate::arm::get_time();
+fn check_rx_dqs_calibration() -> u32 {
+    let t0 = get_time();
     for _ in 0..50 {
         let v = read32(DDR_PHY_020C);
         if v & (1 << 5) != 0 {
