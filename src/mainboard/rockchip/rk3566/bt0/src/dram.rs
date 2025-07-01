@@ -123,6 +123,7 @@ const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
 const DDR_PHY_0084: usize = DDR_PHY_BASE + 0x0084;
 const DDR_PHY_008C: usize = DDR_PHY_BASE + 0x008c;
 const DDR_PHY_0094: usize = DDR_PHY_BASE + 0x0094;
+const DDR_PHY_00A0: usize = DDR_PHY_BASE + 0x00a0;
 const DDR_PHY_00AC: usize = DDR_PHY_BASE + 0x00ac;
 const DDR_PHY_00C0: usize = DDR_PHY_BASE + 0x00c0;
 // PLL
@@ -130,8 +131,10 @@ const DDR_PHY_00D0: usize = DDR_PHY_BASE + 0x00d0;
 const DDR_PHY_00F0: usize = DDR_PHY_BASE + 0x00f0;
 const DDR_PHY_00F4: usize = DDR_PHY_BASE + 0x00f4;
 const DDR_PHY_00F8: usize = DDR_PHY_BASE + 0x00f8;
+const DDR_PHY_01B0: usize = DDR_PHY_BASE + 0x01b0;
 const DDR_PHY_01F4: usize = DDR_PHY_BASE + 0x01f4;
 const DDR_PHY_020C: usize = DDR_PHY_BASE + 0x020C;
+const DDR_PHY_0230: usize = DDR_PHY_BASE + 0x0230;
 
 const DDR_PHY_0300: usize = DDR_PHY_BASE + 0x0300;
 const DDR_PHY_0304: usize = DDR_PHY_BASE + 0x0304;
@@ -1332,6 +1335,7 @@ fn sdram_init(post_init: bool) {
     while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
 
     train(
+        rank,
         0, // cs
         dram_type,
         FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
@@ -1382,6 +1386,32 @@ fn sdram_init(post_init: bool) {
     write32(SHARE_MEM_BASE, 0x0);
 
     let p_res = upctl2_low_power_update(0);
+
+    let (v1, v2) = if dram_type < 9 {
+        const CMD_INV_DELAY_SEL_MASK: u32 = 0xffff03ff;
+        // PHY_01B0 10..15: cmd_invdelaysel
+        // command TX delay line value OBS signal
+        let v = read32(DDR_PHY_01B0);
+        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x6000);
+
+        let v1 = read32(DDR_PHY_0230) >> 16;
+
+        let v = read32(DDR_PHY_01B0);
+        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x8000);
+
+        let v2 = read32(DDR_PHY_0230) >> 16;
+
+        (v1, v2)
+    } else {
+        todo!()
+    };
+
+    train(
+        rank,
+        0,
+        0,
+        FlagSet::<TrainingFlag>::from(TrainingFlag::WriteLeveling),
+    );
 
     // TODO ...
 
@@ -1451,9 +1481,9 @@ use flagset::{flags, FlagSet, Flags};
 //  bit 2: write leveling (data_training_wl)
 //  bit 3: write training
 //  bit 4: read training
-fn train(cs: u32, dram_type: u32, training_flags: FlagSet<TrainingFlag>) {
+fn train(rank: u32, cs: u32, dram_type: u32, training_flags: FlagSet<TrainingFlag>) {
     if training_flags.contains(TrainingFlag::WriteLeveling) {
-        train_write_leveling(cs, dram_type);
+        train_write_leveling(rank, cs, dram_type);
     }
     if training_flags.contains(TrainingFlag::ReadGate) {
         train_read_gate(cs, dram_type);
@@ -1477,24 +1507,79 @@ flags! {
     }
 }
 
-fn train_write_leveling(cs: u32, dram_type: u32) {
-    let is_auto_zq_enabled = upctl2_disable_zq_cs();
-    write32(CRU_NS_VPLL_CFG0, is_auto_zq_enabled as u32);
+fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) {
+    let was_auto_zq_enabled = upctl2_disable_zq_cs();
 
-    let v = read32(UPCTL2_MSTR2);
-    write32(UPCTL2_MSTR2, v & !(1 << 1));
+    let v = read32(DDR_PHY_00A0);
+    // disable DQ write train auto
+    write32(DDR_PHY_00A0, v & !1);
 
     let cur_fsp = read32(UPCTL2_MSTR2) & 0b11;
     let o = get_fsp_offset(cur_fsp);
     let r = UPCTL2_INIT3 + o;
-    let xx = read32(r);
+    let init3 = read32(r);
 
-    let vx = if dram_type != 0 && dram_type != 3 {
-        xx & 0xff
+    let wl_load_mode = if dram_type == 0 || dram_type == 3 {
+        init3 & 0x3fff | 0x4000
     } else {
-        xx & 0x3fff | 0x4000
+        init3 & 0xff
     };
-    //
+    // write leveling load mode
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & 0x0000_ffff | (wl_load_mode << 16));
+
+    if (dram_type == 0 || dram_type == 3) && rank == 2 {
+        todo!()
+    }
+
+    // 8..11: write leveling cs select
+    let m = 0b1111;
+    let s = 8;
+    let nv = !(1 << (cs & 0x1f)) & m;
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & !(m << s) | (nv << s));
+    // Start write leveling.
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v | (1 << 6));
+
+    let v = read32(DDR_PHY_0004);
+    println!("DDR_PHY_0004 {v:08x} cs {:04b}", (v >> s) & m);
+
+    check_wl();
+
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & !(1 << 6));
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & !(m << s));
+
+    if (dram_type == 0 || dram_type == 3) && rank == 2 {
+        todo!()
+    }
+
+    upctl2_restore_zq_cs(was_auto_zq_enabled);
+    upctl2_dbg_rank01_refresh(8);
+
+    // TODO: another read gate training?!
+}
+
+fn check_wl() {
+    // each of these bits is for each of bytes 0..4
+    let m = 0b11111;
+    let s = 8;
+    let t0 = get_time();
+    let v0 = (read32(DDR_PHY_0000) >> s) & m;
+    for _ in 0..1000 {
+        let v = read32(DDR_PHY_020C);
+        if (v >> s) & m == v0 {
+            let t1 = crate::arm::get_time();
+            println!("write leveling done in {}us", t1 - t0);
+        }
+        udelay(1);
+    }
+    let t1 = crate::arm::get_time();
+    println!("write leveling timeout after {}us", t1 - t0);
+    let v = (read32(DDR_PHY_020C) >> s) & m;
+    panic!("{v0:05b} != {v:05b}");
 }
 
 const RANK4_ENABLED: u32 = 1 << 20;
@@ -1517,21 +1602,21 @@ fn train_read_gate(cs: u32, dram_type: u32) {
         write32(r, nv);
     }
 
-    let is_auto_zq_enabled = upctl2_disable_zq_cs();
+    let was_auto_zq_enabled = upctl2_disable_zq_cs();
 
     if dram_type == 0 {
-        // TODO
+        todo!()
     }
 
-    let v = read32(DDR_PHY_0004);
     // bit 2..5: cal_cs_sel
     // Position of 0 determines rank: 0b1110 means rank 0, 0b0111 means rank 3.
     // 0b0000 means RX-DQS calibration result auto-switches as per DFI command
     // after RX-DQS training.
-    write32(
-        DDR_PHY_0004,
-        v & 0xffff_ffc3 | ((!(1 << (cs & 0x1f)) & 0b1111) << 2),
-    );
+    let m = 0b1111;
+    let s = 2;
+    let nv = !(1 << (cs & 0x1f)) & m;
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & !(m << s) | (nv << s));
     // Start RX-DQS calibration.
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v | 1);
@@ -1543,7 +1628,7 @@ fn train_read_gate(cs: u32, dram_type: u32) {
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v & 0xffff_ffc3);
 
-    upctl2_restore_zq_cs(is_auto_zq_enabled);
+    upctl2_restore_zq_cs(was_auto_zq_enabled);
     upctl2_dbg_rank01_refresh(8);
 
     let channel_en = (phy0000 >> 8) & 0b11111;
