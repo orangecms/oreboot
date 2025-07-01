@@ -1294,45 +1294,50 @@ fn sdram_init(post_init: bool) {
         }
     }
 
+    // read train frequency update
     let v = read32(DDR_PHY_0094);
     write32(DDR_PHY_0094, v | (1 << 2));
     let v = read32(DDR_PHY_0094);
     write32(DDR_PHY_0094, v & !(1 << 2));
 
-    let mr12 = upctl2_read_mr(1, 12, 7);
-    let mr14 = upctl2_read_mr(1, 14, 7);
-
-    if DEBUG {
-        println!("LPDDR4 mode registers");
-        println!("  MR12: {mr12:02x}");
-        println!("  MR14: {mr14:02x}");
-        assert_eq!(mr12, 0x4d);
-        assert_eq!(mr14, 0x4d);
-    }
-
-    let init6 = read32(UPCTL2_INIT6);
-    let init7 = read32(UPCTL2_INIT7);
-    if DEBUG {
-        println!("INIT6: {init6:08x}");
-        println!("INIT7: {init7:08x}");
-    }
-
-    upctl2_write_mr(15, 11, (init6 >> 16) as u16, 7);
-    upctl2_write_mr(15, 12, init6 as u16, 7);
-    upctl2_write_mr(15, 22, (init7 >> 16) as u16, 7);
-
-    if DEBUG {
-        let mr11 = upctl2_read_mr(1, 11, 7);
+    if dram_type == 6 {
+        todo!()
+    } else if dram_type < 9 {
         let mr12 = upctl2_read_mr(1, 12, 7);
-        let mr22 = upctl2_read_mr(1, 22, 7);
-        println!("  MR11: {mr11:02x}");
-        println!("  MR12: {mr12:02x}");
-        println!("  MR22: {mr22:02x}");
-    }
+        let mr14 = upctl2_read_mr(1, 14, 7);
 
-    while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
-    write32(UPCTL2_DBG_CMD, 0x0000_0010);
-    while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
+        if DEBUG {
+            println!("LPDDR4 mode registers");
+            println!("  MR12: {mr12:02x}");
+            println!("  MR14: {mr14:02x}");
+            assert_eq!(mr12, 0x4d);
+            assert_eq!(mr14, 0x4d);
+        }
+
+        let init6 = read32(UPCTL2_INIT6);
+        let init7 = read32(UPCTL2_INIT7);
+        if DEBUG {
+            println!("INIT6: {init6:08x}");
+            println!("INIT7: {init7:08x}");
+        }
+
+        upctl2_write_mr(15, 11, (init6 >> 16) as u16, 7);
+        upctl2_write_mr(15, 12, init6 as u16, 7);
+        upctl2_write_mr(15, 22, (init7 >> 16) as u16, 7);
+
+        if DEBUG {
+            let mr11 = upctl2_read_mr(1, 11, 7);
+            let mr12 = upctl2_read_mr(1, 12, 7);
+            let mr22 = upctl2_read_mr(1, 22, 7);
+            println!("  MR11: {mr11:02x}");
+            println!("  MR12: {mr12:02x}");
+            println!("  MR22: {mr22:02x}");
+        }
+
+        while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
+        write32(UPCTL2_DBG_CMD, 0x0000_0010);
+        while read32(UPCTL2_DBG_STAT) & (1 << 4) != 0 {}
+    }
 
     train(
         rank,
@@ -1340,6 +1345,27 @@ fn sdram_init(post_init: bool) {
         dram_type,
         FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
     );
+
+    let mr14 = upctl2_read_mr(1, 14, 7);
+    // Does this value look familiar? Yes? We need to handle this!
+    if mr14 == 0x4d {
+        if dram_type < 9 {
+            let v = read32(UPCTL2_INIT7);
+            upctl2_write_mr(15, 14, v as u16, 7);
+        }
+        if post_init {
+            for cs in 1..rank {
+                println!("r/cs {cs}");
+                train(
+                    0, // unused
+                    cs,
+                    dram_type,
+                    FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
+                );
+            }
+        }
+        todo!("....")
+    }
 
     let x0 = (chan_bus_width + column + bank_num) as u64; // 1 + 11 + 3 = 15
     let s_pow = (x0 + cs0_row as u64) & 0x3f; // 15 + 17 = 32 (0x20)
@@ -1387,8 +1413,8 @@ fn sdram_init(post_init: bool) {
 
     let p_res = upctl2_low_power_update(0);
 
+    const CMD_INV_DELAY_SEL_MASK: u32 = !(0b111111 << 6);
     let (v1, v2) = if dram_type < 9 {
-        const CMD_INV_DELAY_SEL_MASK: u32 = 0xffff03ff;
         // PHY_01B0 10..15: cmd_invdelaysel
         // command TX delay line value OBS signal
         let v = read32(DDR_PHY_01B0);
