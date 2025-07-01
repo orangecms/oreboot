@@ -135,6 +135,8 @@ const DDR_PHY_020C: usize = DDR_PHY_BASE + 0x020C;
 const DDR_PHY_0300: usize = DDR_PHY_BASE + 0x0300;
 const DDR_PHY_0304: usize = DDR_PHY_BASE + 0x0304;
 
+const DDR_PHY_0448: usize = DDR_PHY_BASE + 0x0448;
+
 const DDR_GRF_CTRL0: usize = DDR_GRF_BASE + 0x0000;
 const DDR_GRF_CTRL1: usize = DDR_GRF_BASE + 0x0004;
 const DDR_GRF_CTRL2: usize = DDR_GRF_BASE + 0x0008;
@@ -959,7 +961,7 @@ fn get_funny_bits() -> (u32, u32) {
 
 // NOTE: this looks similar to PHY cfg functions for other PHYs
 // U-Boot  drivers/ram/rockchip/sdram_rv1126.c  phy_cfg
-fn phy_cfg(cfg: &PhyCfg, dram_freq: u32, rank: u32, chan_bus_width: u32, enable_ecc: bool) {
+fn phy_cfg(cfg: &PhyCfg, dram_freq: u32, rank: u32, chan_bus_width: u32, post_init: bool) {
     phy_pll_set(dram_freq * MEGA, 0);
 
     for p in cfg.iter() {
@@ -984,7 +986,7 @@ fn phy_cfg(cfg: &PhyCfg, dram_freq: u32, rank: u32, chan_bus_width: u32, enable_
         2 => v | 0x0f00,
         _ => v | 0x100 << v0,
     };
-    let mut vxo = if enable_ecc { vx } else { vx | 0x1000 };
+    let mut vxo = if post_init { vx } else { vx | 0x1000 };
 
     if rank == 4 {
         vxo |= 0x0010_0000;
@@ -1058,7 +1060,7 @@ enum DdrType {
 }
 
 // sdram_init_ / sdram_init_detect ?
-fn ddr_xxx(enable_ecc: bool) {
+fn sdram_init(post_init: bool) {
     // TODO: These values come from structs at the offsets encoded in the
     // variable names. Should we make those structs or simple parameters?
     // U-Boot arch/arm/include/asm/arch-rockchip/sdram_common.h sdram_cap_info
@@ -1075,7 +1077,7 @@ fn ddr_xxx(enable_ecc: bool) {
     let dram_freq = 0x144;
     let dram_type = DdrType::LPDDR4 as u32;
 
-    println!("ddr_xxx");
+    println!("sdram_init");
     write32(DDR_GRF_CTRL0, 0x20000);
 
     clk_set_dpll((dram_freq * MEGA) / 2);
@@ -1108,7 +1110,7 @@ fn ddr_xxx(enable_ecc: bool) {
 
     // extracted
     // TODO: other rounds may have different params / sizes thereof
-    phy_cfg(&PHY_CFG3, dram_freq, rank, chan_bus_width, enable_ecc);
+    phy_cfg(&PHY_CFG3, dram_freq, rank, chan_bus_width, post_init);
 
     // TODO: tweak this
     // Each loop has 5 iterations
@@ -1336,7 +1338,7 @@ fn ddr_xxx(enable_ecc: bool) {
 
     todo!("draw the rest of the owl 🦉🖌️");
 
-    println!("ddr_xxx done");
+    println!("sdram_init done");
 }
 
 // TODO: Is this correct?
@@ -1412,13 +1414,17 @@ fn train_write_leveling(cs: u32, dram_type: u32) {
     //
 }
 
+const RANK4_ENABLED: u32 = 1 << 20;
+
 fn train_read_gate(cs: u32, dram_type: u32) {
     let phy0300 = read32(DDR_PHY_0300);
 
-    // For CS > 1, ensure that rank 4 is enabled
     let v = read32(DDR_PHY_0000);
-    if v & (1 << 20) == 0 && cs > 1 {
-        write32(DDR_PHY_0000, v | (1 << 20));
+    let rank4_was_disabled = v & RANK4_ENABLED == 0;
+
+    // For CS > 1, ensure that rank 4 is enabled
+    if rank4_was_disabled && cs > 1 {
+        write32(DDR_PHY_0000, v | RANK4_ENABLED);
     }
     let phy0000 = read32(DDR_PHY_0000);
 
@@ -1447,6 +1453,47 @@ fn train_read_gate(cs: u32, dram_type: u32) {
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v | 1);
 
+    let cal_res = check_calibration();
+
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & !1);
+    let v = read32(DDR_PHY_0004);
+    write32(DDR_PHY_0004, v & 0xffff_ffc3);
+
+    upctl2_restore_zq_cs(is_auto_zq_enabled);
+    upctl2_dbg_rank01_refresh(8);
+
+    let channel_en = (phy0000 >> 8) & 0b11111;
+    if DEBUG {
+        println!("Channel A DQ 0..7  enabled: {}", channel_en & (1 << 0) != 0);
+        println!("Channel A DQ 8..15 enabled: {}", channel_en & (1 << 1) != 0);
+        println!("Channel B DQ 0..7  enabled: {}", channel_en & (1 << 2) != 0);
+        println!("Channel B DQ 8..15 enabled: {}", channel_en & (1 << 3) != 0);
+        println!("Channel C DQ 0..7  enabled: {}", channel_en & (1 << 4) != 0);
+    }
+
+    if channel_en != cal_res {
+        panic!("channel_en does not match calibration result: {cal_res}");
+    }
+
+    // restore
+    for r in (DDR_PHY_0300..DDR_PHY_0300 + 0x0a80).step_by(0x180) {
+        write32(r, phy0300);
+    }
+
+    if rank4_was_disabled {
+        let v = read32(DDR_PHY_0000);
+        write32(DDR_PHY_0000, v & !RANK4_ENABLED);
+    }
+
+    let v = read32(DDR_PHY_0448);
+    let xx = v >> ((cs & 1) * 16);
+    if xx & 0x7ff != 0 {
+        println!("hmm {v:08x} {cs} {xx:03x}");
+    }
+}
+
+fn check_calibration() -> u32 {
     let t0 = crate::arm::get_time();
     for _ in 0..50 {
         let v = read32(DDR_PHY_020C);
@@ -1456,34 +1503,12 @@ fn train_read_gate(cs: u32, dram_type: u32) {
         if v & (1 << 6) != 0 {
             let t1 = crate::arm::get_time();
             println!("RX-DQS calibration done in {}us", t1 - t0);
-            break;
+            // each of the lowest bits means calibration done for byte 0..4
+            return v & 0b11111;
         }
         udelay(1);
     }
-    let v = read32(DDR_PHY_0004);
-    write32(DDR_PHY_0004, v & !1);
-    let v = read32(DDR_PHY_0004);
-    write32(DDR_PHY_0004, v & 0xffff_ffc3);
-
-    upctl2_restore_zq_cs(is_auto_zq_enabled);
-    upctl2_dbg_rank01_refresh(8);
-
-    if DEBUG {
-        let channel_en = (phy0000 >> 8) & 0b11111;
-        println!("Channel A DQ 0..7  enabled: {}", channel_en & (1 << 0) != 0);
-        println!("Channel A DQ 8..15 enabled: {}", channel_en & (1 << 1) != 0);
-        println!("Channel B DQ 0..7  enabled: {}", channel_en & (1 << 2) != 0);
-        println!("Channel B DQ 8..15 enabled: {}", channel_en & (1 << 3) != 0);
-        println!("Channel C DQ 0..7  enabled: {}", channel_en & (1 << 4) != 0);
-    }
-
-    // restore
-    for r in (DDR_PHY_0300..DDR_PHY_0300 + 0x0a80).step_by(0x180) {
-        write32(r, phy0300);
-    }
-
-    todo!("...");
-    // TODO
+    0
 }
 
 // counterparts to UPCTL2_DBG_CMD
@@ -1925,7 +1950,7 @@ pub fn init() {
     }
 
     // TODO: only first round?
-    let enable_ecc = true;
+    let post_init = true;
     // sdram_init_detect ?
-    ddr_xxx(enable_ecc);
+    sdram_init(post_init);
 }
