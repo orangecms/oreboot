@@ -16,8 +16,8 @@ use util::mmio::{read32, write32};
 use crate::arm::{get_time, udelay};
 use crate::i2c::{i2c_init, i2c_read};
 use crate::mem_map::{
-    CRU_NS_BASE, CRU_S_BASE, DDR_GRF_BASE, DDR_PHY_BASE, PMU_GRF_BASE, SRAM_BASE, SYS_SGRF_BASE,
-    UPCTL2_BASE,
+    CRU_NS_BASE, CRU_S_BASE, DDR_GRF_BASE, DDR_PHY_BASE, PMU_GRF_BASE, RESX_BASE, SRAM_BASE,
+    SYS_SGRF_BASE, UPCTL2_BASE,
 };
 
 // SGRF: security subsystem (?)
@@ -1063,6 +1063,25 @@ enum DdrType {
     UNUSED = 0xFF,
 }
 
+struct Config {
+    rank: u32,
+    column: u32,
+    bank_num: u32,
+    chan_bus_width: u32,
+    die_bus_width: u32,
+    row_3_4: u32,
+    cs0_row: u32,
+    cs1_row: u32,
+    cs0_high16bit_row: u32,
+    cs1_high16bit_row: u32,
+    ddr_config: u32,
+    dram_freq: u32,
+    dram_type: u32,
+    num_channels: u32,
+    stride: u32,
+    odt: u32,
+}
+
 // sdram_init_ / sdram_init_detect ?
 fn sdram_init(post_init: bool) {
     // TODO: These values come from structs at the offsets encoded in the
@@ -1080,6 +1099,26 @@ fn sdram_init(post_init: bool) {
 
     let dram_freq = 0x144;
     let dram_type = DdrType::LPDDR4 as u32;
+    let num_channels = 1;
+
+    let cfg = Config {
+        rank,
+        column,
+        bank_num,
+        chan_bus_width,
+        die_bus_width,
+        row_3_4,
+        cs0_row,
+        cs1_row,
+        cs0_high16bit_row: 0,
+        cs1_high16bit_row: 0,
+        ddr_config: 0,
+        dram_freq,
+        dram_type,
+        num_channels,
+        stride: 0,
+        odt: 0,
+    };
 
     println!("sdram_init");
     write32(DDR_GRF_CTRL0, 0x20000);
@@ -1223,7 +1262,7 @@ fn sdram_init(post_init: bool) {
         }
     });
     // NOTE: unused; original code mutates config field12 (offset 0x30).
-    let s_0030 = idx;
+    let s_0030 = idx as u32;
     println!("DDR addrmap data index: {idx}");
 
     // essentially memcpy
@@ -1364,6 +1403,14 @@ fn sdram_init(post_init: bool) {
                 );
             }
         }
+
+        let r = RESX_BASE + 0x0008;
+        write32(r, s_0030);
+
+        let (res1, res2) = cfg_xxx(&cfg, 0);
+
+        println!("{res1:08x} {res2:08x}");
+
         todo!("....")
     }
 
@@ -1451,6 +1498,37 @@ fn sdram_init(post_init: bool) {
     todo!("draw the rest of the owl 🦉🖌️");
 
     println!("sdram_init done");
+}
+
+fn cfg_xxx(cfg: &Config, x: u32) -> (u32, u32) {
+    let v1 = cfg.dram_type << 13;
+    let v2 = v1 | (cfg.num_channels - 1) * 0x1000;
+    let s1 = (x + 0x1e) & 0x1f;
+    let s2 = (x + 0x1c) & 0x1f;
+    let v3 = v2 | cfg.row_3_4 << s1 | 1 << s2;
+    let x16 = x * 16;
+    let v4 = v3 | (cfg.rank - 1) << ((x16 + 11) & 0x1f);
+    let v5 = v4 | (cfg.column - 9) << ((x16 + 9) & 0x1f);
+    let v6 = v5 | ((cfg.bank_num != 3) as u32) << ((x16 + 8) & 0x1f);
+    let v7 = v6 | (2 >> (cfg.chan_bus_width & 0x1f)) << ((x16 + 2) & 0x1f);
+    let v8 = v7 | (2 >> (cfg.die_bus_width & 0x1f)) << (x16 & 0x1f);
+
+    let rm13 = cfg.cs0_row - 13;
+    let x2 = x * 2;
+
+    let res1 = v8 | (rm13 & 3) << ((x16 + 6) & 0x1f);
+    let res2 = (rm13 >> 2 & 1) << ((x2 + 5) & 0x1f);
+    let (res1, res2) = if cfg.cs1_row == 0 {
+        (res1, res2)
+    } else {
+        let v1 = res1 & (3 << ((x16 + 4) & 0x1f) ^ 0xffff_ffff);
+        let v2 = res2 & (1 << ((x2 + 4) & 0x1f) ^ 0xffff_ffff);
+        let res1 = v1 | (rm13 & 3) << ((x16 + 4) & 1);
+        let res2 = v2 | ((rm13 >> 2) & 1) << ((x2 + 4) & 0x1f);
+        (res1, res2)
+    };
+    let res2 = res2 | 0x2000_0000 | ((cfg.column - 9) << (x2 & 0x1f));
+    (res1, res2)
 }
 
 fn ddr_set_rate() {
