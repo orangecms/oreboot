@@ -74,6 +74,16 @@ osreg:0x1000e2c1,0x20000001
 out
 */
 
+// aka MSCH, another sorta GRF? The manual just say "reserved".
+const RESX_0008: usize = RESX_BASE + 0x0008;
+const RESX_000C: usize = RESX_BASE + 0x000c;
+const RESX_0010: usize = RESX_BASE + 0x0010;
+const RESX_0014: usize = RESX_BASE + 0x0014;
+const RESX_0018: usize = RESX_BASE + 0x0018;
+const RESX_001C: usize = RESX_BASE + 0x001c;
+const RESX_0020: usize = RESX_BASE + 0x0020;
+const RESX_0024: usize = RESX_BASE + 0x0024;
+
 // https://www.synopsys.com/dw/ipdir.php?ds=dwc_ddr_universal_upctl2
 // Synopsys Enhanced Universal DDR Protocol Controller (uPCTL2)
 // see also U-Boot arch/arm/include/asm/arch-rockchip/sdram_pctl_px30.h
@@ -177,6 +187,7 @@ fn upctl2_pre_init() {
 const MEGA: u32 = 1_000_000;
 
 const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
+const PMU_GRF_OS3: usize = PMU_GRF_BASE + 0x020c;
 
 // similar to U-Boot drivers/ram/rockchip/sdram_rv1126.c rkclk_set_dpll
 fn clk_set_dpll(freq: u32) {
@@ -1075,11 +1086,23 @@ struct Config {
     cs0_high16bit_row: u32,
     cs1_high16bit_row: u32,
     ddr_config: u32,
+
     dram_freq: u32,
     dram_type: u32,
     num_channels: u32,
     stride: u32,
     odt: u32,
+}
+
+// U-Boot arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
+struct MschNocTimings {
+    ddrtiminga0: u32,
+    ddrtimingb0: u32,
+    ddrtimingc0: u32,
+    ddr4_timing: u32,
+    devtodev: u32,
+    ddr_mode: u32,
+    agingx: u32,
 }
 
 // sdram_init_ / sdram_init_detect ?
@@ -1113,11 +1136,22 @@ fn sdram_init(post_init: bool) {
         cs0_high16bit_row: 0,
         cs1_high16bit_row: 0,
         ddr_config: 0,
+
         dram_freq,
         dram_type,
         num_channels,
         stride: 0,
         odt: 0,
+    };
+
+    let mut msch_timings = MschNocTimings {
+        ddrtiminga0: 0x2F0D_060A,
+        ddrtimingb0: 0x0602_0804,
+        ddrtimingc0: 0x0000_0C04,
+        ddr4_timing: 0x0000_0000,
+        devtodev: 0x0000_1111,
+        ddr_mode: 0x0000_0054,
+        agingx: 0x0000_00FF,
     };
 
     println!("sdram_init");
@@ -1229,15 +1263,15 @@ fn sdram_init(post_init: bool) {
     let v = read32(UPCTL2_MSTR2);
     write32(UPCTL2_MSTR2, v & !(0b11));
 
-    set_ds_odt(dram_freq, dram_type, 0);
+    set_ds_odt(cfg.dram_freq, cfg.dram_type, 0);
 
     // similar to arch/arm/mach-rockchip/rk3036/sdram_rk3036.c  sdram_all_config
     // 0xd (13)
-    let bw_plus_col = chan_bus_width + column;
+    let bw_plus_col = cfg.chan_bus_width + cfg.column;
 
     // 0 | (3 << 5) | 3 = 0b0110_0011 = 0x63
     // TODO: is this osreg?
-    let vt = ((rank - 1) << 8) | ((cs0_row - 13) << 5) | (bw_plus_col - 10);
+    let vt = ((cfg.rank - 1) << 8) | ((cfg.cs0_row - 13) << 5) | (bw_plus_col - 10);
     println!("vt {vt:08x}");
 
     // bank_num is 3 -> 0x6b
@@ -1250,9 +1284,9 @@ fn sdram_init(post_init: bool) {
     // TODO: actually use this resulting value.
     // Possible resulting values: 0..=8, 14, 17
     let idx = find_addrmap_index(vxx).unwrap_or_else(|| {
-        if bank_num == 3 && bw_plus_col == 10 {
+        if cfg.bank_num == 3 && bw_plus_col == 10 {
             14
-        } else if rank != 1 || bank_num != 3 || cs0_row > 17 || bw_plus_col != 13 {
+        } else if cfg.rank != 1 || cfg.bank_num != 3 || cfg.cs0_row > 17 || bw_plus_col != 13 {
             // NOTE: This should never happen.
             // Do the check at build time, and do it earlier instead of here.
             panic!("DDR config error")
@@ -1404,21 +1438,40 @@ fn sdram_init(post_init: bool) {
             }
         }
 
-        let r = RESX_BASE + 0x0008;
-        write32(r, s_0030);
+        // U-Boot drivers/ram/rockchip/sdram_rv1126.c dram_all_config
+        // MSCH device config
+        write32(RESX_0008, s_0030);
 
-        let (res1, res2) = cfg_xxx(&cfg, 0);
+        let (os2, os3) = sdram_org_config(&cfg, 0);
 
-        println!("{res1:08x} {res2:08x}");
+        println!(" OS2 {os2:08x} OS3 {os3:08x}");
+
+        write32(PMU_GRF_OS2, os2);
+        write32(PMU_GRF_OS3, os3);
+
+        let (m1, m2) = {
+            let m1 = get_dram_size_factor(&cfg, 0, dram_type);
+            let m2 = get_dram_size_factor(&cfg, 1, dram_type);
+            if cfg.rank == 4 {
+                todo!("rank == 4")
+            } else if cfg.rank == 2 {
+                todo!("rank == 2")
+            } else {
+                (m1, m2)
+            }
+        };
+
+        let v = ((m2 >> 26) & 0xff) << 8 | ((m1 >> 26) & 0xff);
+        // MSCH device size ?
+        write32(RESX_000C, v);
+
+        update_noc_timing(&cfg, &mut msch_timings);
+        println!("update_noc_timing DONE");
 
         todo!("....")
     }
 
-    let x0 = (chan_bus_width + column + bank_num) as u64; // 1 + 11 + 3 = 15
-    let s_pow = (x0 + cs0_row as u64) & 0x3f; // 15 + 17 = 32 (0x20)
-    let x1 = 1 << s_pow; // 2 ** s_pow
-    let x2 = if rank < 2 { 0 } else { todo!() };
-    let f = x1 + x2;
+    let f = get_dram_size_factor(&cfg, 3, dram_type) as u64;
 
     let v = read32(DDR_GRF_SPLIT_CON);
     println!("split con: {v:08x}");
@@ -1426,17 +1479,17 @@ fn sdram_init(post_init: bool) {
     // bits 0..7: split address
     let split_address = if (v >> 8) & 1 == 0 { v & 0xff } else { 0 } as u64;
 
-    let s = if row_3_4 == 0 {
+    let size = if row_3_4 == 0 {
         if split_address != 0 {
-            split_address * 0x800000 + (f >> 1)
+            split_address * 0x800000 + (f / 2)
         } else {
             f
         }
     } else {
-        (f * 3) >> 2
+        (f * 3) / 4
     };
 
-    let dram_size_mb = s >> 20;
+    let dram_size_mb = size >> 20;
     // FIXME: I get 4096, but should be 2048
     println!("{dram_size_mb} MB");
 
@@ -1500,13 +1553,109 @@ fn sdram_init(post_init: bool) {
     println!("sdram_init done");
 }
 
-fn cfg_xxx(cfg: &Config, x: u32) -> (u32, u32) {
+// timingc0
+//   0..3: burst penalty
+//   4..7: reserved
+//   8..13: wr to mwr
+//   14..31: reserved
+const BURST_PENALTY_MASK: u32 = 0b1111;
+const WR_TO_MWR_MASK: u32 = 0b111111 << 8;
+// ddr_mode
+//   0: auto precharge
+//   1: bypass filtering
+//   2: faw bank
+//   3..4: burst size
+//   5..6: mwr size
+//   7: reserved
+//   8..15: force order
+//   16..23: force order state
+//   24..31: reserved
+const BURST_SIZE_MASK: u32 = 0b11 << 3;
+const MWR_SIZE_MASK: u32 = 0b11 << 5;
+
+// U-Boot drivers/ram/rockchip/sdram_rv1126.c update_noc_timing
+fn update_noc_timing(cfg: &Config, timings: &mut MschNocTimings) {
+    let bus_width = 8 << (cfg.chan_bus_width & 0x1f);
+    let burst_length = ((read32(UPCTL2_MSTR) >> 16) & 0xf) << 1;
+
+    let bl_bw_8 = burst_length * (bus_width / 8);
+
+    let burst_size = match bl_bw_8 {
+        16 => 0,
+        32 => 1,
+        64 => 2,
+        _ => 3,
+    };
+
+    let f = (16 / bl_bw_8).min(1);
+    let burst_penalty = f * burst_length / 2;
+
+    let (tc0, mode) = if cfg.dram_type < 9 {
+        let wrtomwr = 3 * burst_penalty;
+        let m = !(WR_TO_MWR_MASK | BURST_PENALTY_MASK);
+        let tc0 = timings.ddrtimingc0 & m | (wrtomwr << 8) | burst_penalty;
+
+        let mwr_size = if bus_width == 16 { 1 } else { 2 };
+        let m = !(MWR_SIZE_MASK | BURST_SIZE_MASK);
+        let mode = timings.ddr_mode & m | (mwr_size << 5) | (burst_size << 3);
+
+        (tc0, mode)
+    } else {
+        let m = !BURST_SIZE_MASK;
+        let mode = timings.ddr_mode & m | (burst_size << 3);
+
+        let m = !BURST_PENALTY_MASK;
+        let tc0 = timings.ddrtimingc0 & m | burst_penalty;
+
+        (tc0, mode)
+    };
+    // NOTE: Those are now mutations. Not sure if really necessary.
+    timings.ddrtimingc0 = tc0;
+    timings.ddr_mode = mode;
+
+    write32(RESX_0010, timings.ddrtiminga0);
+    write32(RESX_0014, timings.ddrtimingb0);
+    write32(RESX_0018, timings.ddrtimingc0);
+    write32(RESX_0020, timings.devtodev);
+    write32(RESX_0024, timings.ddr_mode);
+    write32(RESX_001C, timings.ddr4_timing);
+}
+
+// TODO: What is p2?
+fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u32 {
+    let x0 = if dram_type == 0 {
+        (cfg.die_bus_width == 0) as u32 + 1
+    } else {
+        0
+    };
+    // 1 + 11 + 3 = 15
+    let x0 = (x0 + cfg.chan_bus_width + cfg.column + cfg.bank_num) as u64;
+
+    // 15 + 17 = 32 (0x20)
+    let s_pow = (x0 + cfg.cs0_row as u64) & 0x3f;
+    let x1 = 1 << s_pow; // 2 ** s_pow
+
+    let (x2, x3, x4) = if cfg.rank > 1 {
+        todo!("rank > 1")
+    } else {
+        (0, 0, 0)
+    };
+
+    match p2 {
+        0 => x1,
+        1 => x2,
+        _ => x1 + x2 + x3 + x4,
+    }
+}
+
+// U-Boot drivers/ram/rockchip/sdram_common.c sdram_org_config
+fn sdram_org_config(cfg: &Config, channel: u32) -> (u32, u32) {
     let v1 = cfg.dram_type << 13;
     let v2 = v1 | (cfg.num_channels - 1) * 0x1000;
-    let s1 = (x + 0x1e) & 0x1f;
-    let s2 = (x + 0x1c) & 0x1f;
+    let s1 = (channel + 0x1e) & 0x1f;
+    let s2 = (channel + 0x1c) & 0x1f;
     let v3 = v2 | cfg.row_3_4 << s1 | 1 << s2;
-    let x16 = x * 16;
+    let x16 = channel * 16;
     let v4 = v3 | (cfg.rank - 1) << ((x16 + 11) & 0x1f);
     let v5 = v4 | (cfg.column - 9) << ((x16 + 9) & 0x1f);
     let v6 = v5 | ((cfg.bank_num != 3) as u32) << ((x16 + 8) & 0x1f);
@@ -1514,7 +1663,7 @@ fn cfg_xxx(cfg: &Config, x: u32) -> (u32, u32) {
     let v8 = v7 | (2 >> (cfg.die_bus_width & 0x1f)) << (x16 & 0x1f);
 
     let rm13 = cfg.cs0_row - 13;
-    let x2 = x * 2;
+    let x2 = channel * 2;
 
     let res1 = v8 | (rm13 & 3) << ((x16 + 6) & 0x1f);
     let res2 = (rm13 >> 2 & 1) << ((x2 + 5) & 0x1f);
