@@ -1438,58 +1438,12 @@ fn sdram_init(post_init: bool) {
             }
         }
 
-        // U-Boot drivers/ram/rockchip/sdram_rv1126.c dram_all_config
-        // MSCH device config
-        write32(RESX_0008, s_0030);
-
-        let (os2, os3) = sdram_org_config(&cfg, 0);
-
-        println!(" OS2 {os2:08x} OS3 {os3:08x}");
-
-        write32(PMU_GRF_OS2, os2);
-        write32(PMU_GRF_OS3, os3);
-
-        let (m1, m2) = {
-            let m1 = get_dram_size_factor(&cfg, 0, dram_type);
-            let m2 = get_dram_size_factor(&cfg, 1, dram_type);
-            if cfg.rank == 4 {
-                todo!("rank == 4")
-            } else if cfg.rank == 2 {
-                todo!("rank == 2")
-            } else {
-                (m1, m2)
-            }
-        };
-
-        let v = ((m2 >> 26) as u32 & 0xff) << 8 | ((m1 >> 26) as u32 & 0xff);
-        // MSCH device size ?
-        write32(RESX_000C, v);
-
-        update_noc_timing(&cfg, &mut msch_timings);
-        println!("update_noc_timing DONE");
-
-        write32(DDR_GRF_CTRL1, 0x1f1f_0617);
-
-        // enable assertion of DFI DRAM clock disable
-        let v = read32(UPCTL2_POWER_CTRL);
-        write32(UPCTL2_POWER_CTRL, v | (1 << 3));
-
-        // power down setting
-        let v = read32(UPCTL2_POWER_CTRL);
-        if POWER_DOWN_IDLE != 0 {
-            write32(UPCTL2_POWER_CTRL, v | (1 << 1));
-        } else {
-            write32(UPCTL2_POWER_CTRL, v & !(1 << 1));
-        }
-
-        // self-refresh setting
-        let v = read32(UPCTL2_POWER_CTRL);
-        if SELF_REFRESH_IDLE != 0 {
-            write32(UPCTL2_POWER_CTRL, v | (1 << 0));
-        } else {
-            write32(UPCTL2_POWER_CTRL, v & !(1 << 0));
-        }
+        dram_all_config(&cfg, &mut msch_timings, s_0030);
+        enable_low_power();
     }
+    // END of sdram_init_ in U-Boot
+
+    todo!("some more code");
 
     println!("size calculation");
     let f = get_dram_size_factor(&cfg, 3, dram_type) as u64;
@@ -1518,9 +1472,9 @@ fn sdram_init(post_init: bool) {
     // FROM HERE: U-Boot ddr_set_rate_for_fsp
 
     // U-Boot get_wrlvl_val
-    let p_res = upctl2_low_power_update(0);
+    let p_res = low_power_update(0);
     // NOTE: code here omitted; should be disabled
-    let p_res = upctl2_low_power_update(p_res);
+    let p_res = low_power_update(p_res);
 
     let odt_cfg = get_ddr_drv_odt_info(dram_type);
 
@@ -1533,7 +1487,7 @@ fn sdram_init(post_init: bool) {
     // TODO: zero out FSP params storage ...?
     write32(SHARE_MEM_BASE, 0x0);
 
-    let p_res = upctl2_low_power_update(0);
+    let p_res = low_power_update(0);
 
     const CMD_INV_DELAY_SEL_MASK: u32 = !(0b111111 << 6);
     let (v1, v2) = if dram_type < 9 {
@@ -1573,6 +1527,38 @@ fn sdram_init(post_init: bool) {
     todo!("draw the rest of the owl 🦉🖌️");
 
     println!("sdram_init done");
+}
+
+// U-Boot drivers/ram/rockchip/sdram_rv1126.c dram_all_config
+fn dram_all_config(cfg: &Config, timings: &mut MschNocTimings, s_0030: u32) {
+    // MSCH device config
+    write32(RESX_0008, s_0030);
+
+    let (os2, os3) = sdram_org_config(&cfg, 0);
+
+    println!(" OS2 {os2:08x} OS3 {os3:08x}");
+
+    write32(PMU_GRF_OS2, os2);
+    write32(PMU_GRF_OS3, os3);
+
+    let (m1, m2) = {
+        let m1 = get_dram_size_factor(&cfg, 0, cfg.dram_type);
+        let m2 = get_dram_size_factor(&cfg, 1, cfg.dram_type);
+        if cfg.rank == 4 {
+            todo!("rank == 4")
+        } else if cfg.rank == 2 {
+            todo!("rank == 2")
+        } else {
+            (m1, m2)
+        }
+    };
+
+    let v = ((m2 >> 26) as u32 & 0xff) << 8 | ((m1 >> 26) as u32 & 0xff);
+    // MSCH device size ?
+    write32(RESX_000C, v);
+
+    update_noc_timing(&cfg, timings);
+    println!("update_noc_timing DONE");
 }
 
 // timingc0
@@ -1646,7 +1632,10 @@ fn update_noc_timing(cfg: &Config, timings: &mut MschNocTimings) {
 // TODO: What is p2?
 fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u64 {
     let x0 = if dram_type == 0 {
-        (cfg.die_bus_width == 0) as u32 + 1
+        match cfg.die_bus_width {
+            0 => 2,
+            _ => 1,
+        }
     } else {
         0
     };
@@ -1706,9 +1695,35 @@ fn ddr_set_rate() {
     //
 }
 
+// U-Boot drivers/ram/rockchip/sdram_rv1126.c enable_low_power
+// see also low_power_update
+fn enable_low_power() {
+    write32(DDR_GRF_CTRL1, 0x1f1f_0617);
+
+    // enable assertion of DFI DRAM clock disable
+    let v = read32(UPCTL2_POWER_CTRL);
+    write32(UPCTL2_POWER_CTRL, v | (1 << 3));
+
+    // power down setting
+    let v = read32(UPCTL2_POWER_CTRL);
+    if POWER_DOWN_IDLE != 0 {
+        write32(UPCTL2_POWER_CTRL, v | (1 << 1));
+    } else {
+        write32(UPCTL2_POWER_CTRL, v & !(1 << 1));
+    }
+
+    // self-refresh setting
+    let v = read32(UPCTL2_POWER_CTRL);
+    if SELF_REFRESH_IDLE != 0 {
+        write32(UPCTL2_POWER_CTRL, v | (1 << 0));
+    } else {
+        write32(UPCTL2_POWER_CTRL, v & !(1 << 0));
+    }
+}
+
 const DFI_LOW_POWER_BYPASS: u32 = 1 << 15;
 
-fn upctl2_low_power_update(x: u32) -> u32 {
+fn low_power_update(x: u32) -> u32 {
     if x != 0 {
         let v = read32(DDR_PHY_0084);
         write32(DDR_PHY_0084, v & !DFI_LOW_POWER_BYPASS);
@@ -1727,7 +1742,7 @@ fn upctl2_low_power_update(x: u32) -> u32 {
     pwr_ctl
 }
 
-// TODO: Is this correct?
+// see U-Boot include/configs/rk3568_common.h CFG_SYS_SDRAM_BASE
 const RAM_BASE: usize = 0x0;
 // + 128K
 const SHARE_MEM_BASE: usize = RAM_BASE + 0x10_0000;
