@@ -1105,6 +1105,11 @@ struct MschNocTimings {
     agingx: u32,
 }
 
+// NOTE: These stem from the global config.
+// They are called sr_idle and pd_idle in U-Boot and copied at runtime.
+const SELF_REFRESH_IDLE: u32 = 0x005d;
+const POWER_DOWN_IDLE: u32 = 0x000d;
+
 // sdram_init_ / sdram_init_detect ?
 fn sdram_init(post_init: bool) {
     // TODO: These values come from structs at the offsets encoded in the
@@ -1245,12 +1250,7 @@ fn sdram_init(post_init: bool) {
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
 
     // U-Boot sdram_init_
-
-    // NOTE: params list needs to be a param here as well
-    // these stem from the global config:
-    const SELF_REFRESH_IDLE: u32 = 0x005d;
-    const PD_IDLE: u32 = 0x000d;
-    upctl2_config(&UPCTL2_CFG3, SELF_REFRESH_IDLE, PD_IDLE);
+    upctl2_config(&UPCTL2_CFG3, SELF_REFRESH_IDLE, POWER_DOWN_IDLE);
 
     let v = read32(UPCTL2_PCFGR_N);
     write32(UPCTL2_PCFGR_N, v | (1 << 16));
@@ -1461,25 +1461,47 @@ fn sdram_init(post_init: bool) {
             }
         };
 
-        let v = ((m2 >> 26) & 0xff) << 8 | ((m1 >> 26) & 0xff);
+        let v = ((m2 >> 26) as u32 & 0xff) << 8 | ((m1 >> 26) as u32 & 0xff);
         // MSCH device size ?
         write32(RESX_000C, v);
 
         update_noc_timing(&cfg, &mut msch_timings);
         println!("update_noc_timing DONE");
 
-        todo!("....")
+        write32(DDR_GRF_CTRL1, 0x1f1f_0617);
+
+        // enable assertion of DFI DRAM clock disable
+        let v = read32(UPCTL2_POWER_CTRL);
+        write32(UPCTL2_POWER_CTRL, v | (1 << 3));
+
+        // power down setting
+        let v = read32(UPCTL2_POWER_CTRL);
+        if POWER_DOWN_IDLE != 0 {
+            write32(UPCTL2_POWER_CTRL, v | (1 << 1));
+        } else {
+            write32(UPCTL2_POWER_CTRL, v & !(1 << 1));
+        }
+
+        // self-refresh setting
+        let v = read32(UPCTL2_POWER_CTRL);
+        if SELF_REFRESH_IDLE != 0 {
+            write32(UPCTL2_POWER_CTRL, v | (1 << 0));
+        } else {
+            write32(UPCTL2_POWER_CTRL, v & !(1 << 0));
+        }
     }
 
+    println!("size calculation");
     let f = get_dram_size_factor(&cfg, 3, dram_type) as u64;
+    println!("  size factor: {f:08x}");
 
     let v = read32(DDR_GRF_SPLIT_CON);
-    println!("split con: {v:08x}");
+    println!("    split con: {v:08x}");
     // bit 8: AXI split bypass (1) or enable (0)
     // bits 0..7: split address
     let split_address = if (v >> 8) & 1 == 0 { v & 0xff } else { 0 } as u64;
 
-    let size = if row_3_4 == 0 {
+    let size = if cfg.row_3_4 == 0 {
         if split_address != 0 {
             split_address * 0x800000 + (f / 2)
         } else {
@@ -1491,7 +1513,7 @@ fn sdram_init(post_init: bool) {
 
     let dram_size_mb = size >> 20;
     // FIXME: I get 4096, but should be 2048
-    println!("{dram_size_mb} MB");
+    println!("  {dram_size_mb} MB ({size} bytes)");
 
     // FROM HERE: U-Boot ddr_set_rate_for_fsp
 
@@ -1622,7 +1644,7 @@ fn update_noc_timing(cfg: &Config, timings: &mut MschNocTimings) {
 }
 
 // TODO: What is p2?
-fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u32 {
+fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u64 {
     let x0 = if dram_type == 0 {
         (cfg.die_bus_width == 0) as u32 + 1
     } else {
@@ -1633,7 +1655,7 @@ fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u32 {
 
     // 15 + 17 = 32 (0x20)
     let s_pow = (x0 + cfg.cs0_row as u64) & 0x3f;
-    let x1 = 1 << s_pow; // 2 ** s_pow
+    let x1: u64 = 1 << s_pow; // 2 ** s_pow
 
     let (x2, x3, x4) = if cfg.rank > 1 {
         todo!("rank > 1")
