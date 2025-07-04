@@ -976,10 +976,10 @@ fn get_funny_bits() -> (u32, u32) {
 
 // NOTE: this looks similar to PHY cfg functions for other PHYs
 // U-Boot  drivers/ram/rockchip/sdram_rv1126.c  phy_cfg
-fn phy_cfg(cfg: &PhyCfg, dram_freq: u32, rank: u32, chan_bus_width: u32, post_init: bool) {
-    phy_pll_set(dram_freq * MEGA, 0);
+fn phy_cfg(phy_cfg: &PhyCfg, chan_cfg: &Config) {
+    phy_pll_set(chan_cfg.dram_freq * MEGA, 0);
 
-    for p in cfg.iter() {
+    for p in phy_cfg.iter() {
         let r = DDR_PHY_BASE + p.offset as usize;
         let v = if p.offset <= 16 {
             (read32(r) & 0xc0ff_ffff) | p.value
@@ -996,14 +996,15 @@ fn phy_cfg(cfg: &PhyCfg, dram_freq: u32, rank: u32, chan_bus_width: u32, post_in
     const PHY_DQ_WIDTH_MASK: u32 = 0xffff_e0ff;
     let v = read32(DDR_PHY_0000) & PHY_DQ_WIDTH_MASK;
 
-    let vx = match chan_bus_width {
+    let vx = match chan_cfg.chan_bus_width {
         1 => v | ((1 << v0) | (1 << v1)) << 8,
         2 => v | 0x0f00,
         _ => v | 0x100 << v0,
     };
-    let mut vxo = if post_init { vx } else { vx | 0x1000 };
+    const ENABLE_ECC: bool = false;
+    let mut vxo = if ENABLE_ECC { vx | 0x1000 } else { vx };
 
-    if rank == 4 {
+    if chan_cfg.rank == 4 {
         vxo |= 0x0010_0000;
         let v = read32(DDR_PHY_0038);
         write32(DDR_PHY_0038, v | 1 << 1);
@@ -1074,6 +1075,9 @@ enum DdrType {
     UNUSED = 0xFF,
 }
 
+// TODO: split up into ChannelConfig + BaseParams ?
+// U-Boot calls the first part sdram_cap_info as part of "channel"
+// (which also includes the NOC timings) and the second part sdram_base_params.
 struct Config {
     rank: u32,
     column: u32,
@@ -1111,72 +1115,28 @@ const SELF_REFRESH_IDLE: u32 = 0x005d;
 const POWER_DOWN_IDLE: u32 = 0x000d;
 
 // sdram_init_ / sdram_init_detect ?
-fn sdram_init(post_init: bool) {
-    // TODO: These values come from structs at the offsets encoded in the
-    // variable names. Should we make those structs or simple parameters?
-    // U-Boot arch/arm/include/asm/arch-rockchip/sdram_common.h sdram_cap_info
-    //        arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
-    let rank = 1;
-    let column = 11;
-    let bank_num = 3; // power of 2, i.e., 2^3=8
-    let chan_bus_width = 1; // 1 means 16bit
-    let die_bus_width = 1; // 0 means 8bit
-    let row_3_4 = 0; // 0 means normal die, power of 2
-    let cs0_row = 17;
-    let cs1_row = 17;
-
-    let dram_freq = 0x144;
-    let dram_type = DdrType::LPDDR4 as u32;
-    let num_channels = 1;
-
-    let cfg = Config {
-        rank,
-        column,
-        bank_num,
-        chan_bus_width,
-        die_bus_width,
-        row_3_4,
-        cs0_row,
-        cs1_row,
-        cs0_high16bit_row: 0,
-        cs1_high16bit_row: 0,
-        ddr_config: 0,
-
-        dram_freq,
-        dram_type,
-        num_channels,
-        stride: 0,
-        odt: 0,
-    };
-
-    let mut msch_timings = MschNocTimings {
-        ddrtiminga0: 0x2F0D_060A,
-        ddrtimingb0: 0x0602_0804,
-        ddrtimingc0: 0x0000_0C04,
-        ddr4_timing: 0x0000_0000,
-        devtodev: 0x0000_1111,
-        ddr_mode: 0x0000_0054,
-        agingx: 0x0000_00FF,
-    };
-
+fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) {
     println!("sdram_init");
-    write32(DDR_GRF_CTRL0, 0x20000);
+    write32(DDR_GRF_CTRL0, 0x0002_0000);
 
-    clk_set_dpll((dram_freq * MEGA) / 2);
+    clk_set_dpll((cfg.dram_freq * MEGA) / 2);
 
-    // maybe reset
+    // reset 1
     write32(SYS_SGRF_0014, 0x0b00_0b00);
     write32(CRU_S_CLK_SEL_CFG66, 0x0002_0002);
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0180);
+
     udelay(10);
+
+    // reset 2
     write32(SYS_SGRF_0014, 0x0b00_0b00);
     write32(CRU_S_CLK_SEL_CFG66, 0x0002_0002);
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0100);
 
     // TODO: What is the possible value range?
     // This check may be unnecessary.
-    if dram_type <= 8 {
-        let m1 = if dram_type == 8 { 7 } else { dram_type };
+    if cfg.dram_type < 9 {
+        let m1 = if cfg.dram_type == 8 { 7 } else { cfg.dram_type };
 
         const XX: u32 = 0xe400_00e4;
         let x = (XX >> ((m1 & 0b11) << 3)) & 0xff;
@@ -1192,59 +1152,62 @@ fn sdram_init(post_init: bool) {
 
     // extracted
     // TODO: other rounds may have different params / sizes thereof
-    phy_cfg(&PHY_CFG3, dram_freq, rank, chan_bus_width, post_init);
+    phy_cfg(&PHY_CFG3, cfg);
 
     // TODO: tweak this
-    // Each loop has 5 iterations
-    match dram_type {
-        0 | 3 | 6 => {
-            for o in (0x0300..0x0a80).step_by(0x180) {
-                let r = DDR_PHY_BASE + o + 8;
-                let v = read32(r);
-                let nv = v & 0xffff_fdff;
-                println!("  {r:08x}: {v:08x} -> {nv:08x}");
-                write32(r, nv);
+    {
+        // Each loop has 5 iterations
+        match cfg.dram_type {
+            0 | 3 | 6 => {
+                for o in (0x0300..0x0a80).step_by(0x180) {
+                    let r = DDR_PHY_BASE + o + 8;
+                    let v = read32(r);
+                    let nv = v & 0xffff_fdff;
+                    println!("  {r:08x}: {v:08x} -> {nv:08x}");
+                    write32(r, nv);
+                }
             }
-        }
-        7 => {
-            let v = read32(DDR_PHY_0038);
-            write32(DDR_PHY_0038, (v & 0xffff_07ff) | 0x0000_5800);
-            for o in (0x0300..0x0a80).step_by(0x180) {
-                let r = DDR_PHY_BASE + o;
-                let v = read32(r);
-                write32(r, (v & 0xffff_ff9f) | 0x40);
+            7 => {
+                let v = read32(DDR_PHY_0038);
+                write32(DDR_PHY_0038, (v & 0xffff_07ff) | 0x0000_5800);
+                for o in (0x0300..0x0a80).step_by(0x180) {
+                    let r = DDR_PHY_BASE + o;
+                    let v = read32(r);
+                    write32(r, (v & 0xffff_ff9f) | 0x40);
+                }
             }
-        }
-        8 => {
-            for o in (0x0300..0x0a80).step_by(0x180) {
-                let r = DDR_PHY_BASE + o + 8;
-                let v = read32(r);
-                write32(r, v | 0x100);
-                let r = DDR_PHY_BASE + o;
-                let v = read32(r);
-                write32(r, (v & 0xffff_ff9f) | 0x40);
+            8 => {
+                for o in (0x0300..0x0a80).step_by(0x180) {
+                    let r = DDR_PHY_BASE + o + 8;
+                    let v = read32(r);
+                    write32(r, v | 0x100);
+                    let r = DDR_PHY_BASE + o;
+                    let v = read32(r);
+                    write32(r, (v & 0xffff_ff9f) | 0x40);
+                }
             }
+            _ => {}
         }
-        _ => {}
-    }
 
-    let v = read32(DDR_PHY_00C0);
-    write32(DDR_PHY_00C0, v | 1);
-
-    let ctl_cfg_first_val = UPCTL2_CFG3[0].value;
-    if ctl_cfg_first_val & (1 << 10) != 0 {
         let v = read32(DDR_PHY_00C0);
-        write32(DDR_PHY_00C0, v | 0x0006_0000);
+        write32(DDR_PHY_00C0, v | 1);
+
+        let ctl_cfg_first_val = UPCTL2_CFG3[0].value;
+        if ctl_cfg_first_val & (1 << 10) != 0 {
+            let v = read32(DDR_PHY_00C0);
+            write32(DDR_PHY_00C0, v | 0x0006_0000);
+        }
+
+        let v = read32(DDR_PHY_00AC);
+        write32(DDR_PHY_00AC, v | 0x10);
+
+        let v = read32(DDR_PHY_0044);
+        write32(DDR_PHY_0044, v & 0x3fff_ffff);
     }
-
-    let v = read32(DDR_PHY_00AC);
-    write32(DDR_PHY_00AC, v | 0x10);
-
-    let v = read32(DDR_PHY_0044);
-    write32(DDR_PHY_0044, v & 0x3fff_ffff);
 
     // reset?
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
+
     write32(SYS_SGRF_0014, 0x0b00_0300);
     write32(CRU_S_CLK_SEL_CFG66, 0x0002_0000);
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
@@ -1275,7 +1238,7 @@ fn sdram_init(post_init: bool) {
     println!("vt {vt:08x}");
 
     // bank_num is 3 -> 0x6b
-    let vxx = if bank_num == 3 { vt | 8 } else { vt };
+    let vxx = if cfg.bank_num == 3 { vt | 8 } else { vt };
 
     // see calculate_ddrconfig
 
@@ -1314,7 +1277,7 @@ fn sdram_init(post_init: bool) {
 
     // TODO: some code skipped here that is for non-LPDDR4
 
-    if rank == 1 {
+    if cfg.rank == 1 {
         let r = UPCTL2_ADDR_MAP_BASE;
         let v = read32(r);
         write32(r, v | 0x1f);
@@ -1339,7 +1302,7 @@ fn sdram_init(post_init: bool) {
     // - 2 = "not auto"
     while read32(UPCTL2_STAT) & 0b111 == 0 {}
 
-    let vf = phy_measure_xx(dram_freq);
+    let vf = phy_measure_xx(cfg.dram_freq);
     println!("vf: {vf} (0x{vf:02x})");
     // This is used to adjust registers in multiple blocks.
     let a = (vf << 24) | (vf << 8);
@@ -1348,7 +1311,7 @@ fn sdram_init(post_init: bool) {
     const BLOCK_COUNT: usize = 5;
     let mask = !((0x7f << 24) | (0x7f << 8));
     // NOTE: rank apparently could be hardcoded at build time.
-    for i in 0..rank {
+    for i in 0..cfg.rank {
         let o = match i {
             0 => 0x33c,
             1 => 0x35c,
@@ -1373,9 +1336,9 @@ fn sdram_init(post_init: bool) {
     let v = read32(DDR_PHY_0094);
     write32(DDR_PHY_0094, v & !(1 << 2));
 
-    if dram_type == 6 {
+    if cfg.dram_type == 6 {
         todo!()
-    } else if dram_type < 9 {
+    } else if cfg.dram_type < 9 {
         let mr12 = upctl2_read_mr(1, 12, 7);
         let mr14 = upctl2_read_mr(1, 14, 7);
 
@@ -1413,121 +1376,35 @@ fn sdram_init(post_init: bool) {
     }
 
     train(
-        rank,
+        cfg.rank,
         0, // cs
-        dram_type,
+        cfg.dram_type,
         FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
     );
 
     let mr14 = upctl2_read_mr(1, 14, 7);
     // Does this value look familiar? Yes? We need to handle this!
     if mr14 == 0x4d {
-        if dram_type < 9 {
+        if cfg.dram_type < 9 {
             let v = read32(UPCTL2_INIT7);
             upctl2_write_mr(15, 14, v as u16, 7);
         }
         if post_init {
-            for cs in 1..rank {
+            for cs in 1..cfg.rank {
                 println!("r/cs {cs}");
                 train(
                     0, // unused
                     cs,
-                    dram_type,
+                    cfg.dram_type,
                     FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
                 );
             }
         }
 
-        dram_all_config(&cfg, &mut msch_timings, s_0030);
+        dram_all_config(&cfg, msch_timings, s_0030);
         enable_low_power();
     }
     // END of sdram_init_ in U-Boot
-
-    let row = dram_detect_cs1_row(&cfg, 1);
-
-    todo!("some more code");
-
-    println!("size calculation");
-    let f = get_dram_size_factor(&cfg, 3, dram_type) as u64;
-    println!("  size factor: {f:08x}");
-
-    let v = read32(DDR_GRF_SPLIT_CON);
-    println!("    split con: {v:08x}");
-    // bit 8: AXI split bypass (1) or enable (0)
-    // bits 0..7: split address
-    let split_address = if (v >> 8) & 1 == 0 { v & 0xff } else { 0 } as u64;
-
-    let size = if cfg.row_3_4 == 0 {
-        if split_address != 0 {
-            split_address * 0x800000 + (f / 2)
-        } else {
-            f
-        }
-    } else {
-        (f * 3) / 4
-    };
-
-    let dram_size_mb = size >> 20;
-    // FIXME: I get 4096, but should be 2048
-    println!("  {dram_size_mb} MB ({size} bytes)");
-
-    // FROM HERE: U-Boot ddr_set_rate_for_fsp
-
-    // U-Boot get_wrlvl_val
-    let p_res = low_power_update(0);
-    // NOTE: code here omitted; should be disabled
-    let p_res = low_power_update(p_res);
-
-    let odt_cfg = get_ddr_drv_odt_info(dram_type);
-
-    // 0x210 0x144 0x210 0x210
-    let freq0 = odt_cfg.ddr_freq_f0_f1 & 0xfff;
-    let freq1 = (odt_cfg.ddr_freq_f0_f1 >> 12) & 0xfff;
-    let freq2 = odt_cfg.ddr_freq_f2_f3 & 0xfff;
-    let freq3 = (odt_cfg.ddr_freq_f2_f3 >> 12) & 0xfff;
-
-    // TODO: zero out FSP params storage ...?
-    write32(SHARE_MEM_BASE, 0x0);
-
-    let p_res = low_power_update(0);
-
-    const CMD_INV_DELAY_SEL_MASK: u32 = !(0b111111 << 6);
-    let (v1, v2) = if dram_type < 9 {
-        // PHY_01B0 10..15: cmd_invdelaysel
-        // command TX delay line value OBS signal
-        let v = read32(DDR_PHY_01B0);
-        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x6000);
-
-        let v1 = read32(DDR_PHY_0230) >> 16;
-
-        let v = read32(DDR_PHY_01B0);
-        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x8000);
-
-        let v2 = read32(DDR_PHY_0230) >> 16;
-
-        (v1, v2)
-    } else {
-        todo!()
-    };
-
-    train(
-        rank,
-        0,
-        0,
-        FlagSet::<TrainingFlag>::from(TrainingFlag::WriteLeveling),
-    );
-
-    // TODO ...
-
-    // END ddr_set_rate_for_fsp
-
-    if false {
-        println!("DRAM test");
-        dram_test();
-    }
-
-    todo!("draw the rest of the owl 🦉🖌️");
-
     println!("sdram_init done");
 }
 
@@ -2428,6 +2305,53 @@ const UPCTL2_CFG3: [RegVal; 31] = [
     },
 ];
 
+// U-Boot ddr_set_rate_for_fsp
+fn ddr_set_rate_for_fsp(cfg: &Config) {
+    // U-Boot get_wrlvl_val
+    let p_res = low_power_update(0);
+    // NOTE: code here omitted; should be disabled
+    let p_res = low_power_update(p_res);
+
+    let odt_cfg = get_ddr_drv_odt_info(cfg.dram_type);
+
+    // 0x210 0x144 0x210 0x210
+    let freq0 = odt_cfg.ddr_freq_f0_f1 & 0xfff;
+    let freq1 = (odt_cfg.ddr_freq_f0_f1 >> 12) & 0xfff;
+    let freq2 = odt_cfg.ddr_freq_f2_f3 & 0xfff;
+    let freq3 = (odt_cfg.ddr_freq_f2_f3 >> 12) & 0xfff;
+
+    // TODO: zero out FSP params storage ...?
+    write32(SHARE_MEM_BASE, 0x0);
+
+    let p_res = low_power_update(0);
+
+    const CMD_INV_DELAY_SEL_MASK: u32 = !(0b111111 << 6);
+    let (v1, v2) = if cfg.dram_type < 9 {
+        // PHY_01B0 10..15: cmd_invdelaysel
+        // command TX delay line value OBS signal
+        let v = read32(DDR_PHY_01B0);
+        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x6000);
+
+        let v1 = read32(DDR_PHY_0230) >> 16;
+
+        let v = read32(DDR_PHY_01B0);
+        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x8000);
+
+        let v2 = read32(DDR_PHY_0230) >> 16;
+
+        (v1, v2)
+    } else {
+        todo!()
+    };
+
+    train(
+        cfg.rank,
+        0,
+        0,
+        FlagSet::<TrainingFlag>::from(TrainingFlag::WriteLeveling),
+    );
+}
+
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
 const PMIC_ADDR: u8 = 0x20;
 
@@ -2478,8 +2402,95 @@ pub fn init() {
         }
     }
 
-    // TODO: only first round?
-    let post_init = true;
+    // TODO: These values come from structs at the offsets encoded in the
+    // variable names. Should we make those structs or simple parameters?
+    // U-Boot arch/arm/include/asm/arch-rockchip/sdram_common.h sdram_cap_info
+    //        arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
+    let mut cfg = Config {
+        rank: 1,
+        column: 11,
+        bank_num: 3,       // power of 2, i.e., 2^3=8
+        chan_bus_width: 1, // 1 means 16bit
+        die_bus_width: 1,  // 0 means 8bit
+        row_3_4: 0,        // 0 means normal die, power of 2
+        cs0_row: 17,
+        cs1_row: 17,
+        cs0_high16bit_row: 0,
+        cs1_high16bit_row: 0,
+        ddr_config: 0,
+
+        dram_freq: 324,
+        dram_type: DdrType::LPDDR4 as u32,
+        num_channels: 1,
+        stride: 0,
+        odt: 0,
+    };
+
+    let mut msch_timings = MschNocTimings {
+        ddrtiminga0: 0x2F0D_060A,
+        ddrtimingb0: 0x0602_0804,
+        ddrtimingc0: 0x0000_0C04,
+        ddr4_timing: 0x0000_0000,
+        devtodev: 0x0000_1111,
+        ddr_mode: 0x0000_0054,
+        agingx: 0x0000_00FF,
+    };
+
+    let post_init = false;
     // sdram_init_detect ?
-    sdram_init(post_init);
+    sdram_init(&cfg, &mut msch_timings, post_init);
+
+    let cs1_row = dram_detect_cs1_row(&cfg, 1);
+    // NOTE: original code overwrites the config! Is this necessary?
+    cfg.cs1_row = cs1_row;
+
+    if cs1_row != 0 {
+        let d = cs1_row - 13;
+        let v = read32(PMU_GRF_OS2);
+        // U-Boot has a fancy macro, SYS_REG_ENC_CS1_ROW
+        write32(PMU_GRF_OS2, v & !(3 << 3) | (d & 3) << 4);
+        let v = read32(PMU_GRF_OS3);
+        write32(PMU_GRF_OS3, v & !(1 << 4) | ((d >> 2) & 1) << 4);
+    }
+    let cs0_high16bit_row = dram_detect_cs1_row(&cfg, 2);
+    cfg.cs0_high16bit_row = cs0_high16bit_row;
+    let cs1_high16bit_row = dram_detect_cs1_row(&cfg, 3);
+    cfg.cs1_high16bit_row = cs1_high16bit_row;
+
+    cfg.ddr_config = cfg.cs0_row;
+    // NOTE: This changes a field I haven't yet defined.
+    // cfg.xxx = cfg.cs1_row;
+
+    println!("size calculation");
+    let f = get_dram_size_factor(&cfg, 3, cfg.dram_type) as u64;
+    println!("  size factor: {f:08x}");
+
+    let v = read32(DDR_GRF_SPLIT_CON);
+    println!("    split con: {v:08x}");
+    // bit 8: AXI split bypass (1) or enable (0)
+    // bits 0..7: split address
+    let split_address = if (v >> 8) & 1 == 0 { v & 0xff } else { 0 } as u64;
+
+    let size = if cfg.row_3_4 == 0 {
+        if split_address != 0 {
+            split_address * 0x800000 + (f / 2)
+        } else {
+            f
+        }
+    } else {
+        (f * 3) / 4
+    };
+
+    let dram_size_mb = size >> 20;
+    // FIXME: I get 4096, but should be 2048
+    println!("  {dram_size_mb} MB ({size} bytes)");
+
+    ddr_set_rate_for_fsp(&cfg);
+
+    if false {
+        println!("DRAM test");
+        dram_test();
+    }
+
+    todo!("draw the rest of the owl 🦉🖌️");
 }
