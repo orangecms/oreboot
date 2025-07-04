@@ -1443,6 +1443,8 @@ fn sdram_init(post_init: bool) {
     }
     // END of sdram_init_ in U-Boot
 
+    let row = dram_detect_cs1_row(&cfg, 1);
+
     todo!("some more code");
 
     println!("size calculation");
@@ -1527,6 +1529,72 @@ fn sdram_init(post_init: bool) {
     todo!("draw the rest of the owl 🦉🖌️");
 
     println!("sdram_init done");
+}
+
+// U-Boot drivers/ram/rockchip/sdram_rv1126.c dram_detect_cs1_row
+fn dram_detect_cs1_row(cfg: &Config, channel: u32) -> u32 {
+    if (channel < 2 && cfg.rank < 2) || (channel > 1 && cfg.rank != 4) {
+        return 0;
+    }
+
+    let (mem_base, cs_add) = match (cfg.rank, channel) {
+        (2..4, ..2) => (RAM_BASE, 0),
+        _ => (RAM_BASE + 0x1000, 1),
+    }; // 4K offset
+
+    let cs_pst = read32(UPCTL2_ADDR_MAP_BASE) & 0x1f + 6 + 2;
+    let cs_add = if cs_pst < 28 { cs_add + 1 } else { cs_add };
+
+    let cs0_cap = 1 << (cs_pst & 0x1f);
+
+    let bank = if cfg.dram_type == 0 {
+        if cfg.die_bus_width == 0 {
+            cfg.bank_num + 2
+        } else {
+            cfg.bank_num + 1
+        }
+    } else {
+        0
+    };
+
+    let mask = if cfg.chan_bus_width == 2 {
+        0xffff
+    } else {
+        0xff
+    };
+
+    // I thin that's it.
+    let x = if cs_pst == 31 { 1 } else { 0 };
+    let max_row = 32 + x - bank - cfg.column - cfg.chan_bus_width - cs_add;
+
+    let row = if cfg.cs0_row < max_row {
+        cfg.cs0_row
+    } else {
+        max_row
+    };
+
+    const PATTERN: u32 = 0x5aa5_f00f;
+
+    let base = match channel {
+        2 => mem_base,
+        3 => mem_base + cs0_cap,
+        _ => cs0_cap,
+    };
+
+    for r in 0..(row - 12) {
+        let rr = row - r;
+        write32(base, 0);
+
+        let o = 1 << (rr + bank + cfg.column + cfg.chan_bus_width + cs_add - 1);
+        let a = base + o;
+        write32(a, PATTERN);
+        let x = read32(a);
+        if x & mask == PATTERN & mask && a & (mask as usize) == 0 {
+            return rr;
+        }
+    }
+
+    12
 }
 
 // U-Boot drivers/ram/rockchip/sdram_rv1126.c dram_all_config
@@ -1752,11 +1820,14 @@ fn dram_test() {
     let b = 0x1000;
     let pattern = 0xffaa_5500;
     for o in (0..64).step_by(4) {
-        write32(b + o, pattern);
+        let a = b + o;
+        // println!("write pattern {pattern:08x} to {a:08x}");
+        write32(a, pattern);
     }
     for o in (0..64).step_by(4) {
-        let p = read32(b + o);
-        println!("{p:08x}");
+        let a = b + o;
+        let p = read32(a);
+        println!("read back     {p:08x}  @ {a:08x}");
     }
 }
 
