@@ -1338,7 +1338,7 @@ fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) 
 
     if cfg.dram_type == 6 {
         todo!()
-    } else if cfg.dram_type < 9 {
+    } else if cfg.dram_type == 7 || cfg.dram_type == 8 {
         let mr12 = upctl2_read_mr(1, 12, 7);
         let mr14 = upctl2_read_mr(1, 14, 7);
 
@@ -1376,9 +1376,9 @@ fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) 
     }
 
     train(
-        cfg.rank,
         0, // cs
-        cfg.dram_type,
+        cfg,
+        0,
         FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
     );
 
@@ -1393,9 +1393,9 @@ fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) 
             for cs in 1..cfg.rank {
                 println!("r/cs {cs}");
                 train(
-                    0, // unused
                     cs,
-                    cfg.dram_type,
+                    cfg,
+                    0,
                     FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
                 );
             }
@@ -1404,7 +1404,6 @@ fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) 
         dram_all_config(&cfg, msch_timings, s_0030);
         enable_low_power();
     }
-    // END of sdram_init_ in U-Boot
     println!("sdram_init done");
 }
 
@@ -1719,12 +1718,12 @@ use flagset::{flags, FlagSet, Flags};
 //  bit 2: write leveling (data_training_wl)
 //  bit 3: write training
 //  bit 4: read training
-fn train(rank: u32, cs: u32, dram_type: u32, training_flags: FlagSet<TrainingFlag>) {
+fn train(cs: u32, cfg: &Config, dst_fsp: u32, training_flags: FlagSet<TrainingFlag>) {
     if training_flags.contains(TrainingFlag::WriteLeveling) {
-        train_write_leveling(rank, cs, dram_type);
+        train_write_leveling(cfg.rank, cs, cfg.dram_type);
     }
     if training_flags.contains(TrainingFlag::ReadGate) {
-        train_read_gate(cs, dram_type);
+        train_read_gate(cs, cfg.dram_type);
     }
     if training_flags.contains(TrainingFlag::Read) {
         todo!("train_read")
@@ -2345,8 +2344,8 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
     };
 
     train(
-        cfg.rank,
         0,
+        cfg,
         0,
         FlagSet::<TrainingFlag>::from(TrainingFlag::WriteLeveling),
     );
@@ -2402,10 +2401,16 @@ pub fn init() {
         }
     }
 
-    // TODO: These values come from structs at the offsets encoded in the
-    // variable names. Should we make those structs or simple parameters?
-    // U-Boot arch/arm/include/asm/arch-rockchip/sdram_common.h sdram_cap_info
-    //        arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
+    // the vendor code has 4 configs and tries them in that order:
+    // - DDR3
+    // - DDR4
+    // - LPDDR3
+    // - LPDDR4
+
+    // U-Boot defines this config in multiple parts, each defined in
+    //  arch/arm/include/asm/arch-rockchip/sdram_common.h, e.g., sdram_cap_info
+    // The config parts are assembled into one bigger struct in
+    //  arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
     let mut cfg = Config {
         rank: 1,
         column: 11,
@@ -2439,6 +2444,39 @@ pub fn init() {
     let post_init = false;
     // sdram_init_detect ?
     sdram_init(&cfg, &mut msch_timings, post_init);
+
+    if cfg.dram_type < 9 && cfg.dram_freq > 333 {
+        todo!("data training with all options")
+    }
+
+    // NOTE: vendor code sets chan_bus_width to 1 here
+
+    // LPDDR4 + LPDDR4X
+    if cfg.dram_type == 7 || cfg.dram_type == 8 {
+        let mr8 = upctl2_read_mr(1, 8, cfg.dram_type);
+        let x = mr8 as u32 >> 2;
+        cfg.column = 10;
+        cfg.bank_num = 3;
+        cfg.die_bus_width = 1;
+        cfg.row_3_4 = x & 1;
+        cfg.cs0_row = 14 + (((x & 0xf) + 1) >> 1);
+        cfg.chan_bus_width = 2;
+    } else if cfg.dram_type == 0 {
+        todo!("DDR3")
+    } else {
+        todo!("NOT DDR3 nor LPDDR4(X)")
+    }
+
+    let power_ctl = read32(UPCTL2_POWER_CTRL);
+    write32(UPCTL2_POWER_CTRL, 0);
+    train(
+        1,
+        &cfg,
+        0,
+        FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
+    );
+
+    todo!("more code, and sdram_init(.., .., 1);");
 
     let cs1_row = dram_detect_cs1_row(&cfg, 1);
     // NOTE: original code overwrites the config! Is this necessary?
