@@ -1090,6 +1090,7 @@ struct Config {
     cs0_high16bit_row: u32,
     cs1_high16bit_row: u32,
     ddr_config: u32,
+    unk1: u32,
 
     dram_freq: u32,
     dram_type: u32,
@@ -1718,12 +1719,19 @@ use flagset::{flags, FlagSet, Flags};
 //  bit 2: write leveling (data_training_wl)
 //  bit 3: write training
 //  bit 4: read training
-fn train(cs: u32, cfg: &Config, dst_fsp: u32, training_flags: FlagSet<TrainingFlag>) {
+fn train(
+    cs: u32,
+    cfg: &Config,
+    dst_fsp: u32,
+    training_flags: FlagSet<TrainingFlag>,
+) -> Result<(), ()> {
     if training_flags.contains(TrainingFlag::WriteLeveling) {
         train_write_leveling(cfg.rank, cs, cfg.dram_type);
     }
     if training_flags.contains(TrainingFlag::ReadGate) {
-        train_read_gate(cs, cfg.dram_type);
+        if train_read_gate(cs, cfg.dram_type).is_err() {
+            return Err(());
+        }
     }
     if training_flags.contains(TrainingFlag::Read) {
         todo!("train_read")
@@ -1731,6 +1739,8 @@ fn train(cs: u32, cfg: &Config, dst_fsp: u32, training_flags: FlagSet<TrainingFl
     if training_flags.contains(TrainingFlag::Write) {
         todo!("train_write")
     }
+
+    Ok(())
 }
 
 flags! {
@@ -1821,7 +1831,7 @@ fn check_wl() {
 
 const RANK4_ENABLED: u32 = 1 << 20;
 
-fn train_read_gate(cs: u32, dram_type: u32) {
+fn train_read_gate(cs: u32, dram_type: u32) -> Result<(), ()> {
     let phy0300 = read32(DDR_PHY_0300);
 
     let v = read32(DDR_PHY_0000);
@@ -1858,7 +1868,9 @@ fn train_read_gate(cs: u32, dram_type: u32) {
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v | 1);
 
-    let cal_res = check_rx_dqs_calibration();
+    let Ok(cal_res) = check_rx_dqs_calibration() else {
+        return Err(());
+    };
 
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v & !1);
@@ -1877,8 +1889,10 @@ fn train_read_gate(cs: u32, dram_type: u32) {
         println!("Channel C DQ 0..7  enabled: {}", channel_en & (1 << 4) != 0);
     }
 
+    // FIXME: DO NOT PANIC! Return an error instead. This is used for detection.
     if channel_en != cal_res {
-        panic!("channel_en does not match calibration result: {cal_res}");
+        println!("channel_en does not match calibration result: {cal_res}");
+        return Err(());
     }
 
     // restore
@@ -1891,29 +1905,35 @@ fn train_read_gate(cs: u32, dram_type: u32) {
         write32(DDR_PHY_0000, v & !RANK4_ENABLED);
     }
 
+    // TODO: What is this value?! (not covered in the manual)
     let v = read32(DDR_PHY_0448);
     let xx = v >> ((cs & 1) * 16);
+    // NOTE: DO NOT PANIC! Return an error instead. This is used for detection.
     if xx & 0x7ff != 0 {
-        panic!("read gate training error; DDR_PHY_0448: {v:08x} {cs} {xx:03x}");
+        println!("read gate training error; DDR_PHY_0448: {v:08x} {cs} {xx:03x}");
+        Err(())
+    } else {
+        Ok(())
     }
 }
 
-fn check_rx_dqs_calibration() -> u32 {
+fn check_rx_dqs_calibration() -> Result<u32, ()> {
     let t0 = get_time();
     for _ in 0..50 {
         let v = read32(DDR_PHY_020C);
         if v & (1 << 5) != 0 {
-            panic!("RX-DQS calibration error");
+            println!("RX-DQS calibration error");
+            return Err(());
         }
         if v & (1 << 6) != 0 {
             let t1 = crate::arm::get_time();
             println!("RX-DQS calibration done in {}us", t1 - t0);
             // each of the lowest bits means calibration done for byte 0..4
-            return v & 0b11111;
+            return Ok(v & 0b11111);
         }
         udelay(1);
     }
-    0
+    Ok(0)
 }
 
 // counterparts to UPCTL2_DBG_CMD
@@ -2423,6 +2443,7 @@ pub fn init() {
         cs0_high16bit_row: 0,
         cs1_high16bit_row: 0,
         ddr_config: 0,
+        unk1: 0,
 
         dram_freq: 324,
         dram_type: DdrType::LPDDR4 as u32,
@@ -2469,12 +2490,64 @@ pub fn init() {
 
     let power_ctl = read32(UPCTL2_POWER_CTRL);
     write32(UPCTL2_POWER_CTRL, 0);
-    train(
+    let xx = train(
         1,
         &cfg,
         0,
         FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
     );
+
+    // LPDDR3, LPDDR4, LPDDR4X
+    let v = if cfg.dram_type == 6 || cfg.dram_type == 7 || cfg.dram_type == 8 {
+        if xx.is_ok() {
+            if train(
+                3,
+                &cfg,
+                0,
+                FlagSet::<TrainingFlag>::from(TrainingFlag::ReadGate),
+            )
+            .is_ok()
+            {
+                // NOTE: On success, vendor code prints "detect 4 cs"
+                println!("CS 4");
+                3
+            } else {
+                1
+            }
+        } else {
+            0
+        }
+    } else {
+        xx.is_ok() as u32
+    };
+    cfg.rank = v + 1;
+
+    if cfg.dram_type != 7 && cfg.dram_type != 8 {
+        todo!("handle DDR type not LPDDR4 nor LPDDR4X")
+    }
+    // restore
+    write32(UPCTL2_POWER_CTRL, power_ctl);
+
+    cfg.ddr_config = cfg.cs0_row;
+
+    if v == 0 {
+        cfg.cs1_row = 0;
+        cfg.unk1 = 0;
+    } else {
+        cfg.cs1_row = cfg.cs0_row;
+        cfg.unk1 = cfg.cs0_row;
+    }
+
+    {
+        let v = UPCTL2_CFG3[0].value;
+        let vx = v & 0x3cff_cfff;
+        let m = match cfg.die_bus_width {
+            1 => 1 << 31,
+            2 => (1 << 31) | (1 << 30),
+            _ => 1 << 30,
+        };
+        let v = (2 - cfg.chan_bus_width) * 0x1000 | ((1 << (cfg.rank & 0x1f)) - 1) * 0x1000000 | m;
+    }
 
     todo!("more code, and sdram_init(.., .., 1);");
 
