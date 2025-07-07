@@ -1116,8 +1116,15 @@ const SELF_REFRESH_IDLE: u32 = 0x005d;
 const POWER_DOWN_IDLE: u32 = 0x000d;
 
 // sdram_init_ / sdram_init_detect ?
-fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) {
+fn sdram_init(
+    cfg: &Config,
+    msch_timings: &mut MschNocTimings,
+    post_init: bool,
+    ctl_cfg_mstr: Option<u32>,
+) {
     println!("sdram_init");
+    let ctl_cfg_mstr = ctl_cfg_mstr.unwrap_or(UPCTL2_CFG3_MSTR_DEFAULT);
+
     write32(DDR_GRF_CTRL0, 0x0002_0000);
 
     clk_set_dpll((cfg.dram_freq * MEGA) / 2);
@@ -1191,19 +1198,24 @@ fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) 
         }
 
         let v = read32(DDR_PHY_00C0);
+        // bit 0: pvt compensation disable
         write32(DDR_PHY_00C0, v | 1);
 
-        let ctl_cfg_first_val = UPCTL2_CFG3[0].value;
-        if ctl_cfg_first_val & (1 << 10) != 0 {
+        // bit 10: enable 2t timing mode
+        if ctl_cfg_mstr & (1 << 10) != 0 {
             let v = read32(DDR_PHY_00C0);
-            write32(DDR_PHY_00C0, v | 0x0006_0000);
+            // bit 18: cmd delay one ui
+            // bit 17: cmd 2t mode
+            write32(DDR_PHY_00C0, v | (0b11 << 17));
         }
 
         let v = read32(DDR_PHY_00AC);
-        write32(DDR_PHY_00AC, v | 0x10);
+        // bit 4: freq choose b
+        write32(DDR_PHY_00AC, v | (1 << 4));
 
         let v = read32(DDR_PHY_0044);
-        write32(DDR_PHY_0044, v & 0x3fff_ffff);
+        // bits 30..31: freq choose t; 00 = freq point 0
+        write32(DDR_PHY_0044, v & !(0b11 << 30));
     }
 
     // reset?
@@ -1214,6 +1226,7 @@ fn sdram_init(cfg: &Config, msch_timings: &mut MschNocTimings, post_init: bool) 
     write32(CRU_NS_SOFT_RESET_CFG27, 0x0180_0000);
 
     // U-Boot sdram_init_
+    write32(UPCTL2_MSTR, ctl_cfg_mstr);
     upctl2_config(&UPCTL2_CFG3, SELF_REFRESH_IDLE, POWER_DOWN_IDLE);
 
     let v = read32(UPCTL2_PCFGR_N);
@@ -2088,8 +2101,8 @@ fn fill_regs(base: usize, data: &[RegVal]) {
     }
 }
 
-// NOTE: The first value here has been changed to 0x4304_1401 ( | 0x400 ) in
-// the first round of dram_init_main.
+// NOTE: The first value here, MSTR, is being changed to 0x4304_1401 ( | 0x400 )
+// in the first round of dram_init_main.
 const UPCTL2_CFG0: [RegVal; 25] = [
     RegVal {
         offset: 0x0000, // MSTR
@@ -2195,132 +2208,161 @@ const UPCTL2_CFG0: [RegVal; 25] = [
     },
 ];
 
-// NOTE: The first value here has been changed to 0x4304_1401 ( | 0x400 ) in
-// the first round of dram_init_main.
-const UPCTL2_CFG3: [RegVal; 31] = [
+const UPCTL2_CFG3_MSTR_DEFAULT: u32 = 0x8308_1020;
+
+// NOTE: The first value here was for UPCTL2_MSTR.
+// It needs to be changed multiple times, so exclude it here.
+// Instead, we pass along an Option and fall back to the const aobve.
+const UPCTL2_CFG3: [RegVal; 30] = [
     RegVal {
-        offset: 0x0,
-        value: 0x83081020,
+        // UPCTL2_REFRESH_TIMING
+        offset: 0x0064,
+        value: 0x0013_002E,
     },
     RegVal {
-        offset: 0x64,
-        value: 0x13002E,
+        // UPCTL2_INIT0
+        offset: 0x00D0,
+        value: 0x0002_013E,
     },
     RegVal {
-        offset: 0xD0,
-        value: 0x2013E,
+        // UPCTL2_INIT1
+        offset: 0x00D4,
+        value: 0x0021_0000,
     },
     RegVal {
-        offset: 0xD4,
-        value: 0x210000,
+        // UPCTL2_INIT2
+        offset: 0x00D8,
+        value: 0x0000_0202,
     },
     RegVal {
-        offset: 0xD8,
-        value: 0x202,
+        // UPCTL2_INIT3
+        offset: 0x00DC,
+        value: 0x0024_0012,
     },
     RegVal {
-        offset: 0xDC,
-        value: 0x240012,
+        // UPCTL2_INIT4
+        offset: 0x00E0,
+        value: 0x0031_0000,
     },
     RegVal {
-        offset: 0xE0,
-        value: 0x310000,
+        // UPCTL2_INIT6
+        offset: 0x00E8,
+        value: 0x0010_0000,
     },
     RegVal {
-        offset: 0xE8,
-        value: 0x100000,
-    },
-    RegVal {
-        offset: 0xEC,
+        // UPCTL2_INIT7
+        offset: 0x00EC,
         value: 0x0,
     },
     RegVal {
-        offset: 0xF4,
-        value: 0xF022F,
+        // UPCTL2_RANK_CTRL
+        offset: 0x00F4,
+        value: 0x0000_F022F,
     },
     RegVal {
-        offset: 0x100,
-        value: 0xC070507,
+        // UPCTL2_DRAM_TIMING0
+        offset: 0x0100,
+        value: 0x0C07_0507,
     },
     RegVal {
-        offset: 0x104,
-        value: 0x5040B,
+        // UPCTL2_DRAM_TIMING1
+        offset: 0x0104,
+        value: 0x0005_040B,
     },
     RegVal {
-        offset: 0x108,
-        value: 0x4070C0D,
+        // UPCTL2_DRAM_TIMING2
+        offset: 0x0108,
+        value: 0x0040_70C0D,
     },
     RegVal {
-        offset: 0x10C,
-        value: 0x505000,
+        // UPCTL2_DRAM_TIMING3
+        offset: 0x010C,
+        value: 0x0050_5000,
     },
     RegVal {
-        offset: 0x110,
+        // UPCTL2_DRAM_TIMING4
+        offset: 0x0110,
         value: 0x3040204,
     },
     RegVal {
-        offset: 0x114,
-        value: 0x4050303,
+        // UPCTL2_DRAM_TIMING5
+        offset: 0x0114,
+        value: 0x0405_0303,
     },
     RegVal {
-        offset: 0x118,
-        value: 0x1010004,
+        // UPCTL2_DRAM_TIMING6
+        offset: 0x0118,
+        value: 0x0101_0004,
     },
     RegVal {
-        offset: 0x11C,
-        value: 0x301,
+        // UPCTL2_DRAM_TIMING7
+        offset: 0x011C,
+        value: 0x0000_0301,
     },
     RegVal {
-        offset: 0x120,
-        value: 0x303,
+        // UPCTL2_DRAM_TIMING8
+        offset: 0x0120,
+        value: 0x0000_0303,
     },
     RegVal {
-        offset: 0x130,
-        value: 0x40000,
+        // UPCTL2_DRAM_TIMING12
+        offset: 0x0130,
+        value: 0x0004_0000,
     },
     RegVal {
-        offset: 0x134,
-        value: 0x100002,
+        // UPCTL2_DRAM_TIMING13
+        offset: 0x0134,
+        value: 0x0010_0002,
     },
     RegVal {
-        offset: 0x138,
-        value: 0x2F,
+        // UPCTL2_DRAM_TIMING14
+        offset: 0x0138,
+        value: 0x0000_002F,
     },
     RegVal {
-        offset: 0x180,
-        value: 0xA200A2,
+        // UPCTL2_ZQ_CTRL0
+        offset: 0x0180,
+        value: 0x00A2_00A2,
     },
     RegVal {
-        offset: 0x184,
-        value: 0x900000,
+        // UPCTL2_ZQ_CTRL1
+        offset: 0x0184,
+        value: 0x0090_0000,
     },
     RegVal {
+        // UPCTL2_DFI_TIMING0
         offset: 0x190,
-        value: 0x7040000,
+        value: 0x0704_0000,
     },
     RegVal {
-        offset: 0x198,
-        value: 0xA000101,
+        // UPCTL2_DFI_LP_CFG0
+        offset: 0x0198,
+        value: 0x0A00_0101,
     },
     RegVal {
-        offset: 0x1A0,
-        value: 0xC0400003,
+        // UPCTL2_DFI_UPDATE0
+        offset: 0x01A0,
+        value: 0xC040_0003,
     },
     RegVal {
-        offset: 0x240,
-        value: 0x905092C,
+        // UPCTL2_ODT_CFG
+        offset: 0x0240,
+        value: 0x0905_092C,
     },
     RegVal {
-        offset: 0x244,
-        value: 0x101,
+        // UPCTL2_ODT_MAP
+        offset: 0x0244,
+        value: 0x0000_0101,
     },
     RegVal {
-        offset: 0x250,
-        value: 0x1F00,
+        // UPCTL2_SCHED
+        offset: 0x0250,
+        value: 0x0000_1F00,
     },
     RegVal {
-        offset: 0x0490, // PCTRL_N
-        value: 0x1,
+        // UPCTL2_PCTRL_N
+        offset: 0x0490,
+        value: 0x0000_0001,
     },
 ];
 
@@ -2369,6 +2411,24 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
         0,
         FlagSet::<TrainingFlag>::from(TrainingFlag::WriteLeveling),
     );
+}
+
+fn upctl2_cfg_adjust_mstr(val: u32, cfg: &Config) -> u32 {
+    // bits 12..13: data bus width
+    // bits 24..25: active ranks
+    // bits 30..31: device config
+    let m = (0b11 << 30) | (0b11 << 24) | (0b11 << 12);
+    let vx = val & !m;
+    let dcfg = match cfg.die_bus_width {
+        1 => 1 << 31,
+        2 => (1 << 31) | (1 << 30),
+        _ => 1 << 30,
+    };
+    let active_ranks = (1 << (cfg.rank & 0x1f)) - 1;
+    let data_bus_width = 2 - cfg.chan_bus_width;
+    // 12..13: data bus width
+    // 24..25: active ranks
+    vx | dcfg | (active_ranks << 24) | (data_bus_width << 12)
 }
 
 // https://www.rockchip.fr/RK809%20datasheet%20V1.01.pdf
@@ -2464,7 +2524,7 @@ pub fn init() {
 
     let post_init = false;
     // sdram_init_detect ?
-    sdram_init(&cfg, &mut msch_timings, post_init);
+    sdram_init(&cfg, &mut msch_timings, post_init, None);
 
     if cfg.dram_type < 9 && cfg.dram_freq > 333 {
         todo!("data training with all options")
@@ -2499,6 +2559,7 @@ pub fn init() {
 
     // LPDDR3, LPDDR4, LPDDR4X
     let v = if cfg.dram_type == 6 || cfg.dram_type == 7 || cfg.dram_type == 8 {
+        println!("LPDDR3, LPDDR4 or LPDDR4X - detect CS 4");
         if xx.is_ok() {
             if train(
                 3,
@@ -2509,9 +2570,10 @@ pub fn init() {
             .is_ok()
             {
                 // NOTE: On success, vendor code prints "detect 4 cs"
-                println!("CS 4");
+                println!("CS 4 deteced");
                 3
             } else {
+                println!("CS 4 not deteced");
                 1
             }
         } else {
@@ -2538,18 +2600,14 @@ pub fn init() {
         cfg.unk1 = cfg.cs0_row;
     }
 
-    {
-        let v = UPCTL2_CFG3[0].value;
-        let vx = v & 0x3cff_cfff;
-        let m = match cfg.die_bus_width {
-            1 => 1 << 31,
-            2 => (1 << 31) | (1 << 30),
-            _ => 1 << 30,
-        };
-        let v = (2 - cfg.chan_bus_width) * 0x1000 | ((1 << (cfg.rank & 0x1f)) - 1) * 0x1000000 | m;
-    }
+    // This is the value written to UPCTL2_MSTR.
+    let v = UPCTL2_CFG3_MSTR_DEFAULT;
+    let mstr = upctl2_cfg_adjust_mstr(v, &cfg);
 
-    todo!("more code, and sdram_init(.., .., 1);");
+    let post_init = true;
+    sdram_init(&cfg, &mut msch_timings, post_init, Some(mstr));
+
+    todo!("more code");
 
     let cs1_row = dram_detect_cs1_row(&cfg, 1);
     // NOTE: original code overwrites the config! Is this necessary?
