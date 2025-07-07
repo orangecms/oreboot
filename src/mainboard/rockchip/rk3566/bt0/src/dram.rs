@@ -2605,9 +2605,11 @@ pub fn init() {
     let mstr = upctl2_cfg_adjust_mstr(v, &cfg);
 
     let post_init = true;
+    // TODO: expose result
     sdram_init(&cfg, &mut msch_timings, post_init, Some(mstr));
 
-    todo!("more code");
+    // TODO: vendor code would check if DDR type was detected and continue or
+    // try the next DDR type.
 
     let cs1_row = dram_detect_cs1_row(&cfg, 1);
     // NOTE: original code overwrites the config! Is this necessary?
@@ -2651,7 +2653,6 @@ pub fn init() {
     };
 
     let dram_size_mb = size >> 20;
-    // FIXME: I get 4096, but should be 2048
     println!("  {dram_size_mb} MB ({size} bytes)");
 
     ddr_set_rate_for_fsp(&cfg);
