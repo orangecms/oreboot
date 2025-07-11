@@ -1739,7 +1739,9 @@ fn train(
     training_flags: FlagSet<TrainingFlag>,
 ) -> Result<(), ()> {
     if training_flags.contains(TrainingFlag::WriteLeveling) {
-        train_write_leveling(cfg.rank, cs, cfg.dram_type);
+        if train_write_leveling(cfg.rank, cs, cfg.dram_type).is_err() {
+            return Err(());
+        }
     }
     if training_flags.contains(TrainingFlag::ReadGate) {
         if train_read_gate(cs, cfg.dram_type).is_err() {
@@ -1767,7 +1769,7 @@ flags! {
     }
 }
 
-fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) {
+fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) -> Result<(), ()> {
     let was_auto_zq_enabled = upctl2_disable_zq_cs();
 
     let v = read32(DDR_PHY_00A0);
@@ -1778,6 +1780,7 @@ fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) {
     let o = get_fsp_offset(cur_fsp);
     let r = UPCTL2_INIT3 + o;
     let init3 = read32(r);
+    println!("init3 {init3:08x}");
 
     let wl_load_mode = if dram_type == 0 || dram_type == 3 {
         init3 & 0x3fff | 0x4000
@@ -1795,12 +1798,16 @@ fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) {
     // 8..11: write leveling cs select
     let m = 0b1111;
     let s = 8;
-    let nv = !(1 << (cs & 0x1f)) & m;
+    let wl_cs = !(1 << (cs & 0x1f)) & m;
     let v = read32(DDR_PHY_0004);
-    write32(DDR_PHY_0004, v & !(m << s) | (nv << s));
+    let nv = v & !(m << s) | (wl_cs << s);
+    println!("DDR_PHY_0004 {v:08x} -> {nv:08x}");
+    write32(DDR_PHY_0004, nv);
+
     // Start write leveling.
+    const WRITE_LEVELING_START: u32 = 1 << 6;
     let v = read32(DDR_PHY_0004);
-    write32(DDR_PHY_0004, v | (1 << 6));
+    write32(DDR_PHY_0004, v | WRITE_LEVELING_START);
 
     let v = read32(DDR_PHY_0004);
     println!("DDR_PHY_0004 {v:08x} cs {:04b}", (v >> s) & m);
@@ -1819,10 +1826,12 @@ fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) {
     upctl2_restore_zq_cs(was_auto_zq_enabled);
     upctl2_dbg_rank01_refresh(8);
 
-    // TODO: another read gate training?!
+    // TODO: another read gate training?
+
+    Ok(())
 }
 
-fn check_wl() {
+fn check_wl() -> Result<u64, u64> {
     // each of these bits is for each of bytes 0..4
     let m = 0b11111;
     let s = 8;
@@ -1832,14 +1841,19 @@ fn check_wl() {
         let v = read32(DDR_PHY_020C);
         if (v >> s) & m == v0 {
             let t1 = crate::arm::get_time();
-            println!("write leveling done in {}us", t1 - t0);
+            let t = t1 - t0;
+            println!("write leveling done in {t}us");
+            return Ok(t);
         }
         udelay(1);
     }
     let t1 = crate::arm::get_time();
-    println!("write leveling timeout after {}us", t1 - t0);
+    let t = t1 - t0;
+    println!("write leveling timeout after {t}us");
     let v = (read32(DDR_PHY_020C) >> s) & m;
-    panic!("{v0:05b} != {v:05b}");
+    panic!("{v:05b} != {v0:05b}");
+
+    Err(t)
 }
 
 const RANK4_ENABLED: u32 = 1 << 20;
@@ -2376,27 +2390,28 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
     let odt_cfg = get_ddr_drv_odt_info(cfg.dram_type);
 
     // 0x210 0x144 0x210 0x210
-    let freq0 = odt_cfg.ddr_freq_f0_f1 & 0xfff;
-    let freq1 = (odt_cfg.ddr_freq_f0_f1 >> 12) & 0xfff;
-    let freq2 = odt_cfg.ddr_freq_f2_f3 & 0xfff;
-    let freq3 = (odt_cfg.ddr_freq_f2_f3 >> 12) & 0xfff;
+    let freq0 = (odt_cfg.ddr_freq_f0_f1 >> 12) & 0xfff;
+    let freq1 = odt_cfg.ddr_freq_f0_f1 & 0xfff;
+    let freq2 = (odt_cfg.ddr_freq_f2_f3 >> 12) & 0xfff;
+    let freq3 = odt_cfg.ddr_freq_f2_f3 & 0xfff;
 
     // TODO: zero out FSP params storage ...?
     write32(SHARE_MEM_BASE, 0x0);
 
     let p_res = low_power_update(0);
 
-    const CMD_INV_DELAY_SEL_MASK: u32 = !(0b111111 << 6);
-    let (v1, v2) = if cfg.dram_type < 9 {
+    const CMD_INV_DELAY_SEL_MASK: u32 = !(0b111111 << 10);
+    // LPDDR4 or LPDDR4X
+    let (v1, v2) = if cfg.dram_type == 7 || cfg.dram_type == 8 {
         // PHY_01B0 10..15: cmd_invdelaysel
         // command TX delay line value OBS signal
         let v = read32(DDR_PHY_01B0);
-        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x6000);
+        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | (0b011000 << 10));
 
         let v1 = read32(DDR_PHY_0230) >> 16;
 
         let v = read32(DDR_PHY_01B0);
-        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | 0x8000);
+        write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | (0b100000 << 10));
 
         let v2 = read32(DDR_PHY_0230) >> 16;
 
@@ -2629,8 +2644,9 @@ pub fn init() {
     cfg.cs1_high16bit_row = cs1_high16bit_row;
 
     cfg.ddr_config = cfg.cs0_row;
-    // NOTE: This changes a field I haven't yet defined.
-    // cfg.xxx = cfg.cs1_row;
+    cfg.unk1 = cfg.cs1_row;
+
+    // NOTE: The following should only be run after successful detection.
 
     println!("size calculation");
     let f = get_dram_size_factor(&cfg, 3, cfg.dram_type) as u64;
