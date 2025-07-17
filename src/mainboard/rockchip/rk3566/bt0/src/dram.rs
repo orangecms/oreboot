@@ -1684,23 +1684,25 @@ fn enable_low_power() {
 
 const DFI_LOW_POWER_BYPASS: u32 = 1 << 15;
 
-fn low_power_update(x: u32) -> u32 {
-    if x != 0 {
+fn low_power_update(en: u32) -> u32 {
+    // UPCTL2_POWER_CTRL
+    // bit 3: DFI DRAM clock disable
+    // bit 2: deep power down enable
+    // bit 1: power down enable
+    // bit 0: self refresh enable
+    if en != 0 {
         let v = read32(DDR_PHY_0084);
         write32(DDR_PHY_0084, v & !DFI_LOW_POWER_BYPASS);
         let v = read32(UPCTL2_POWER_CTRL);
-        write32(UPCTL2_POWER_CTRL, v | (x & 0xf));
+        write32(UPCTL2_POWER_CTRL, v | (en & 0xf));
+        0
+    } else {
+        let pwr_ctl = read32(UPCTL2_POWER_CTRL);
+        write32(UPCTL2_POWER_CTRL, pwr_ctl & !0xf);
+        let v = read32(DDR_PHY_0084);
+        write32(DDR_PHY_0084, v | DFI_LOW_POWER_BYPASS);
+        pwr_ctl
     }
-    // bit 0: self refresh enable
-    // bit 1: power down enable
-    // bit 2: deep power down enable
-    // bit 3: DFI DRAM clock disable
-    let pwr_ctl = read32(UPCTL2_POWER_CTRL);
-    write32(UPCTL2_POWER_CTRL, pwr_ctl & !0xf);
-    let v = read32(DDR_PHY_0084);
-    write32(DDR_PHY_0084, v & DFI_LOW_POWER_BYPASS);
-
-    pwr_ctl
 }
 
 // see U-Boot include/configs/rk3568_common.h CFG_SYS_SDRAM_BASE
@@ -1775,45 +1777,56 @@ flags! {
 fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) -> Result<(), ()> {
     let was_auto_zq_enabled = upctl2_disable_zq_cs();
 
-    let v = read32(DDR_PHY_00A0);
     // disable DQ write train auto
+    let v = read32(DDR_PHY_00A0);
     write32(DDR_PHY_00A0, v & !1);
 
     let cur_fsp = read32(UPCTL2_MSTR2) & 0b11;
     let o = get_fsp_offset(cur_fsp);
     let r = UPCTL2_INIT3 + o;
     let init3 = read32(r);
-    println!("init3 {init3:08x}");
+    println!("init3 ({cur_fsp}) {init3:08x}");
 
     let wl_load_mode = if dram_type == 0 || dram_type == 3 {
         init3 & 0x3fff | 0x4000
     } else {
+        // LPDDR3 & LPDDR4: bits 31..24 should be 0
         init3 & 0xff
     };
-    // write leveling load mode
+    println!("WL load mode {wl_load_mode:04x}");
+
+    // The manual says wl_load_mode lower bits should be the same as MR2[7..0]
+    if false {
+        let mr2 = upctl2_read_mr(1, 2, 7);
+        println!("MR2 {mr2:02x}");
+        let wl_load_mode = mr2 as u32;
+    }
+
+    // bits 16..31: write leveling load mode
     let v = read32(DDR_PHY_0004);
-    write32(DDR_PHY_0004, v & 0x0000_ffff | (wl_load_mode << 16));
+    let nv = v & !(0xffff << 16) | (wl_load_mode << 16);
+    write32(DDR_PHY_0004, nv);
+    println!("DDR_PHY_0004 {v:08x} -> {nv:08x}");
 
     if (dram_type == 0 || dram_type == 3) && rank == 2 {
         todo!()
     }
 
-    // 8..11: write leveling cs select
+    // bits 8..11: write leveling cs select
+    // e.g. cs = 0 => 0b1110 (RANK0)
+    // The chip connected to CS0 will be chosen for write-leveling training.
     let m = 0b1111;
     let s = 8;
     let wl_cs = !(1 << (cs & 0x1f)) & m;
     let v = read32(DDR_PHY_0004);
     let nv = v & !(m << s) | (wl_cs << s);
-    println!("DDR_PHY_0004 {v:08x} -> {nv:08x}");
+    println!("DDR_PHY_0004 {v:08x} -> {nv:08x} (cs {cs} / {wl_cs:04b})");
     write32(DDR_PHY_0004, nv);
 
-    // Start write leveling.
+    // bit 6: start write leveling
     const WRITE_LEVELING_START: u32 = 1 << 6;
     let v = read32(DDR_PHY_0004);
     write32(DDR_PHY_0004, v | WRITE_LEVELING_START);
-
-    let v = read32(DDR_PHY_0004);
-    println!("DDR_PHY_0004 {v:08x} cs {:04b}", (v >> s) & m);
 
     check_wl();
 
@@ -1834,7 +1847,23 @@ fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) -> Result<(), ()> {
     Ok(())
 }
 
+fn wl_byte_results() {
+    for (i, o) in (0x0300..0x0a80).step_by(0x180).enumerate() {
+        // ranks 0 + 1
+        let v = read32(DDR_PHY_BASE + o + 0x070);
+        let r0 = (v >> 16) & 0xff;
+        let r1 = v & 0xff;
+        // ranks 2 + 3
+        let v = read32(DDR_PHY_BASE + o + 0x14c);
+        let r2 = (v >> 16) & 0xff;
+        let r3 = v & 0xff;
+        println!("byte {i} rank0 {r0:02x} rank1 {r1:02x} rank2 {r2:02x} rank3 {r3:02x}");
+    }
+}
+
 fn check_wl() -> Result<u64, u64> {
+    wl_byte_results();
+
     // each of these bits is for each of bytes 0..4
     let m = 0b11111;
     let s = 8;
@@ -1854,6 +1883,9 @@ fn check_wl() -> Result<u64, u64> {
     let t = t1 - t0;
     println!("write leveling timeout after {t}us");
     let v = (read32(DDR_PHY_020C) >> s) & m;
+
+    wl_byte_results();
+
     panic!("{v:05b} != {v0:05b}");
 
     Err(t)
@@ -2390,6 +2422,7 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
     // NOTE: code here omitted; should be disabled
     let p_res = low_power_update(p_res);
 
+    // save_fsp_param ?
     let odt_cfg = get_ddr_drv_odt_info(cfg.dram_type);
 
     // 0x210 0x144 0x210 0x210
@@ -2462,15 +2495,15 @@ fn upctl2_cfg_adjust_mstr(val: u32, cfg: &Config) -> u32 {
 }
 
 fn print_ddr_info(cfg: &Config) {
-    println!("size calculation");
-    let f = get_dram_size_factor(&cfg, 3, cfg.dram_type) as u64;
-    println!("  size factor: {f:08x}");
-
     let v = read32(DDR_GRF_SPLIT_CON);
-    println!("    split con: {v:08x}");
+    println!("split con: {v:08x}");
     // bit 8: AXI split bypass (1) or enable (0)
     // bits 0..7: split address
     let split_address = if (v >> 8) & 1 == 0 { v & 0xff } else { 0 } as u64;
+
+    println!("size calculation");
+    let f = get_dram_size_factor(&cfg, 3, cfg.dram_type) as u64;
+    println!("  size factor: {f:08x}");
 
     let size = if cfg.row_3_4 == 0 {
         if split_address != 0 {
