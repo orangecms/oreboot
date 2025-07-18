@@ -1847,23 +1847,43 @@ fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) -> Result<(), ()> {
     Ok(())
 }
 
-fn wl_byte_results() {
+// this is for 4 ranks, one byte
+type WlTrainResult = [u16; 4];
+// all 5 bytes (max)
+type WlTrainResults = [WlTrainResult; 5];
+
+fn get_wl_train_results() -> WlTrainResults {
+    let mut r: WlTrainResults = [[0; 4]; 5];
+
     for (i, o) in (0x0300..0x0a80).step_by(0x180).enumerate() {
         // ranks 0 + 1
         let v = read32(DDR_PHY_BASE + o + 0x070);
-        let r0 = (v >> 16) & 0xff;
-        let r1 = v & 0xff;
+        r[i][0] = (v >> 16) as u16;
+        r[i][1] = v as u16;
         // ranks 2 + 3
         let v = read32(DDR_PHY_BASE + o + 0x14c);
-        let r2 = (v >> 16) & 0xff;
-        let r3 = v & 0xff;
-        println!("byte {i} rank0 {r0:02x} rank1 {r1:02x} rank2 {r2:02x} rank3 {r3:02x}");
+        r[i][2] = (v >> 16) as u16;
+        r[i][3] = v as u16;
+    }
+
+    r
+}
+
+fn print_wl_train_results(r: &WlTrainResults) {
+    for (i, e) in r.iter().enumerate() {
+        print!("byte {i}");
+        for (j, k) in e.iter().enumerate() {
+            print!(" rank{j} {k:02x}");
+        }
+        println!();
     }
 }
 
 fn check_wl() -> Result<u64, u64> {
-    wl_byte_results();
-
+    if DEBUG {
+        let r = get_wl_train_results();
+        print_wl_train_results(&r);
+    }
     // each of these bits is for each of bytes 0..4
     let m = 0b11111;
     let s = 8;
@@ -1875,6 +1895,10 @@ fn check_wl() -> Result<u64, u64> {
             let t1 = crate::arm::get_time();
             let t = t1 - t0;
             println!("write leveling done in {t}us");
+            if DEBUG {
+                let r = get_wl_train_results();
+                print_wl_train_results(&r);
+            }
             return Ok(t);
         }
         udelay(1);
@@ -1882,10 +1906,11 @@ fn check_wl() -> Result<u64, u64> {
     let t1 = crate::arm::get_time();
     let t = t1 - t0;
     println!("write leveling timeout after {t}us");
+    if DEBUG {
+        let r = get_wl_train_results();
+        print_wl_train_results(&r);
+    }
     let v = (read32(DDR_PHY_020C) >> s) & m;
-
-    wl_byte_results();
-
     panic!("{v:05b} != {v0:05b}");
 
     Err(t)
