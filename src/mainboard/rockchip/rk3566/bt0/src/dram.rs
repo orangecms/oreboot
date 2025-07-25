@@ -8,9 +8,6 @@
 // - drivers/ram/rockchip/sdram_rv1126.c
 // - drivers/ram/rockchip/sdram-rv1126-lpddr4-detect-528.inc
 
-// PCTL = p... controller
-// UPCTL = ultra low power ... ?
-
 use util::mmio::{read32, write32};
 
 use crate::arm::{get_time, udelay};
@@ -20,19 +17,16 @@ use crate::mem_map::{
     SYS_SGRF_BASE, UPCTL2_BASE,
 };
 
-// SGRF: security subsystem (?)
-// https://www.kernel.org/doc/Documentation/devicetree/bindings/soc/rockchip/grf.txt
-// https://www.rockchip.fr/Rockchip%20RK3288%20TRM%20V1.0%20Part%201-System%20and%20System%20Control.pdf
-const SYS_SGRF_0014: usize = SYS_SGRF_BASE + 0x0014;
-const SYS_SGRF_0200: usize = SYS_SGRF_BASE + 0x0200;
-const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
+// For specific abbreviations, see:
+// <https://www.synopsys.com/blogs/chip-design/maximizing-mobile-performance-lpddr4-ram.html>
+// CBT - Command Bus Training
+// DBI - Data Bus Inversion
+// FSP - Frequency Set Point
 
-const CRU_S_CLK_SEL_CFG66: usize = CRU_S_BASE + 0x0208;
-
-const CRU_NS_MODE_CFG0: usize = CRU_NS_BASE + 0x00c0;
-const CRU_NS_VPLL_CFG0: usize = CRU_NS_BASE + 0x00a0;
-const CRU_NS_SOFT_RESET_CFG27: usize = CRU_NS_BASE + 0x046c;
-
+// The following is a log from running the vendor code on a ROCK 3 C board.
+// The version string has been modified to see if it would still run.
+// Line breaks added to group certain parts. Notice the pattern.
+// Those lines help follow the code flow where it branches.
 /*
 DDR Version V1337 20200218_resume
 ln
@@ -74,6 +68,19 @@ osreg:0x1000e2c1,0x20000001
 out
 */
 
+const SYS_SGRF_0014: usize = SYS_SGRF_BASE + 0x0014;
+const SYS_SGRF_0200: usize = SYS_SGRF_BASE + 0x0200;
+const SYS_SGRF_0204: usize = SYS_SGRF_BASE + 0x0204;
+
+const CRU_S_CLK_SEL_CFG66: usize = CRU_S_BASE + 0x0208;
+
+const CRU_NS_DPLL_CFG0: usize = CRU_NS_BASE + 0x0020;
+const CRU_NS_DPLL_CFG1: usize = CRU_NS_BASE + 0x0024;
+const CRU_NS_MODE_CFG0: usize = CRU_NS_BASE + 0x00c0;
+const CRU_NS_VPLL_CFG0: usize = CRU_NS_BASE + 0x00a0;
+const CRU_NS_CLK_SEL_CFG10: usize = CRU_NS_BASE + 0x0128;
+const CRU_NS_SOFT_RESET_CFG27: usize = CRU_NS_BASE + 0x046c;
+
 // aka MSCH, another sorta GRF? The manual just say "reserved".
 const RESX_0008: usize = RESX_BASE + 0x0008;
 const RESX_000C: usize = RESX_BASE + 0x000c;
@@ -99,9 +106,11 @@ const UPCTL2_POWER_TIMING: usize = UPCTL2_BASE + 0x0034;
 const UPCTL2_HWLP_CTRL: usize = UPCTL2_BASE + 0x0038;
 const UPCTL2_REFRESH_CTRL0: usize = UPCTL2_BASE + 0x0050;
 const UPCTL2_REFRESH_CTRL1: usize = UPCTL2_BASE + 0x0054;
+// The manual is missing refresh control registers at 0058 and 005C.
 const UPCTL2_REFRESH_CTRL2: usize = UPCTL2_BASE + 0x0058;
 // NOTE: The following two are mixed up in U-Boot. Or are they?
 const UPCTL2_REFRESH_CTRL3: usize = UPCTL2_BASE + 0x005c;
+// The manual calls 0060 "DDRC_RFSHCTL3".
 const UPCTL2_REFRESH_CTRL4: usize = UPCTL2_BASE + 0x0060;
 const UPCTL2_REFRESH_TIMING: usize = UPCTL2_BASE + 0x0064;
 const UPCTL2_INIT0: usize = UPCTL2_BASE + 0x00d0;
@@ -125,6 +134,14 @@ const UPCTL2_SW_STAT: usize = UPCTL2_BASE + 0x0324;
 const UPCTL2_PCFGR_N: usize = UPCTL2_BASE + 0x0404;
 
 const UPCTL2_MR_WR_BUSY: u32 = 1;
+
+// The PHY is apparently this one by INNOSILICON:
+// <https://innosilicon.shop/html/ip-solution/1.html>
+// Same as Allwinner A133, H616 and A523:
+// <https://linux-sunxi.org/DRAM_Controller>
+// Aside on INNOSILICON: They have partnered with OPENEDGES, from which StarFive
+// had taken their DRAM controller for the JH71x0:
+// <https://anysilicon.com/openedges-and-innosilicon-unveil-advanced-ddr-controller-and-ddr-phy-integrated-ip-solutions/>
 
 const DDR_PHY_0000: usize = DDR_PHY_BASE + 0x0000;
 const DDR_PHY_0004: usize = DDR_PHY_BASE + 0x0004;
@@ -210,21 +227,21 @@ fn clk_set_dpll(freq: u32) {
     };
 
     write32(CRU_NS_MODE_CFG0, 0x000c_0000);
-    write32(CRU_NS_BASE + 0x0128, 0x2000_2000);
+    write32(CRU_NS_CLK_SEL_CFG10, 0x2000_2000);
     let fbdiv = (f_mhz * postdiv1 * postdiv2 / 24);
-    write32(CRU_NS_BASE + 0x0020, 0x7fff_0000 | (postdiv2 << 12) | fbdiv);
+    write32(CRU_NS_DPLL_CFG0, 0x7fff_0000 | (postdiv2 << 12) | fbdiv);
 
-    write32(CRU_NS_BASE + 0x0024, 0x11ff_1001 | (postdiv1 << 6));
-    write32(CRU_NS_BASE + 0x0024, 0x2000_0000);
+    write32(CRU_NS_DPLL_CFG1, 0x11ff_1001 | (postdiv1 << 6));
+    write32(CRU_NS_DPLL_CFG1, 0x2000_0000);
 
     for _ in 0..1000 {
         udelay(1);
-        if read32(CRU_NS_BASE + 0x0024) & (1 << 10) != 0 {
+        if read32(CRU_NS_DPLL_CFG1) & (1 << 10) != 0 {
             break;
         }
     }
 
-    write32(CRU_NS_BASE + 0x00c0, 0x000c_0004);
+    write32(CRU_NS_MODE_CFG0, 0x000c_0004);
 }
 
 struct RegVal {
@@ -760,6 +777,7 @@ fn set_ds_odt(dram_freq: u32, dram_type: u32, dst_fsp: u32) {
     // TODO: tweak this
     // 5 iterations
     for o in (0x0300..0x0a80).step_by(0x180) {
+        // DATA IO drive stregnth
         let r = DDR_PHY_BASE + o + 4;
         let v = ((phy_dq_drv.key as u32) << 24)
             | ((phy_dq_drv.key as u32) << 16)
@@ -1847,6 +1865,7 @@ fn train_write_leveling(rank: u32, cs: u32, dram_type: u32) -> Result<(), ()> {
     Ok(())
 }
 
+// NOTE: vendor code has this swapped, i.e., bytes inside, ranks outside
 // this is for 4 ranks, one byte
 type WlTrainResult = [u16; 4];
 // all 5 bytes (max)
@@ -2472,12 +2491,12 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
         let v = read32(DDR_PHY_01B0);
         write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | (0b011000 << 10));
 
-        let v1 = read32(DDR_PHY_0230) >> 16;
+        let v1 = (read32(DDR_PHY_0230) >> 16) as u16;
 
         let v = read32(DDR_PHY_01B0);
         write32(DDR_PHY_01B0, v & CMD_INV_DELAY_SEL_MASK | (0b100000 << 10));
 
-        let v2 = read32(DDR_PHY_0230) >> 16;
+        let v2 = (read32(DDR_PHY_0230) >> 16) as u16;
 
         (v1, v2)
     } else {
