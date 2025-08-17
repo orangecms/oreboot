@@ -186,7 +186,7 @@ const DDR_GRF_STATUS00: usize = DDR_GRF_BASE + 0x0100;
 const DDR_GRF_STATUS01: usize = DDR_GRF_BASE + 0x0104;
 const DDR_GRF_STATUS02: usize = DDR_GRF_BASE + 0x0108;
 const DDR_GRF_STATUS03: usize = DDR_GRF_BASE + 0x010c;
-const DDR_GRF_STATUS04: usize = DDR_GRF_BASE + 0x0100;
+const DDR_GRF_STATUS04: usize = DDR_GRF_BASE + 0x0110;
 const DDR_GRF_STATUS05: usize = DDR_GRF_BASE + 0x0114;
 const DDR_GRF_STATUS06: usize = DDR_GRF_BASE + 0x0118;
 const DDR_GRF_STATUS07: usize = DDR_GRF_BASE + 0x011c;
@@ -1698,19 +1698,29 @@ fn ddr_set_rate(
     todo!("MSTR...");
 }
 
-// TODO: define configs here
 const DDR_CTRL_RECFG_FILTER: [u16; 22] = [
-    0x0064, 0x00DC, //
-    0x00E0, 0x00E8, //
-    0x00EC, 0x00F4, //
-    0x0100, 0x0104, //
-    0x0108, 0x010C, //
-    0x0110, 0x0114, //
-    0x0118, 0x011C, //
-    0x0120, 0x0124, //
-    0x0130, 0x0134, //
-    0x0138, 0x0180, //
-    0x0190, 0x0240,
+    0x0064, // UPCTL2_REFRESH_TIMING
+    0x00DC, // UPCTL2_INIT3
+    0x00E0, // UPCTL2_INIT4
+    0x00E8, // UPCTL2_INIT6
+    0x00EC, // UPCTL2_INIT7
+    0x00F4, // UPCTL2_RANK_CTRL
+    0x0100, // UPCTL2_DRAM_TIMING0
+    0x0104, // UPCTL2_DRAM_TIMING1
+    0x0108, // UPCTL2_DRAM_TIMING2
+    0x010C, // UPCTL2_DRAM_TIMING3
+    0x0110, // UPCTL2_DRAM_TIMING4
+    0x0114, // UPCTL2_DRAM_TIMING5
+    0x0118, // UPCTL2_DRAM_TIMING6
+    0x011C, // UPCTL2_DRAM_TIMING7
+    0x0120, // UPCTL2_DRAM_TIMING8
+    0x0124, // UPCTL2_DRAM_TIMING9
+    0x0130, // UPCTL2_DRAM_TIMING12
+    0x0134, // UPCTL2_DRAM_TIMING13
+    0x0138, // UPCTL2_DRAM_TIMING14
+    0x0180, // UPCTL2_ZQ_CTRL0
+    0x0190, // UPCTL2_DFI_TIMING0
+    0x0240, // UPCTL2_ODT_CFG
 ];
 
 fn get_next_cfg_by_target_freq(dram_freq: u32) -> &'static Config {
@@ -2555,7 +2565,7 @@ const UPCTL2_CFG3: [RegVal; 30] = [
     },
     RegVal {
         // UPCTL2_DFI_TIMING0
-        offset: 0x190,
+        offset: 0x0190,
         value: 0x0704_0000,
     },
     RegVal {
