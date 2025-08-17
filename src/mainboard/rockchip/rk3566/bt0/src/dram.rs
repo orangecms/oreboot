@@ -19,6 +19,7 @@ use crate::mem_map::{
 
 use crate::dram_cfg::{
     ChannelParams, Config, CtrlCfg, DramParams, MschNocTimings, Params, PhyCfg, RegVal,
+    LPDDR4_CFG_324, LPDDR4_CFG_528,
 };
 
 // For specific abbreviations, see:
@@ -1669,7 +1670,7 @@ fn ddr_set_rate(
     let fsp_o = get_fsp_offset(fsp_index);
     let p_res = low_power_update(0);
 
-    let cfg2 = get_next_cfg_by_freq(cfg.dram_params.dram_freq);
+    let cfg2 = get_next_cfg_by_target_freq(target_freq);
 
     write32(UPCTL2_SW_CTRL, 0);
 
@@ -1712,8 +1713,10 @@ const DDR_CTRL_RECFG_FILTER: [u16; 22] = [
     0x0190, 0x0240,
 ];
 
-fn get_next_cfg_by_freq(dram_freq: u32) -> &'static Config {
+fn get_next_cfg_by_target_freq(dram_freq: u32) -> &'static Config {
     match dram_freq {
+        324 => &LPDDR4_CFG_324,
+        528 => &LPDDR4_CFG_528,
         _ => todo!(),
     }
 }
@@ -2597,7 +2600,7 @@ fn ddr_set_rate_for_fsp(cfg: &Params) {
     // save_fsp_param ?
     let odt_cfg = get_ddr_drv_odt_info(cfg.dram_params.dram_type);
 
-    // 0x210 0x144 0x210 0x210
+    // 528, 324, 528, 528 (0x210 0x144 0x210 0x210)
     let freq0 = (odt_cfg.ddr_freq_f0_f1 >> 12) & 0xfff;
     let freq1 = odt_cfg.ddr_freq_f0_f1 & 0xfff;
     let freq2 = (odt_cfg.ddr_freq_f2_f3 >> 12) & 0xfff;
@@ -2681,7 +2684,7 @@ fn ddr_set_rate_for_fsp(cfg: &Params) {
     });
 
     upctl2_pattern_x(cfg.dram_params.dram_type);
-    ddr_set_rate(&cfg, freq0, cfg.dram_params.dram_freq, 1, true);
+    ddr_set_rate(&cfg, freq0, freq0, 1, true);
 }
 
 const AA55_PATTERN: [u8; 32] = [
