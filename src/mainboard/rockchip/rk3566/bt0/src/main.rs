@@ -19,6 +19,7 @@ use util::mmio::{read32, write32};
 
 mod arm;
 mod dram;
+mod dram_cfg;
 mod i2c;
 mod mem_map;
 mod otp;

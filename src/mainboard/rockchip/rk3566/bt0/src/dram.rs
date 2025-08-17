@@ -17,6 +17,10 @@ use crate::mem_map::{
     SYS_SGRF_BASE, UPCTL2_BASE,
 };
 
+use crate::dram_cfg::{
+    ChannelParams, Config, CtrlCfg, DramParams, MschNocTimings, Params, PhyCfg, RegVal,
+};
+
 // For specific abbreviations, see:
 // <https://www.synopsys.com/blogs/chip-design/maximizing-mobile-performance-lpddr4-ram.html>
 // CBT - Command Bus Training
@@ -81,7 +85,8 @@ const CRU_NS_VPLL_CFG0: usize = CRU_NS_BASE + 0x00a0;
 const CRU_NS_CLK_SEL_CFG10: usize = CRU_NS_BASE + 0x0128;
 const CRU_NS_SOFT_RESET_CFG27: usize = CRU_NS_BASE + 0x046c;
 
-// aka MSCH, another sorta GRF? The manual just say "reserved".
+// Called MSCH in U-Boot, another sorta GRF? The manual just says "reserved".
+// MSCH may be "miscellaneous" something.
 const RESX_0008: usize = RESX_BASE + 0x0008;
 const RESX_000C: usize = RESX_BASE + 0x000c;
 const RESX_0010: usize = RESX_BASE + 0x0010;
@@ -125,8 +130,6 @@ const UPCTL2_ZQ_CTRL0: usize = UPCTL2_BASE + 0x0180;
 const UPCTL2_DFI_MISC: usize = UPCTL2_BASE + 0x01b0;
 // ADDRMAP0..11
 const UPCTL2_ADDR_MAP_BASE: usize = UPCTL2_BASE + 0x200;
-const UPCTL2_0248: usize = UPCTL2_BASE + 0x0248;
-const UPCTL2_024C: usize = UPCTL2_BASE + 0x024c;
 const UPCTL2_DBG_CMD: usize = UPCTL2_BASE + 0x030c;
 const UPCTL2_DBG_STAT: usize = UPCTL2_BASE + 0x0310;
 const UPCTL2_SW_CTRL: usize = UPCTL2_BASE + 0x0320;
@@ -145,6 +148,7 @@ const UPCTL2_MR_WR_BUSY: u32 = 1;
 
 const DDR_PHY_0000: usize = DDR_PHY_BASE + 0x0000;
 const DDR_PHY_0004: usize = DDR_PHY_BASE + 0x0004;
+const DDR_PHY_0020: usize = DDR_PHY_BASE + 0x0020;
 const DDR_PHY_0038: usize = DDR_PHY_BASE + 0x0038;
 const DDR_PHY_0044: usize = DDR_PHY_BASE + 0x0044;
 const DDR_PHY_0084: usize = DDR_PHY_BASE + 0x0084;
@@ -192,19 +196,19 @@ const DDR_GRF_STATUS10: usize = DDR_GRF_BASE + 0x0130;
 const DDR_GRF_STATUS11: usize = DDR_GRF_BASE + 0x0134;
 const DDR_GRF_STATUS12: usize = DDR_GRF_BASE + 0x0138;
 
+const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
+const PMU_GRF_OS3: usize = PMU_GRF_BASE + 0x020c;
+
 fn upctl2_pre_init() {
-    let v0248 = read32(UPCTL2_0248);
-    println!("{v0248:08x}");
-    let v024c = read32(UPCTL2_024C);
-    println!("{v024c:08x}");
-    let v = (v0248 >> 13) & 0xf;
+    let os2 = read32(PMU_GRF_OS2);
+    println!("{os2:08x}");
+    let os3 = read32(PMU_GRF_OS3);
+    println!("{os3:08x}");
+    let v = (os3 >> 13) & 0xf;
     println!("{v:x}");
 }
 
 const MEGA: u32 = 1_000_000;
-
-const PMU_GRF_OS2: usize = PMU_GRF_BASE + 0x0208;
-const PMU_GRF_OS3: usize = PMU_GRF_BASE + 0x020c;
 
 // similar to U-Boot drivers/ram/rockchip/sdram_rv1126.c rkclk_set_dpll
 fn clk_set_dpll(freq: u32) {
@@ -243,13 +247,6 @@ fn clk_set_dpll(freq: u32) {
 
     write32(CRU_NS_MODE_CFG0, 0x000c_0004);
 }
-
-struct RegVal {
-    offset: u32,
-    value: u32,
-}
-
-type PhyCfg = [RegVal; 4];
 
 const PHY_CFG0: PhyCfg = [
     RegVal {
@@ -994,8 +991,8 @@ fn get_funny_bits() -> (u32, u32) {
 
 // NOTE: this looks similar to PHY cfg functions for other PHYs
 // U-Boot  drivers/ram/rockchip/sdram_rv1126.c  phy_cfg
-fn phy_cfg(phy_cfg: &PhyCfg, chan_cfg: &Config) {
-    phy_pll_set(chan_cfg.dram_freq * MEGA, 0);
+fn phy_cfg(phy_cfg: &PhyCfg, dram_cfg: &Params) {
+    phy_pll_set(dram_cfg.dram_params.dram_freq * MEGA, 0);
 
     for p in phy_cfg.iter() {
         let r = DDR_PHY_BASE + p.offset as usize;
@@ -1014,7 +1011,7 @@ fn phy_cfg(phy_cfg: &PhyCfg, chan_cfg: &Config) {
     const PHY_DQ_WIDTH_MASK: u32 = 0xffff_e0ff;
     let v = read32(DDR_PHY_0000) & PHY_DQ_WIDTH_MASK;
 
-    let vx = match chan_cfg.chan_bus_width {
+    let vx = match dram_cfg.chan_params.chan_bus_width {
         1 => v | ((1 << v0) | (1 << v1)) << 8,
         2 => v | 0x0f00,
         _ => v | 0x100 << v0,
@@ -1022,7 +1019,7 @@ fn phy_cfg(phy_cfg: &PhyCfg, chan_cfg: &Config) {
     const ENABLE_ECC: bool = false;
     let mut vxo = if ENABLE_ECC { vx | 0x1000 } else { vx };
 
-    if chan_cfg.rank == 4 {
+    if dram_cfg.chan_params.rank == 4 {
         vxo |= 0x0010_0000;
         let v = read32(DDR_PHY_0038);
         write32(DDR_PHY_0038, v | 1 << 1);
@@ -1093,42 +1090,6 @@ enum DdrType {
     UNUSED = 0xFF,
 }
 
-// TODO: split up into ChannelConfig + BaseParams ?
-// U-Boot calls the first part sdram_cap_info as part of "channel"
-// (which also includes the NOC timings) and the second part sdram_base_params.
-#[derive(Copy, Clone)]
-struct Config {
-    rank: u32,
-    column: u32,
-    bank_num: u32,
-    chan_bus_width: u32,
-    die_bus_width: u32,
-    row_3_4: u32,
-    cs0_row: u32,
-    cs1_row: u32,
-    cs0_high16bit_row: u32,
-    cs1_high16bit_row: u32,
-    ddr_config: u32,
-    unk1: u32,
-
-    dram_freq: u32,
-    dram_type: u32,
-    num_channels: u32,
-    stride: u32,
-    odt: u32,
-}
-
-// U-Boot arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
-struct MschNocTimings {
-    ddrtiminga0: u32,
-    ddrtimingb0: u32,
-    ddrtimingc0: u32,
-    ddr4_timing: u32,
-    devtodev: u32,
-    ddr_mode: u32,
-    agingx: u32,
-}
-
 // NOTE: These stem from the global config.
 // They are called sr_idle and pd_idle in U-Boot and copied at runtime.
 const SELF_REFRESH_IDLE: u32 = 0x005d;
@@ -1136,7 +1097,7 @@ const POWER_DOWN_IDLE: u32 = 0x000d;
 
 // sdram_init_ / sdram_init_detect ?
 fn sdram_init(
-    cfg: &Config,
+    cfg: &Params,
     msch_timings: &mut MschNocTimings,
     post_init: bool,
     ctl_cfg_mstr: Option<u32>,
@@ -1146,7 +1107,7 @@ fn sdram_init(
 
     write32(DDR_GRF_CTRL0, 0x0002_0000);
 
-    clk_set_dpll((cfg.dram_freq * MEGA) / 2);
+    clk_set_dpll((cfg.dram_params.dram_freq * MEGA) / 2);
 
     // reset 1
     write32(SYS_SGRF_0014, 0x0b00_0b00);
@@ -1162,8 +1123,12 @@ fn sdram_init(
 
     // TODO: What is the possible value range?
     // This check may be unnecessary.
-    if cfg.dram_type < 9 {
-        let m1 = if cfg.dram_type == 8 { 7 } else { cfg.dram_type };
+    if cfg.dram_params.dram_type < 9 {
+        let m1 = if cfg.dram_params.dram_type == 8 {
+            7
+        } else {
+            cfg.dram_params.dram_type
+        };
 
         const XX: u32 = 0xe400_00e4;
         let x = (XX >> ((m1 & 0b11) << 3)) & 0xff;
@@ -1184,7 +1149,7 @@ fn sdram_init(
     // TODO: tweak this
     {
         // Each loop has 5 iterations
-        match cfg.dram_type {
+        match cfg.dram_params.dram_type {
             0 | 3 | 6 => {
                 for o in (0x0300..0x0a80).step_by(0x180) {
                     let r = DDR_PHY_BASE + o + 8;
@@ -1259,19 +1224,25 @@ fn sdram_init(
     let v = read32(UPCTL2_MSTR2);
     write32(UPCTL2_MSTR2, v & !(0b11));
 
-    set_ds_odt(cfg.dram_freq, cfg.dram_type, 0);
+    set_ds_odt(cfg.dram_params.dram_freq, cfg.dram_params.dram_type, 0);
 
     // similar to arch/arm/mach-rockchip/rk3036/sdram_rk3036.c  sdram_all_config
     // 0xd (13)
-    let bw_plus_col = cfg.chan_bus_width + cfg.column;
+    let bw_plus_col = cfg.chan_params.chan_bus_width + cfg.chan_params.column;
 
     // 0 | (3 << 5) | 3 = 0b0110_0011 = 0x63
     // TODO: is this osreg?
-    let vt = ((cfg.rank - 1) << 8) | ((cfg.cs0_row - 13) << 5) | (bw_plus_col - 10);
+    let vt = ((cfg.chan_params.rank - 1) << 8)
+        | ((cfg.chan_params.cs0_row - 13) << 5)
+        | (bw_plus_col - 10);
     println!("vt {vt:08x}");
 
     // bank_num is 3 -> 0x6b
-    let vxx = if cfg.bank_num == 3 { vt | 8 } else { vt };
+    let vxx = if cfg.chan_params.bank_num == 3 {
+        vt | 8
+    } else {
+        vt
+    };
 
     // see calculate_ddrconfig
 
@@ -1280,9 +1251,13 @@ fn sdram_init(
     // TODO: actually use this resulting value.
     // Possible resulting values: 0..=8, 14, 17
     let idx = find_addrmap_index(vxx).unwrap_or_else(|| {
-        if cfg.bank_num == 3 && bw_plus_col == 10 {
+        if cfg.chan_params.bank_num == 3 && bw_plus_col == 10 {
             14
-        } else if cfg.rank != 1 || cfg.bank_num != 3 || cfg.cs0_row > 17 || bw_plus_col != 13 {
+        } else if cfg.chan_params.rank != 1
+            || cfg.chan_params.bank_num != 3
+            || cfg.chan_params.cs0_row > 17
+            || bw_plus_col != 13
+        {
             // NOTE: This should never happen.
             // Do the check at build time, and do it earlier instead of here.
             panic!("DDR config error")
@@ -1310,7 +1285,7 @@ fn sdram_init(
 
     // TODO: some code skipped here that is for non-LPDDR4
 
-    if cfg.rank == 1 {
+    if cfg.chan_params.rank == 1 {
         let r = UPCTL2_ADDR_MAP_BASE;
         let v = read32(r);
         write32(r, v | 0x1f);
@@ -1335,7 +1310,7 @@ fn sdram_init(
     // - 2 = "not auto"
     while read32(UPCTL2_STAT) & 0b111 == 0 {}
 
-    let vf = phy_measure_xx(cfg.dram_freq);
+    let vf = phy_measure_xx(cfg.dram_params.dram_freq);
     println!("vf: {vf} (0x{vf:02x})");
     // This is used to adjust registers in multiple blocks.
     let a = (vf << 24) | (vf << 8);
@@ -1344,7 +1319,7 @@ fn sdram_init(
     const BLOCK_COUNT: usize = 5;
     let mask = !((0x7f << 24) | (0x7f << 8));
     // NOTE: rank apparently could be hardcoded at build time.
-    for i in 0..cfg.rank {
+    for i in 0..cfg.chan_params.rank {
         let o = match i {
             0 => 0x33c,
             1 => 0x35c,
@@ -1369,9 +1344,9 @@ fn sdram_init(
     let v = read32(DDR_PHY_0094);
     write32(DDR_PHY_0094, v & !(1 << 2));
 
-    if cfg.dram_type == 6 {
+    if cfg.dram_params.dram_type == 6 {
         todo!()
-    } else if cfg.dram_type == 7 || cfg.dram_type == 8 {
+    } else if cfg.dram_params.dram_type == 7 || cfg.dram_params.dram_type == 8 {
         let mr12 = upctl2_read_mr(1, 12, 7);
         let mr14 = upctl2_read_mr(1, 14, 7);
 
@@ -1418,12 +1393,12 @@ fn sdram_init(
     let mr14 = upctl2_read_mr(1, 14, 7);
     // Does this value look familiar? Yes? We need to handle this!
     if mr14 == 0x4d {
-        if cfg.dram_type < 9 {
+        if cfg.dram_params.dram_type < 9 {
             let v = read32(UPCTL2_INIT7);
             upctl2_write_mr(15, 14, v as u16, 7);
         }
         if post_init {
-            for cs in 1..cfg.rank {
+            for cs in 1..cfg.chan_params.rank {
                 println!("r/cs {cs}");
                 train(
                     cs,
@@ -1443,14 +1418,14 @@ fn sdram_init(
 }
 
 // U-Boot drivers/ram/rockchip/sdram_rv1126.c dram_detect_cs1_row
-fn dram_detect_cs1_row(cfg: &Config, channel: u32) -> u32 {
-    if (channel < 2 && cfg.rank < 2) || (channel > 1 && cfg.rank != 4) {
+fn dram_detect_cs1_row(cfg: &Params, channel: u32) -> u32 {
+    if (channel < 2 && cfg.chan_params.rank < 2) || (channel > 1 && cfg.chan_params.rank != 4) {
         return 0;
     }
 
-    let (mem_base, cs_add) = match (cfg.rank, channel) {
-        (2..4, ..2) => (RAM_BASE, 0),
-        _ => (RAM_BASE + 0x1000, 1),
+    let (mem_base, cs_add) = match (cfg.chan_params.rank, channel) {
+        (2..4, ..2) => (DRAM_BASE, 0),
+        _ => (DRAM_BASE + 0x1000, 1),
     }; // 4K offset
 
     let cs_pst = read32(UPCTL2_ADDR_MAP_BASE) & 0x1f + 6 + 2;
@@ -1458,17 +1433,17 @@ fn dram_detect_cs1_row(cfg: &Config, channel: u32) -> u32 {
 
     let cs0_cap = 1 << (cs_pst & 0x1f);
 
-    let bank = if cfg.dram_type == 0 {
-        if cfg.die_bus_width == 0 {
-            cfg.bank_num + 2
+    let bank = if cfg.dram_params.dram_type == 0 {
+        if cfg.chan_params.die_bus_width == 0 {
+            cfg.chan_params.bank_num + 2
         } else {
-            cfg.bank_num + 1
+            cfg.chan_params.bank_num + 1
         }
     } else {
         0
     };
 
-    let mask = if cfg.chan_bus_width == 2 {
+    let mask = if cfg.chan_params.chan_bus_width == 2 {
         0xffff
     } else {
         0xff
@@ -1476,10 +1451,10 @@ fn dram_detect_cs1_row(cfg: &Config, channel: u32) -> u32 {
 
     // I thin that's it.
     let x = if cs_pst == 31 { 1 } else { 0 };
-    let max_row = 32 + x - bank - cfg.column - cfg.chan_bus_width - cs_add;
+    let max_row = 32 + x - bank - cfg.chan_params.column - cfg.chan_params.chan_bus_width - cs_add;
 
-    let row = if cfg.cs0_row < max_row {
-        cfg.cs0_row
+    let row = if cfg.chan_params.cs0_row < max_row {
+        cfg.chan_params.cs0_row
     } else {
         max_row
     };
@@ -1496,7 +1471,8 @@ fn dram_detect_cs1_row(cfg: &Config, channel: u32) -> u32 {
         let rr = row - r;
         write32(base, 0);
 
-        let o = 1 << (rr + bank + cfg.column + cfg.chan_bus_width + cs_add - 1);
+        let o =
+            1 << (rr + bank + cfg.chan_params.column + cfg.chan_params.chan_bus_width + cs_add - 1);
         let a = base + o;
         write32(a, PATTERN);
         let x = read32(a);
@@ -1509,7 +1485,7 @@ fn dram_detect_cs1_row(cfg: &Config, channel: u32) -> u32 {
 }
 
 // U-Boot drivers/ram/rockchip/sdram_rv1126.c dram_all_config
-fn dram_all_config(cfg: &Config, timings: &mut MschNocTimings, s_0030: u32) {
+fn dram_all_config(cfg: &Params, timings: &mut MschNocTimings, s_0030: u32) {
     // MSCH device config
     write32(RESX_0008, s_0030);
 
@@ -1521,14 +1497,12 @@ fn dram_all_config(cfg: &Config, timings: &mut MschNocTimings, s_0030: u32) {
     write32(PMU_GRF_OS3, os3);
 
     let (m1, m2) = {
-        let m1 = get_dram_size_factor(&cfg, 0, cfg.dram_type);
-        let m2 = get_dram_size_factor(&cfg, 1, cfg.dram_type);
-        if cfg.rank == 4 {
-            todo!("rank == 4")
-        } else if cfg.rank == 2 {
-            todo!("rank == 2")
-        } else {
-            (m1, m2)
+        let m1 = get_dram_size_factor(&cfg, 0);
+        let m2 = get_dram_size_factor(&cfg, 1);
+        match cfg.chan_params.rank {
+            4 => todo!("rank == 4"),
+            2 => todo!("rank == 2"),
+            _ => (m1, m2),
         }
     };
 
@@ -1536,7 +1510,7 @@ fn dram_all_config(cfg: &Config, timings: &mut MschNocTimings, s_0030: u32) {
     // MSCH device size ?
     write32(RESX_000C, v);
 
-    update_noc_timing(&cfg, timings);
+    update_noc_timing(cfg, timings);
     println!("update_noc_timing DONE");
 }
 
@@ -1561,8 +1535,8 @@ const BURST_SIZE_MASK: u32 = 0b11 << 3;
 const MWR_SIZE_MASK: u32 = 0b11 << 5;
 
 // U-Boot drivers/ram/rockchip/sdram_rv1126.c update_noc_timing
-fn update_noc_timing(cfg: &Config, timings: &mut MschNocTimings) {
-    let bus_width = 8 << (cfg.chan_bus_width & 0x1f);
+fn update_noc_timing(cfg: &Params, timings: &mut MschNocTimings) {
+    let bus_width = 8 << (cfg.chan_params.chan_bus_width & 0x1f);
     let burst_length = ((read32(UPCTL2_MSTR) >> 16) & 0xf) << 1;
 
     let bl_bw_8 = burst_length * (bus_width / 8);
@@ -1577,7 +1551,7 @@ fn update_noc_timing(cfg: &Config, timings: &mut MschNocTimings) {
     let f = (16 / bl_bw_8).min(1);
     let burst_penalty = f * burst_length / 2;
 
-    let (tc0, mode) = if cfg.dram_type < 9 {
+    let (tc0, mode) = if cfg.dram_params.dram_type < 9 {
         let wrtomwr = 3 * burst_penalty;
         let m = !(WR_TO_MWR_MASK | BURST_PENALTY_MASK);
         let tc0 = timings.ddrtimingc0 & m | (wrtomwr << 8) | burst_penalty;
@@ -1609,9 +1583,9 @@ fn update_noc_timing(cfg: &Config, timings: &mut MschNocTimings) {
 }
 
 // TODO: What is p2?
-fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u64 {
-    let x0 = if dram_type == 0 {
-        match cfg.die_bus_width {
+fn get_dram_size_factor(cfg: &Params, p2: u32) -> u64 {
+    let x0 = if cfg.dram_params.dram_type == 0 {
+        match cfg.chan_params.die_bus_width {
             0 => 2,
             _ => 1,
         }
@@ -1619,13 +1593,15 @@ fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u64 {
         0
     };
     // 1 + 11 + 3 = 15
-    let x0 = (x0 + cfg.chan_bus_width + cfg.column + cfg.bank_num) as u64;
+    let x0 =
+        (x0 + cfg.chan_params.chan_bus_width + cfg.chan_params.column + cfg.chan_params.bank_num)
+            as u64;
 
     // 15 + 17 = 32 (0x20)
-    let s_pow = (x0 + cfg.cs0_row as u64) & 0x3f;
+    let s_pow = (x0 + cfg.chan_params.cs0_row as u64) & 0x3f;
     let x1: u64 = 1 << s_pow; // 2 ** s_pow
 
-    let (x2, x3, x4) = if cfg.rank > 1 {
+    let (x2, x3, x4) = if cfg.chan_params.rank > 1 {
         todo!("rank > 1")
     } else {
         (0, 0, 0)
@@ -1639,25 +1615,25 @@ fn get_dram_size_factor(cfg: &Config, p2: u32, dram_type: u32) -> u64 {
 }
 
 // U-Boot drivers/ram/rockchip/sdram_common.c sdram_org_config
-fn sdram_org_config(cfg: &Config, channel: u32) -> (u32, u32) {
-    let v1 = cfg.dram_type << 13;
-    let v2 = v1 | (cfg.num_channels - 1) * 0x1000;
+fn sdram_org_config(cfg: &Params, channel: u32) -> (u32, u32) {
+    let v1 = cfg.dram_params.dram_type << 13;
+    let v2 = v1 | (cfg.dram_params.num_channels - 1) * 0x1000;
     let s1 = (channel + 0x1e) & 0x1f;
     let s2 = (channel + 0x1c) & 0x1f;
-    let v3 = v2 | cfg.row_3_4 << s1 | 1 << s2;
+    let v3 = v2 | cfg.chan_params.row_3_4 << s1 | 1 << s2;
     let x16 = channel * 16;
-    let v4 = v3 | (cfg.rank - 1) << ((x16 + 11) & 0x1f);
-    let v5 = v4 | (cfg.column - 9) << ((x16 + 9) & 0x1f);
-    let v6 = v5 | ((cfg.bank_num != 3) as u32) << ((x16 + 8) & 0x1f);
-    let v7 = v6 | (2 >> (cfg.chan_bus_width & 0x1f)) << ((x16 + 2) & 0x1f);
-    let v8 = v7 | (2 >> (cfg.die_bus_width & 0x1f)) << (x16 & 0x1f);
+    let v4 = v3 | (cfg.chan_params.rank - 1) << ((x16 + 11) & 0x1f);
+    let v5 = v4 | (cfg.chan_params.column - 9) << ((x16 + 9) & 0x1f);
+    let v6 = v5 | ((cfg.chan_params.bank_num != 3) as u32) << ((x16 + 8) & 0x1f);
+    let v7 = v6 | (2 >> (cfg.chan_params.chan_bus_width & 0x1f)) << ((x16 + 2) & 0x1f);
+    let v8 = v7 | (2 >> (cfg.chan_params.die_bus_width & 0x1f)) << (x16 & 0x1f);
 
-    let rm13 = cfg.cs0_row - 13;
+    let rm13 = cfg.chan_params.cs0_row - 13;
     let x2 = channel * 2;
 
     let res1 = v8 | (rm13 & 3) << ((x16 + 6) & 0x1f);
     let res2 = (rm13 >> 2 & 1) << ((x2 + 5) & 0x1f);
-    let (res1, res2) = if cfg.cs1_row == 0 {
+    let (res1, res2) = if cfg.chan_params.cs1_row == 0 {
         (res1, res2)
     } else {
         let v1 = res1 & (3 << ((x16 + 4) & 0x1f) ^ 0xffff_ffff);
@@ -1666,12 +1642,164 @@ fn sdram_org_config(cfg: &Config, channel: u32) -> (u32, u32) {
         let res2 = v2 | ((rm13 >> 2) & 1) << ((x2 + 4) & 0x1f);
         (res1, res2)
     };
-    let res2 = res2 | 0x2000_0000 | ((cfg.column - 9) << (x2 & 0x1f));
+    let res2 = res2 | 0x2000_0000 | ((cfg.chan_params.column - 9) << (x2 & 0x1f));
     (res1, res2)
 }
 
-fn ddr_set_rate() {
+// U-Boot  ddr_set_rate
+fn ddr_set_rate(
+    cfg: &Params,
+    target_freq: u32,
+    current_freq: u32,
+    fsp_index: u32,
+    training_en: bool,
+) {
     //
+    let vx = if (cfg.dram_params.dram_type == 7
+        || cfg.dram_params.dram_type == 8
+        || cfg.dram_params.dram_type == 9)
+        && cfg.chan_params.rank < 2
+    {
+        1
+    } else {
+        todo!();
+        0
+    };
+
+    let fsp_o = get_fsp_offset(fsp_index);
+    let p_res = low_power_update(0);
+
+    let cfg2 = get_next_cfg_by_freq(cfg.dram_params.dram_freq);
+
+    write32(UPCTL2_SW_CTRL, 0);
+
+    todo!("update controller cfg");
+
+    upctl2_sw_set_ack();
+
+    // NOTE: max fsp_index is 3
+    let shift_val = 24 - 8 * fsp_index;
+    todo!("update PHY cfg");
+
+    if cfg.dram_params.dram_type == 7 || cfg.dram_params.dram_type == 8 {
+        todo!("upctl2_write_mr")
+    }
+    todo!("set_ds_odt");
+    if cfg.dram_params.dram_type == 7 || cfg.dram_params.dram_type == 8 {
+        todo!("...")
+    }
+    todo!("update_noc_timing");
+
+    write32(DDR_GRF_CTRL0, 0x0002_0002);
+    todo!("phy_pll_set");
+    todo!("poll");
+    todo!("...");
+    todo!("MSTR...");
+}
+
+// TODO: define configs here
+const DDR_CTRL_RECFG_FILTER: [u16; 22] = [
+    0x0064, 0x00DC, //
+    0x00E0, 0x00E8, //
+    0x00EC, 0x00F4, //
+    0x0100, 0x0104, //
+    0x0108, 0x010C, //
+    0x0110, 0x0114, //
+    0x0118, 0x011C, //
+    0x0120, 0x0124, //
+    0x0130, 0x0134, //
+    0x0138, 0x0180, //
+    0x0190, 0x0240,
+];
+
+fn get_next_cfg_by_freq(dram_freq: u32) -> &'static Config {
+    match dram_freq {
+        _ => todo!(),
+    }
+}
+
+const PHY_XXXX_DATA_1: [u8; 4] = [
+    0x18, 0x19, 0x00, 0x09, //
+];
+
+const PHY_XXXX_DATA_2: [u8; 12] = [
+    0x0B, 0x02, 0x0F, 0x0C, //
+    0x0E, 0x10, 0x0D, 0x06, //
+    0x12, 0x04, 0x13, 0x05, //
+];
+
+const PHY_XXXX_DATA_FSP0: [u8; 6] = [
+    0x1C, 0x1B, 0x08, 0x07, //
+    0x16, 0x0A,
+];
+
+const PHY_XXXX_DATA_FSP1: [u8; 6] = [
+    0x1D, 0x1A, 0x15, 0x14, //
+    0x03, 0x1F,
+];
+
+// TODO
+fn phy_xxxx(add_an_inv_delay_sel_bp: bool, p3: u8, p4: u8, fsp: u32, dram_type: u32) {
+    //
+    if dram_type == 7 || dram_type == 8 {
+        if fsp == 0 && (read32(DDR_PHY_0000) >> 20) & 1 == 0 {
+            println!("yes");
+            for v in PHY_XXXX_DATA_1 {
+                phy_inv_delay(add_an_inv_delay_sel_bp, p3, v);
+            }
+            for v in PHY_XXXX_DATA_2 {
+                phy_inv_delay(add_an_inv_delay_sel_bp, p4, v);
+            }
+            let data = if fsp == 0 {
+                PHY_XXXX_DATA_FSP0
+            } else {
+                PHY_XXXX_DATA_FSP1
+            };
+            for v in data {
+                phy_inv_delay(add_an_inv_delay_sel_bp, p4, v);
+            }
+            // FIXME: I think this is *NOT* (meant to be?) the PHY!!
+            // Per TRM, bits 19-31 are reserved.
+            let v = read32(DDR_PHY_0020);
+            let d = 0b1101;
+            write32(DDR_PHY_0020, v & !(0b1111 << 20) | (d << 20));
+            // bit 0: CA per bit skew
+            let v = read32(DDR_PHY_0038);
+            write32(DDR_PHY_0038, v | 1);
+            udelay(1);
+            let v = read32(DDR_PHY_0038);
+            write32(DDR_PHY_0038, v & !1);
+            //
+        }
+        //
+    } else {
+        todo!("non-LPDDR4(X) support")
+    }
+}
+
+fn phy_inv_delay(add_an_inv_delay_sel_bp: bool, odt1_inv_delay_sel_bp: u8, ox: u8) {
+    let reg_o = 0x0104 + (ox as usize & 0xfffffffc);
+    let sval = (!ox & 0b11) << 3;
+    let mask = 0xff;
+
+    let v = read32(DDR_PHY_BASE + reg_o);
+
+    let odtv = if add_an_inv_delay_sel_bp {
+        (v >> sval) & mask + odt1_inv_delay_sel_bp as u32
+    } else {
+        odt1_inv_delay_sel_bp as u32
+    } & mask;
+
+    let nv = v & (!mask << sval) | (odtv << sval);
+    write32(DDR_PHY_BASE + reg_o, nv);
+
+    if ox == 29 {
+        /* odt1 inv delay sel bp */
+        let r = DDR_PHY_BASE + 0x011C;
+        let v = read32(r);
+        let nv = v & !mask | odtv;
+        write32(r, nv);
+    }
 }
 
 // U-Boot drivers/ram/rockchip/sdram_rv1126.c enable_low_power
@@ -1724,9 +1852,9 @@ fn low_power_update(en: u32) -> u32 {
 }
 
 // see U-Boot include/configs/rk3568_common.h CFG_SYS_SDRAM_BASE
-const RAM_BASE: usize = 0x0;
+const DRAM_BASE: usize = 0x0;
 // + 128K
-const SHARE_MEM_BASE: usize = RAM_BASE + 0x10_0000;
+const SHARE_MEM_BASE: usize = DRAM_BASE + 0x10_0000;
 
 // NOTE: Start at an offset to avoid accessing address 0, on which Rust errors.
 fn dram_test() {
@@ -1757,17 +1885,17 @@ use flagset::{flags, FlagSet, Flags};
 //  bit 4: read training
 fn train(
     cs: u32,
-    cfg: &Config,
+    cfg: &Params,
     dst_fsp: u32,
     training_flags: FlagSet<TrainingFlag>,
 ) -> Result<(), ()> {
     if training_flags.contains(TrainingFlag::WriteLeveling) {
-        if train_write_leveling(cfg.rank, cs, cfg.dram_type).is_err() {
+        if train_write_leveling(cfg.chan_params.rank, cs, cfg.dram_params.dram_type).is_err() {
             return Err(());
         }
     }
     if training_flags.contains(TrainingFlag::ReadGate) {
-        if train_read_gate(cs, cfg.dram_type).is_err() {
+        if train_read_gate(cs, cfg.dram_params.dram_type).is_err() {
             return Err(());
         }
     }
@@ -2460,14 +2588,14 @@ const UPCTL2_CFG3: [RegVal; 30] = [
 ];
 
 // U-Boot ddr_set_rate_for_fsp
-fn ddr_set_rate_for_fsp(cfg: &Config) {
+fn ddr_set_rate_for_fsp(cfg: &Params) {
     // U-Boot get_wrlvl_val
     let p_res = low_power_update(0);
     // NOTE: code here omitted; should be disabled
     let p_res = low_power_update(p_res);
 
     // save_fsp_param ?
-    let odt_cfg = get_ddr_drv_odt_info(cfg.dram_type);
+    let odt_cfg = get_ddr_drv_odt_info(cfg.dram_params.dram_type);
 
     // 0x210 0x144 0x210 0x210
     let freq0 = (odt_cfg.ddr_freq_f0_f1 >> 12) & 0xfff;
@@ -2485,7 +2613,7 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
 
     const CMD_INV_DELAY_SEL_MASK: u32 = !(0b111111 << 10);
     // LPDDR4 or LPDDR4X
-    let (v1, v2) = if cfg.dram_type == 7 || cfg.dram_type == 8 {
+    let (v1, v2) = if cfg.dram_params.dram_type == 7 || cfg.dram_params.dram_type == 8 {
         // PHY_01B0 10..15: cmd_invdelaysel
         // command TX delay line value OBS signal
         let v = read32(DDR_PHY_01B0);
@@ -2510,7 +2638,7 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
         FlagSet::<TrainingFlag>::from(TrainingFlag::WriteLeveling),
     );
 
-    if cfg.rank > 1 {
+    if cfg.chan_params.rank > 1 {
         train(
             1,
             cfg,
@@ -2518,27 +2646,123 @@ fn ddr_set_rate_for_fsp(cfg: &Config) {
             FlagSet::<TrainingFlag>::from(TrainingFlag::WriteLeveling),
         );
     }
+
+    let ddr_phy_0 = read32(DDR_PHY_0000);
+
+    let wl_results = get_wl_train_results();
+    print_wl_train_results(&wl_results);
+    // subtract v1 from all values for first two ranks, v2 from others
+    let adjusted_wl_results = wl_results.map(|e| {
+        [
+            e[0] - v1,
+            e[1] - v1, // NOTE: first two values adjusted via v1
+            e[2] - v2,
+            e[3] - v2,
+        ]
+    });
+    print_wl_train_results(&adjusted_wl_results);
+
+    let dram_freq = cfg.dram_params.dram_freq;
+    let enabled_bytes = ddr_phy_0 >> 8 & 0x1f;
+
+    // Maybe refresh rate adjust? 64ms is a typical refresh rate, see Wikipedia:
+    // <https://en.wikipedia.org/wiki/Memory_refresh>
+    let readjusted_wl_results = adjusted_wl_results.map(|e| {
+        e.iter().enumerate().map(|(i, v)| {
+            // NOTE: for our case, first 4 bytes should be enabled
+            let en = enabled_bytes & (1 << i) != 0;
+            if en {
+                let adj = ((*v as u32) * 500_000 / dram_freq / 64) as u16;
+                adj
+            } else {
+                *v
+            }
+        });
+    });
+
+    upctl2_pattern_x(cfg.dram_params.dram_type);
+    ddr_set_rate(&cfg, freq0, cfg.dram_params.dram_freq, 1, true);
 }
 
-fn upctl2_cfg_adjust_mstr(val: u32, cfg: &Config) -> u32 {
+const AA55_PATTERN: [u8; 32] = [
+    0xaa, 0x55, 0xaa, 0x55, 0x55, 0xaa, 0x55, 0xaa, //
+    0x55, 0xaa, 0x55, 0xaa, 0xaa, 0x55, 0xaa, 0x55, //
+    0x55, 0x55, 0xaa, 0xaa, 0xaa, 0xaa, 0x55, 0x55, //
+    0xaa, 0xaa, 0x55, 0x55, 0x55, 0x55, 0xaa, 0xaa, //
+];
+
+fn upctl2_pattern_x(dram_type: u32) {
+    let data_bus_width = (read32(UPCTL2_MSTR) >> 12) & 0b11;
+    let addrmap_cs_bit0 = read32(UPCTL2_ADDR_MAP_BASE) & 0b11111;
+    let xx = addrmap_cs_bit0 + 8;
+    println!("addrmap cs bit0 {addrmap_cs_bit0}, +8 {xx}");
+
+    // TODO: Why do we need to write to DRAM? This being 0 will error in Rust.
+    let mut target = DRAM_BASE;
+
+    let iterations = if xx < 33 { 2 } else { 1 };
+    for _ in 0..iterations {
+        let mut i = 0;
+        while i < 32 {
+            // NOTE: code skipped here; for DDR4, multiple iterations of the
+            // block below may be necessary
+            {
+                let v = match data_bus_width {
+                    2 => {
+                        let v = (AA55_PATTERN[i] as u32) << 24
+                            | (AA55_PATTERN[i] as u32) << 16
+                            | (AA55_PATTERN[i] as u32) << 8
+                            | (AA55_PATTERN[i] as u32);
+
+                        i += 1;
+                        v
+                    }
+                    1 => {
+                        let v = (AA55_PATTERN[i + 1] as u32) << 24
+                            | (AA55_PATTERN[i + 1] as u32) << 16
+                            | (AA55_PATTERN[i] as u32) << 8
+                            | (AA55_PATTERN[i] as u32);
+
+                        i += 2;
+                        v
+                    }
+                    _ => {
+                        let v = (AA55_PATTERN[i + 3] as u32) << 24
+                            | (AA55_PATTERN[i + 2] as u32) << 16
+                            | (AA55_PATTERN[i + 1] as u32) << 8
+                            | (AA55_PATTERN[i] as u32);
+                        i += 4;
+                        v
+                    }
+                };
+                write32(target, v);
+            }
+            target += 4;
+        }
+        // TODO: recheck
+        target = 1 << xx;
+    }
+}
+
+fn upctl2_cfg_adjust_mstr(val: u32, cfg: &Params) -> u32 {
     // bits 12..13: data bus width
     // bits 24..25: active ranks
     // bits 30..31: device config
     let m = (0b11 << 30) | (0b11 << 24) | (0b11 << 12);
     let vx = val & !m;
-    let dcfg = match cfg.die_bus_width {
+    let dcfg = match cfg.chan_params.die_bus_width {
         1 => 1 << 31,
         2 => (1 << 31) | (1 << 30),
         _ => 1 << 30,
     };
-    let active_ranks = (1 << (cfg.rank & 0x1f)) - 1;
-    let data_bus_width = 2 - cfg.chan_bus_width;
+    let active_ranks = (1 << (cfg.chan_params.rank & 0x1f)) - 1;
+    let data_bus_width = 2 - cfg.chan_params.chan_bus_width;
     // 12..13: data bus width
     // 24..25: active ranks
     vx | dcfg | (active_ranks << 24) | (data_bus_width << 12)
 }
 
-fn print_ddr_info(cfg: &Config) {
+fn print_ddr_info(cfg: &Params) {
     let v = read32(DDR_GRF_SPLIT_CON);
     println!("split con: {v:08x}");
     // bit 8: AXI split bypass (1) or enable (0)
@@ -2546,10 +2770,10 @@ fn print_ddr_info(cfg: &Config) {
     let split_address = if (v >> 8) & 1 == 0 { v & 0xff } else { 0 } as u64;
 
     println!("size calculation");
-    let f = get_dram_size_factor(&cfg, 3, cfg.dram_type) as u64;
+    let f = get_dram_size_factor(cfg, 3) as u64;
     println!("  size factor: {f:08x}");
 
-    let size = if cfg.row_3_4 == 0 {
+    let size = if cfg.chan_params.row_3_4 == 0 {
         if split_address != 0 {
             split_address * 0x800000 + (f / 2)
         } else {
@@ -2603,10 +2827,10 @@ pub fn init() {
     // NOTE: This should get the DRAM size; U-Boot:
     // rk3568_dmc_probe
     if false {
-        let v0208 = read32(PMU_GRF_OS2);
+        let os2 = read32(PMU_GRF_OS2);
         // we get 0 (reset value), would be non-zero for a second run...
-        println!("PMU_GRF_OS2: {v0208:08x}");
-        if v0208 == 0 {
+        println!("PMU_GRF_OS2: {os2:08x}");
+        if os2 == 0 {
             println!("PMU_GRF_OS2 is 0, whoops");
         } else {
             upctl2_pre_init();
@@ -2623,29 +2847,31 @@ pub fn init() {
     //  arch/arm/include/asm/arch-rockchip/sdram_common.h, e.g., sdram_cap_info
     // The config parts are assembled into one bigger struct in
     //  arch/arm/include/asm/arch-rockchip/sdram_rv1126.h
-    let mut cfg = Config {
-        // ChannelConfig
-        rank: 1,
-        column: 11,
-        bank_num: 3,       // power of 2, i.e., 2^3=8
-        chan_bus_width: 1, // 1 means 16bit
-        die_bus_width: 1,  // 0 means 8bit
-        row_3_4: 0,        // 0 means normal die, power of 2
-        cs0_row: 17,
-        cs1_row: 17,
-        cs0_high16bit_row: 0,
-        cs1_high16bit_row: 0,
-        ddr_config: 0,
-        unk1: 0,
-        // DdrConfig
-        dram_freq: 324,
-        dram_type: DdrType::LPDDR4 as u32,
-        num_channels: 1,
-        stride: 0,
-        odt: 0,
+    let mut params = Params {
+        chan_params: ChannelParams {
+            rank: 1,
+            column: 11,
+            bank_num: 3,       // power of 2, i.e., 2^3=8
+            chan_bus_width: 1, // 1 means 16bit
+            die_bus_width: 1,  // 0 means 8bit
+            row_3_4: 0,        // 0 means normal die, power of 2
+            cs0_row: 17,
+            cs1_row: 17,
+            cs0_high16bit_row: 0,
+            cs1_high16bit_row: 0,
+            ddr_config: 0,
+            unk1: 0,
+            unk2: 0,
+        },
+        dram_params: DramParams {
+            dram_freq: 324,
+            dram_type: DdrType::LPDDR4 as u32,
+            num_channels: 1,
+            stride: 0,
+            odt: 0,
+        },
     };
 
-    // TODO: make part of config
     let mut msch_timings = MschNocTimings {
         ddrtiminga0: 0x2F0D_060A,
         ddrtimingb0: 0x0602_0804,
@@ -2654,9 +2880,14 @@ pub fn init() {
         devtodev: 0x0000_1111,
         ddr_mode: 0x0000_0054,
         agingx: 0x0000_00FF,
+        unk3: 0,
+        unk4: 0,
+        unk5: 0,
+        unk6: 0,
+        unk7: 0,
     };
 
-    let configs = [cfg];
+    let configs = [params];
 
     // TODO: split out sdram_init_detect ?
     let (skip_cs1_row_detection, mut cfg) = loop {
@@ -2668,23 +2899,24 @@ pub fn init() {
         // TODO: vendor code would check here if DDR type was detected and
         // continue or try the next DDR type.
 
-        if cfg.dram_type < 9 && cfg.dram_freq > 333 {
+        if cfg.dram_params.dram_type < 9 && cfg.dram_params.dram_freq > 333 {
             todo!("data training with all options")
         }
 
         // NOTE: vendor code sets chan_bus_width to 1 here
 
         // LPDDR4 + LPDDR4X
-        if cfg.dram_type == 7 || cfg.dram_type == 8 {
-            let mr8 = upctl2_read_mr(1, 8, cfg.dram_type);
+        if cfg.dram_params.dram_type == 7 || cfg.dram_params.dram_type == 8 {
+            let mr8 = upctl2_read_mr(1, 8, cfg.dram_params.dram_type);
             let x = mr8 as u32 >> 2;
-            cfg.column = 10;
-            cfg.bank_num = 3;
-            cfg.die_bus_width = 1;
-            cfg.row_3_4 = x & 1;
-            cfg.cs0_row = 14 + (((x & 0xf) + 1) >> 1);
-            cfg.chan_bus_width = 2;
-        } else if cfg.dram_type == 0 {
+            // TODO: this could be a function
+            cfg.chan_params.column = 10;
+            cfg.chan_params.bank_num = 3;
+            cfg.chan_params.die_bus_width = 1;
+            cfg.chan_params.row_3_4 = x & 1;
+            cfg.chan_params.cs0_row = 14 + (((x & 0xf) + 1) >> 1);
+            cfg.chan_params.chan_bus_width = 2;
+        } else if cfg.dram_params.dram_type == 0 {
             todo!("DDR3")
         } else {
             todo!("NOT DDR3 nor LPDDR4(X)")
@@ -2700,7 +2932,10 @@ pub fn init() {
         );
 
         // LPDDR3, LPDDR4, LPDDR4X
-        let v = if cfg.dram_type == 6 || cfg.dram_type == 7 || cfg.dram_type == 8 {
+        let v = if cfg.dram_params.dram_type == 6
+            || cfg.dram_params.dram_type == 7
+            || cfg.dram_params.dram_type == 8
+        {
             println!("LPDDR3, LPDDR4 or LPDDR4X - detect CS 4");
             if xx.is_ok() {
                 if train(
@@ -2724,22 +2959,22 @@ pub fn init() {
         } else {
             xx.is_ok() as u32
         };
-        cfg.rank = v + 1;
+        cfg.chan_params.rank = v + 1;
 
-        if cfg.dram_type != 7 && cfg.dram_type != 8 {
+        if cfg.dram_params.dram_type != 7 && cfg.dram_params.dram_type != 8 {
             todo!("handle DDR type not LPDDR4 nor LPDDR4X")
         }
         // restore
         write32(UPCTL2_POWER_CTRL, power_ctl);
 
-        cfg.ddr_config = cfg.cs0_row;
+        cfg.chan_params.ddr_config = cfg.chan_params.cs0_row;
 
         if v == 0 {
-            cfg.cs1_row = 0;
-            cfg.unk1 = 0;
+            cfg.chan_params.cs1_row = 0;
+            cfg.chan_params.unk1 = 0;
         } else {
-            cfg.cs1_row = cfg.cs0_row;
-            cfg.unk1 = cfg.cs0_row;
+            cfg.chan_params.cs1_row = cfg.chan_params.cs0_row;
+            cfg.chan_params.unk1 = cfg.chan_params.cs0_row;
         }
 
         // This is the value written to UPCTL2_MSTR.
@@ -2760,21 +2995,21 @@ pub fn init() {
     // NOTE: This overrides the config! Is that necessary?
     if !skip_cs1_row_detection {
         println!("CS1 row detection");
-        cfg.cs1_row = dram_detect_cs1_row(&cfg, 1);
+        cfg.chan_params.cs1_row = dram_detect_cs1_row(&cfg, 1);
 
-        if cfg.cs1_row != 0 {
-            let d = cfg.cs1_row - 13;
+        if cfg.chan_params.cs1_row != 0 {
+            let d = cfg.chan_params.cs1_row - 13;
             let os2 = read32(PMU_GRF_OS2);
             // U-Boot has a fancy macro, SYS_REG_ENC_CS1_ROW
             write32(PMU_GRF_OS2, os2 & !(3 << 3) | (d & 3) << 4);
             let os3 = read32(PMU_GRF_OS3);
             write32(PMU_GRF_OS3, os3 & !(1 << 4) | ((d >> 2) & 1) << 4);
         }
-        cfg.cs0_high16bit_row = dram_detect_cs1_row(&cfg, 2);
-        cfg.cs1_high16bit_row = dram_detect_cs1_row(&cfg, 3);
+        cfg.chan_params.cs0_high16bit_row = dram_detect_cs1_row(&cfg, 2);
+        cfg.chan_params.cs1_high16bit_row = dram_detect_cs1_row(&cfg, 3);
 
-        cfg.ddr_config = cfg.cs0_row;
-        cfg.unk1 = cfg.cs1_row;
+        cfg.chan_params.ddr_config = cfg.chan_params.cs0_row;
+        cfg.chan_params.unk1 = cfg.chan_params.cs1_row;
     }
 
     print_ddr_info(&cfg);
