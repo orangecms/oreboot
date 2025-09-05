@@ -37,12 +37,15 @@
 //! Note: Some platforms do not support atomics in SRAM, e.g., StarFive JH71x0.
 //! In this case or to keep things simple, initalize without further fencing:
 //! ```rs
+//! // You will need to opt into the nightly feature `once_cell_get_mut`:
+//! #![feature(once_cell_get_mut)]
 //! // MySerial implements embedded_hal_nb::serial::Write
 //! fn init_logger(s: MySerial) {
+//!     use core::{cell::OnceCell, ptr::addr_of_mut};
+//!     static mut SERIAL: OnceCell<MySerial> = OnceCell::new();
+//!
 //!     unsafe {
-//!         static mut SERIAL: Option<MySerial> = None;
-//!         SERIAL.replace(s);
-//!         log::init(SERIAL.as_mut().unwrap());
+//!         log::init((*addr_of_mut!(SERIAL)).get_mut_or_init(|| s));
 //!     }
 //! }
 //! ```
@@ -59,9 +62,7 @@
 //! ```
 #![no_std]
 
-use core::cell::OnceCell;
-use core::fmt;
-use core::ptr::addr_of_mut;
+use core::{cell::OnceCell, fmt, ptr::addr_of_mut};
 use embedded_hal_nb::serial::{ErrorType, Write};
 use nb::block;
 
@@ -150,11 +151,7 @@ fn shift_and_hex(n: u32, s: u8) -> u8 {
     let x = (n >> s) as u8 & 0x0f;
     // digits are in the range 0x30..0x39
     // letters start at 0x40, i.e., off by 7 from 0x3a
-    if x > 9 {
-        x + 0x37
-    } else {
-        x + 0x30
-    }
+    if x > 9 { x + 0x37 } else { x + 0x30 }
 }
 
 #[cfg(feature = "debug")]
