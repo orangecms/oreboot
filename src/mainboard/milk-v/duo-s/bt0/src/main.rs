@@ -2,6 +2,7 @@
 #![no_main]
 // TODO: remove when done debugging crap
 #![allow(unused)]
+#![feature(once_cell_get_mut)]
 
 #[macro_use]
 extern crate log;
@@ -13,7 +14,7 @@ use core::{
     slice::from_raw_parts as slice_from,
 };
 
-use layoutflash::areas::{find_fdt, FdtIterator};
+use layoutflash::areas::{FdtIterator, find_fdt};
 use util::mem::{dump, dump_block};
 use util::mmio::read32;
 
@@ -48,7 +49,7 @@ const DTB_SIZE: usize = 256 * 1024;
 
 const STACK_SIZE: usize = 512;
 
-#[link_section = ".bss.uninit"]
+#[unsafe(link_section = ".bss.uninit")]
 static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
 /// Set up stack and jump to executable code.
@@ -57,8 +58,8 @@ static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 ///
 /// Naked function.
 #[unsafe(naked)]
-#[export_name = "start"]
-#[link_section = ".text.entry"]
+#[unsafe(export_name = "start")]
+#[unsafe(link_section = ".text.entry")]
 #[allow(named_asm_labels)]
 pub unsafe extern "C" fn start() -> ! {
     // starts with a 32 bytes header
@@ -102,57 +103,24 @@ pub unsafe extern "C" fn start() -> ! {
         "wfi",
         "call   {next}",
         ".boothart:",
-        "call   {reset}",
+        "call   {main}",
         stack      = sym STACK,
         stack_size = const STACK_SIZE,
-        next    = sym next_stage,
-        reset      = sym reset,
+        next       = sym next_stage,
+        main       = sym main,
         start      = sym start
     )
 }
 
-/// Initialize RAM: Clear BSS and set up data.
-/// See https://docs.rust-embedded.org/embedonomicon/main.html
-///
-/// # Safety
-/// :shrug:
-#[no_mangle]
-pub unsafe extern "C" fn reset() {
-    extern "C" {
-        static mut _sbss: u8;
-        static mut _ebss: u8;
-
-        static mut _sdata: u8;
-        static mut _edata: u8;
-        static _sidata: u8;
-    }
-
-    if false {
-        use core::ptr::{self, addr_of, addr_of_mut};
-        // zero out BSS
-        let sbss = addr_of_mut!(_sbss);
-        let bss_size = addr_of!(_ebss) as usize - addr_of!(_sbss) as usize;
-        ptr::write_bytes(sbss, 0, bss_size);
-        // copy over data
-        let sidata = addr_of!(_sidata);
-        let sdata = addr_of_mut!(_sdata);
-        let data_size = addr_of!(_edata) as usize - addr_of!(_sdata) as usize;
-        ptr::copy_nonoverlapping(sidata, sdata, data_size);
-    }
-
-    // Call user entry point
-    main();
-}
-
-use core::cell::OnceCell;
-static mut SERIAL: OnceCell<uart::SGSerial> = OnceCell::new();
-
 fn init_logger(s: uart::SGSerial) {
+    use core::{cell::OnceCell, ptr::addr_of_mut};
+    static mut SERIAL: OnceCell<uart::SGSerial> = OnceCell::new();
+
     unsafe {
-        SERIAL.get_or_init(|| s);
-        if let Some(m) = SERIAL.get_mut() {
-            log::init(m);
-        }
+        log::init((*addr_of_mut!(SERIAL)).get_mut_or_init(|| s));
+        // shorthand for
+        // (&raw mut SERIAL).replace(OnceCell::from(s));
+        // log::init((*addr_of_mut!(SERIAL)).get_mut().unwrap());
     }
 }
 
@@ -171,7 +139,7 @@ fn init_logger(s: uart::SGSerial) {
   _DAT_0453e578 = 0xe0000701;
 */
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn main() {
     let mut ini_pc: usize = 0;
     unsafe { asm!("mv {}, s4", out(reg) ini_pc) };
@@ -266,7 +234,7 @@ fn next_stage(addr: usize) {
 
     println!("[bt0] Exit from main stage, resetting...");
     unsafe {
-        reset();
+        main();
     }
 }
 

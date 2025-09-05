@@ -2,7 +2,7 @@
 name = "milk_v-duo_s-bt0"
 version = "0.1.0"
 authors = ["oreboot authors"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 embedded-hal = "1.0.0"
