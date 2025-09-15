@@ -7,6 +7,7 @@
 // > secure system.
 
 pub const PMU_SGRF_BASE: usize = 0xFDC0_0000;
+// PMU_GRF_SOC_CON1 0x0104
 pub const PMU_GRF_BASE: usize = 0xFDC2_0000;
 pub const DDR_GRF_BASE: usize = 0xFDC4_0000;
 pub const SYS_GRF_BASE: usize = 0xFDC6_0000;
