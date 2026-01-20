@@ -1,0 +1,14 @@
+[build]
+target = "armv7a-none-eabi"
+
+[target.armv7a-none-eabi]
+rustflags = [
+  "-C",
+  "link-arg=-Tlink-xiongmai-xm8536d.ld",
+]
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"  # Optimize for size.
+panic = "abort"

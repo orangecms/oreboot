@@ -760,6 +760,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "oreboot-allwinner-xm8536d-bt0"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "embedded-hal-nb",
+ "log 0.1.0",
+ "nb 1.1.0",
+ "spin",
+ "util",
+]
+
+[[package]]
 name = "oreboot-arch"
 version = "0.1.0"
 dependencies = [
