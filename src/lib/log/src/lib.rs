@@ -67,7 +67,7 @@ use nb::block;
 
 pub trait Serial: ErrorType + Write {}
 
-type SerialLogger = dyn Serial<Error = Error>;
+type SerialLogger = dyn Serial<Error = Error> + Send;
 
 #[cfg(feature = "mutex")]
 static LOGGER: spin::Mutex<Option<&'static mut SerialLogger>> = spin::Mutex::new(None);
@@ -131,7 +131,7 @@ impl fmt::Write for SerialLogger {
 pub fn print(args: fmt::Arguments) {
     use fmt::Write;
     #[cfg(feature = "mutex")]
-    if let Ok(l) = LOGGER.lock().as_mut() {
+    if let Some(l) = LOGGER.lock().as_mut() {
         l.write_fmt(args).ok();
     }
     #[cfg(not(feature = "mutex"))]
