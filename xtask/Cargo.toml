@@ -20,3 +20,4 @@ zerocopy = "0.8.27"
 zerocopy-derive = "0.8.27"
 
 layoutflash = { path = "../src/lib/layoutflash", features = ["std"] }
+xshell = "0.2.7"
