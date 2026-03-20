@@ -503,18 +503,9 @@ extern "C" fn main() {
         println!("NAND flash: {:?}", flash.read_id());
 
         // TODO: Either read sizes from dtfs at runtime or at build time
-
-        let mut main_stage_head = [0u8; 8];
-        flash.copy_into(0x60, &mut main_stage_head);
-        let main_stage_head: MainStageHead = unsafe { core::mem::transmute(main_stage_head) };
-        println!(
-            "flash offset: {}, length: {}",
-            main_stage_head.offset, main_stage_head.length
-        );
-        let ddr_buffer = unsafe {
-            core::slice::from_raw_parts_mut(RAM_BASE as *mut u8, main_stage_head.length as usize)
-        };
-        flash.copy_into(main_stage_head.offset, ddr_buffer);
+        let skip = 0x1 << 15; // 32K, the size of boot0
+        let ore_slice = unsafe { core::slice::from_raw_parts_mut(RAM_BASE as *mut u8, ORE_SIZE) };
+        flash.copy_into(skip, ore_slice);
         // flash is freed when it goes out of scope
     }
 
