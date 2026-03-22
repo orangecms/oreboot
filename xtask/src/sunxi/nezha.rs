@@ -1,26 +1,32 @@
 use std::{
-    fs::File,
-    io::{self, Seek, SeekFrom, Write},
+    collections::HashMap,
+    fs::{self, File},
+    io::{self, ErrorKind, Seek, SeekFrom, Write},
     path::PathBuf,
     process::{self, Command},
 };
 
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use fdt::Fdt;
 use log::{error, info, trace};
 
+use layoutflash::layout::{create_areas, layout_flash};
+
 use crate::util::{
-    find_binutils_prefix_or_fail, get_bin_for, get_cargo_cmd_in, objcopy, objdump, platform_dir,
-    target_dir, Bin,
+    compile_platform_dt, find_binutils_prefix_or_fail, get_bin_for, get_cargo_cmd_in, objcopy,
+    objdump, platform_dir, target_bin, target_dir, Bin,
 };
 use crate::{
     gdb_detect,
     sunxi::{egon, fel},
-    Cli, Commands, Env,
+    Cli, Commands, Env, Memory,
 };
 
 // TODO: detect architecture for binutils
 const ARCH: &str = "riscv64";
 // TODO: instead of hardcoding, create one binary per feature set.
 const IMAGE_BIN: &str = "oreboot-nezha.bin";
+
 const BT0_STAGE: &str = "bt0";
 const MAIN_STAGE: &str = "main";
 
@@ -135,55 +141,45 @@ fn build_main(env: &Env, dir: &PathBuf, bin: &Bin) {
 }
 
 const FLASH_IMG_SIZE: u64 = 16 * 1024 * 1024;
-const M_MODE_PAYLOAD_SIZE: u64 = 2 * 1024 * 1024;
 const MAX_COMPRESSED_SIZE: usize = 0x00fc_0000;
 
 fn concat_binaries(env: &Env, dir: &PathBuf, stages: &Stages) {
     let plat_dir = platform_dir(dir);
-    let image_path = plat_dir.join(IMAGE_BIN);
-    println!("Stitching final image 🏗️ {image_path:?}");
+    let img_path = plat_dir.join(IMAGE_BIN);
+    println!("Stitching final image 🏗️ {img_path:?}");
+    let main_target_dir = target_dir(env, &stages.main.target);
 
-    let mut bt0_file = File::options()
-        .read(true)
-        .open(target_dir(env, &stages.bt0.target).join(&stages.bt0.bin_name))
-        .expect("open bt0 binary file");
-    let mut main_file = File::options()
-        .read(true)
-        .open(target_dir(env, &stages.main.target).join(&stages.main.bin_name))
-        .expect("open main binary file");
+    // FIXME: depend on storage
+    let dtb_path = compile_platform_dt(&plat_dir);
+    let dtb = fs::read(dtb_path).expect("platform DTB");
+    let fdt = Fdt::new(&dtb).unwrap();
+    let areas = create_areas(&fdt).unwrap();
 
-    // TODO: evaluate flash layout
-    let bt0_len = 32 * 1024;
-    let max_main_len = 96 * 1024;
-    let dtfs_len = 64 * 1024;
+    // TODO: pass offsets when building stage binaries, DTB be SBOM only (!)
+    let stage_bin_map = HashMap::from([
+        (BT0_STAGE, target_bin(env, &stages.bt0)),
+        (MAIN_STAGE, target_bin(env, &stages.main)),
+    ]);
 
-    let payload_offset = bt0_len + max_main_len + dtfs_len;
-    let dtb_len = 64 * 1024;
+    if let Err(e) = layout_flash(&main_target_dir, &img_path, areas, stage_bin_map) {
+        error!("layoutflash fail: {e}");
+        process::exit(1);
+    }
 
-    let mut image_file = File::options()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&image_path)
-        .expect("create image file");
-
-    let img_size = match (env.payload.as_deref(), env.supervisor) {
+    // TODO: build the respective map with the potential payload
+    match (env.payload.as_deref(), env.supervisor) {
         (Some(_), true) => {
             println!("  Full image with oreboot SBI");
-            FLASH_IMG_SIZE
         }
         (Some(_), _) => {
             println!("  Image with M-mode payload, no SBI");
-            payload_offset + M_MODE_PAYLOAD_SIZE
         }
         (None, _) => {
-            println!("No payload, will update oreboot only");
-            payload_offset
+            println!("  No payload, will update oreboot only");
         }
     };
-    println!("  Size: {img_size} bytes");
-    image_file.set_len(img_size).unwrap(); // FIXME: depend on storage
 
+    /*
     println!("bt0 stage\n  Size: {bt0_len} bytes");
     io::copy(&mut bt0_file, &mut image_file).expect("copying bt0 stage");
 
@@ -192,7 +188,9 @@ fn concat_binaries(env: &Env, dir: &PathBuf, stages: &Stages) {
     io::copy(&mut main_file, &mut image_file).expect("copying main stage");
     let main_len = main_file.metadata().unwrap().len();
     println!("main stage\n  Size: {main_len} bytes");
+    */
 
+    /*
     if let Some(payload_file) = env.payload.as_deref() {
         if env.supervisor {
             env.dtb.as_deref().expect("provide a DTB for LinuxBoot");
@@ -224,8 +222,13 @@ fn concat_binaries(env: &Env, dir: &PathBuf, stages: &Stages) {
             println!("  Size: {dtb_len} bytes");
         }
     }
+    */
 
-    println!("Output\n  File: {image_path:?}",);
+    if let Some(o) = img_path.into_os_string().to_str() {
+        println!("Output\n  File: {o}",);
+    } else {
+        panic!("Could not get final output file.");
+    }
     println!("======= DONE =======");
 }
 

@@ -11,19 +11,18 @@
         board-url = "https://d1.docs.aw-ol.com/en/d1_dev/";
         areas {
             area@0 {
-                description = "Boot Blob and Romstage";
+                compatible = "ore-stage";
                 size = <0x8000>; // 32KiB; SRAM size
-                file = "$(BOOTBLOB)";
+                stage = "bt0";
             };
             area@1 {
-                description = "Payloader/Decompressor/SBI";
-                size = <0x18000>; // 96KiB
-                file = "$(PAYLOADER)";
+                compatible = "ore-manifest";
+                size = <0x10000>; // 64KiB
             };
             area@2 {
-                description = "Fixed DTFS";
-                size = <0x10000>; // 64KiB
-                file = "$(FIXED_DTFS)";
+                compatible = "ore-stage";
+                size = <0x18000>; // 96KiB
+                stage = "main";
             };
             area@3 {
                 description = "Payload A";
