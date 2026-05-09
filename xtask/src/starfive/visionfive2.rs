@@ -103,7 +103,7 @@ fn xtask_build_image(env: &Env, dir: &PathBuf, stages: &Stages) {
     let dtb_path = compile_platform_dt(&plat_dir);
     let dtb = fs::read(dtb_path).expect("platform DTB");
     /*
-    let dtfs_path = = match env.memory {
+    let dtfs_path = match env.memory {
         Some(Memory::Nor) => target_dir.join(BOARD_DTFS),
         _ => {
             info!("no memory provided, building SRAM image");
@@ -150,6 +150,7 @@ fn xtask_build_image(env: &Env, dir: &PathBuf, stages: &Stages) {
     println!("Output file: {:?}", &out_path.into_os_string());
 }
 
+/*
 fn xtask_copy_dtb(env: &Env, target: &str, root: &Path, dtb: &str) {
     // TODO: more flexibility; how about non-supervisor payloads, etc?
     if env.supervisor {
@@ -159,12 +160,13 @@ fn xtask_copy_dtb(env: &Env, target: &str, root: &Path, dtb: &str) {
         fs::copy(dtb, dest).expect("failed to copy payload dtb file");
     }
 }
+*/
 
 fn build_image(env: &Env, dir: &PathBuf, stages: &Stages, features: &[String]) {
     // Build the stages - should we parallelize this?
     xtask_build_jh7110_bt0(env, dir, &stages.bt0, features);
     xtask_build_jh7110_main(env, dir, &stages.main);
 
-    xtask_copy_dtb(&args.env, TARGET, &board_project_root(), PAYLOAD_DTB);
+    // xtask_copy_dtb(&args.env, TARGET, &board_project_root(), PAYLOAD_DTB);
     xtask_build_image(env, dir, stages);
 }
