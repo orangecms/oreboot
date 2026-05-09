@@ -10,7 +10,10 @@ use embedded_hal_nb::serial::Write;
 #[macro_use]
 extern crate log;
 
-use core::{arch::asm, panic::PanicInfo};
+use core::{
+    arch::{asm, naked_asm},
+    panic::PanicInfo,
+};
 use log::{print, println};
 
 mod uart;
@@ -45,12 +48,12 @@ pub unsafe extern "C" fn head_jump() {
 /// # Safety
 ///
 /// Naked function.
-#[naked]
+#[unsafe(naked)]
 #[export_name = "start"]
 #[link_section = ".text.entry"]
 #[allow(named_asm_labels)]
 pub unsafe extern "C" fn start() -> ! {
-    asm!(
+    naked_asm!(
         "bl    .forrealsiez", // 2 bytes with compact instruction
         ".word 0", // resvered
         ".word 0", // BL2 MSID
@@ -75,7 +78,6 @@ pub unsafe extern "C" fn start() -> ! {
         stack      =   sym BT0_STACK,
         stack_size = const STACK_SIZE,
         reset      =   sym reset,
-        options(noreturn)
     )
 }
 
