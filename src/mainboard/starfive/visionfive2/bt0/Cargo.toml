@@ -21,9 +21,5 @@ soc = { path = "../../../../soc", package = "oreboot-soc", features = ["starfive
 
 starfive-visionfive2-lib = { path = "../lib" }
 
-[dependencies.jh71xx-hal]
-version = "0.1"
-features = ["rt"]
-
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dram_size, values("2G", "4G", "8G"))'] }
