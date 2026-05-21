@@ -1,5 +1,11 @@
 # Boot Flow
 
+![general boot flow](./img/general-boot.png)
+
+In general, booting starts with the mask ROM, which loads initial code to SRAM,
+which then initializes DRAM, loads the next stage there and runs it, which may
+then in turn load more.
+
 ## Storage
 
 Firmware resides in a storage part. One commonly used kind for firmware is
