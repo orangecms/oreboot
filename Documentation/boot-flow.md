@@ -94,3 +94,7 @@ by the operating system, and others that need a fixed description instead. Those
 can be passed to Linux and some other systems in the aforementioned [Device Tree format](https://www.devicetree.org/). On RISC-V, the DTB needs to sit _behind_
 the Linux kernel, and its memory location passed via defined registers. On some
 platforms, e.g., x86, [ACPI](https://uefi.org/specs/ACPI/6.4/) is used instead.
+
+## Model
+
+![](./img/fmap-mmap.png)
